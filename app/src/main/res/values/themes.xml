@@ -1,0 +1,13 @@
+<resources>
+    <style name="Theme.Aether" parent="android:Theme.DeviceDefault.DayNight">
+        <item name="android:windowActionBar">false</item>
+        <item name="android:windowNoTitle">true</item>
+    </style>
+
+    <!-- Hosts the Compose bottom sheet over whichever app the user was sharing from. -->
+    <style name="Theme.Aether.Sheet" parent="Theme.Aether">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:backgroundDimEnabled">false</item>
+    </style>
+</resources>

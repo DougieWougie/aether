@@ -1,0 +1,110 @@
+package com.aether.nextcloud.data.prefs
+
+import android.content.Context
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
+import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
+import javax.inject.Singleton
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+
+private val Context.settingsStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
+
+data class BackupSettings(
+    val enabled: Boolean = false,
+    val accountName: String? = null,
+    val remoteFolder: String = DEFAULT_FOLDER,
+    val unmeteredOnly: Boolean = true,
+    val chargingOnly: Boolean = false,
+    val includeVideos: Boolean = true,
+    /** Only media added after this moment (epoch millis) is uploaded, so enabling backup never floods the server with the whole library. */
+    val backupSinceMillis: Long = 0,
+) {
+    companion object {
+        const val DEFAULT_FOLDER = "/Photos/Camera Uploads"
+    }
+}
+
+data class SyncSettings(
+    /** Periodic offline-pin sync only runs on unmetered networks. */
+    val pinnedSyncUnmeteredOnly: Boolean = true,
+)
+
+/** User preferences and sync constraints (DataStore). */
+@Singleton
+class SettingsRepository @Inject constructor(@ApplicationContext private val context: Context) {
+    private val store get() = context.settingsStore
+
+    val backup: Flow<BackupSettings> = store.data.map { p ->
+        BackupSettings(
+            enabled = p[BACKUP_ENABLED] ?: false,
+            accountName = p[BACKUP_ACCOUNT],
+            remoteFolder = p[BACKUP_FOLDER] ?: BackupSettings.DEFAULT_FOLDER,
+            unmeteredOnly = p[BACKUP_UNMETERED] ?: true,
+            chargingOnly = p[BACKUP_CHARGING] ?: false,
+            includeVideos = p[BACKUP_VIDEOS] ?: true,
+            backupSinceMillis = p[BACKUP_SINCE] ?: 0,
+        )
+    }
+
+    val sync: Flow<SyncSettings> = store.data.map { p ->
+        SyncSettings(pinnedSyncUnmeteredOnly = p[PINNED_UNMETERED] ?: true)
+    }
+
+    /** Applies [transform] and returns the stored result. Turning backup on stamps [BackupSettings.backupSinceMillis]. */
+    suspend fun updateBackup(transform: (BackupSettings) -> BackupSettings): BackupSettings {
+        val before = backup.first()
+        var after = transform(before)
+        if (after.enabled && !before.enabled) after = after.copy(backupSinceMillis = System.currentTimeMillis())
+        store.edit { p ->
+            p[BACKUP_ENABLED] = after.enabled
+            after.accountName?.let { p[BACKUP_ACCOUNT] = it } ?: p.remove(BACKUP_ACCOUNT)
+            p[BACKUP_FOLDER] = after.remoteFolder
+            p[BACKUP_UNMETERED] = after.unmeteredOnly
+            p[BACKUP_CHARGING] = after.chargingOnly
+            p[BACKUP_VIDEOS] = after.includeVideos
+            p[BACKUP_SINCE] = after.backupSinceMillis
+        }
+        return after
+    }
+
+    /** Document ids of the folders most recently used as upload destinations, newest first. */
+    val recentFolders: Flow<List<String>> = store.data.map { p ->
+        p[RECENT_FOLDERS]?.let { runCatching { Json.decodeFromString<List<String>>(it) }.getOrNull() } ?: emptyList()
+    }
+
+    suspend fun rememberFolder(documentId: String) {
+        store.edit { p ->
+            val current = p[RECENT_FOLDERS]?.let { runCatching { Json.decodeFromString<List<String>>(it) }.getOrNull() } ?: emptyList()
+            p[RECENT_FOLDERS] = Json.encodeToString((listOf(documentId) + current.filter { it != documentId }).take(MAX_RECENT_FOLDERS))
+        }
+    }
+
+    suspend fun updateSync(transform: (SyncSettings) -> SyncSettings): SyncSettings {
+        val after = transform(sync.first())
+        store.edit { it[PINNED_UNMETERED] = after.pinnedSyncUnmeteredOnly }
+        return after
+    }
+
+    companion object {
+        const val MAX_RECENT_FOLDERS = 4
+        private val RECENT_FOLDERS = stringPreferencesKey("recent_folders")
+        private val BACKUP_ENABLED = booleanPreferencesKey("backup_enabled")
+        private val BACKUP_ACCOUNT = stringPreferencesKey("backup_account")
+        private val BACKUP_FOLDER = stringPreferencesKey("backup_folder")
+        private val BACKUP_UNMETERED = booleanPreferencesKey("backup_unmetered_only")
+        private val BACKUP_CHARGING = booleanPreferencesKey("backup_charging_only")
+        private val BACKUP_VIDEOS = booleanPreferencesKey("backup_include_videos")
+        private val BACKUP_SINCE = longPreferencesKey("backup_since")
+        private val PINNED_UNMETERED = booleanPreferencesKey("pinned_unmetered_only")
+    }
+}

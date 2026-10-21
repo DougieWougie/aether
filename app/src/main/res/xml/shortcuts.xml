@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Direct Share: recently used folders are published as dynamic shortcuts in this category. -->
+    <share-target android:targetClass="com.aether.nextcloud.ui.share.ShareUploadActivity">
+        <data android:mimeType="*/*" />
+        <category android:name="com.aether.nextcloud.category.SHARE_TARGET" />
+    </share-target>
+</shortcuts>

@@ -1,0 +1,16 @@
+<resources>
+    <string name="app_name">Aether</string>
+    <string name="account_label">Nextcloud (Aether)</string>
+    <string name="share_target_label">Save to Nextcloud</string>
+    <string name="root_title">Aether</string>
+    <string name="notification_channel_transfers">File transfers</string>
+    <string name="notification_channel_conflicts">Sync conflicts</string>
+    <string name="notification_cancel">Cancel</string>
+    <string name="notification_uploading">Uploading %1$s</string>
+    <string name="notification_downloading">Downloading %1$s</string>
+    <string name="notification_syncing_pins">Syncing offline files</string>
+    <string name="notification_backing_up">Backing up photos and videos</string>
+    <string name="notification_conflict_title">Sync conflict</string>
+    <string name="notification_conflict_text">%1$s changed on the server; your edit was saved as %2$s</string>
+    <string name="notification_sign_in_required">Sign in again to keep syncing</string>
+</resources>

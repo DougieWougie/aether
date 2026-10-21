@@ -13,8 +13,8 @@ build/
 *.keystore
 .kotlin/
 
-# Per-developer Claude Code settings (shared settings.json and hooks stay tracked)
-.claude/settings.local.json
+# Claude Code configuration
+.claude/
 
 # Signing and secrets
 *.p12

@@ -3,7 +3,59 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+
+    <!-- Upper Sync Orbit Arc (X: 29..79, Y: 29..54) -->
     <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M36,64a12,12 0,0 1,1.5,-23.9a16,16 0,0 1,30.6,3.4a10.5,10.5 0,0 1,-1.1,20.5z" />
+        android:pathData="M31.4,43.4 A25,25 0 0,1 76.6,43.4"
+        android:strokeWidth="4.5"
+        android:strokeColor="#FF38BDF8"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+
+    <!-- Upper Orbit Arrowhead (Right) -->
+    <path
+        android:pathData="M71.5,42.5 L78.5,45.5 L79.5,38.0"
+        android:strokeWidth="4.5"
+        android:strokeColor="#FF38BDF8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000" />
+
+    <!-- Lower Sync Orbit Arc (X: 29..79, Y: 54..79) -->
+    <path
+        android:pathData="M76.6,64.6 A25,25 0 0,1 31.4,64.6"
+        android:strokeWidth="4.5"
+        android:strokeColor="#FF38BDF8"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+
+    <!-- Lower Orbit Arrowhead (Left) -->
+    <path
+        android:pathData="M36.5,65.5 L29.5,62.5 L28.5,70.0"
+        android:strokeWidth="4.5"
+        android:strokeColor="#FF38BDF8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000" />
+
+    <!-- Nextcloud Three-Node Cluster (Left Node: center 41,54 r=5.5) -->
+    <path
+        android:pathData="M41,54m-5.5,0a5.5,5.5 0,1 1,11 0a5.5,5.5 0,1 1,-11 0"
+        android:strokeWidth="3.5"
+        android:strokeColor="#FFE0F2FE"
+        android:fillColor="#00000000" />
+
+    <!-- Nextcloud Three-Node Cluster (Right Node: center 67,54 r=5.5) -->
+    <path
+        android:pathData="M67,54m-5.5,0a5.5,5.5 0,1 1,11 0a5.5,5.5 0,1 1,-11 0"
+        android:strokeWidth="3.5"
+        android:strokeColor="#FFE0F2FE"
+        android:fillColor="#00000000" />
+
+    <!-- Nextcloud Three-Node Cluster (Center Hub: center 54,54 r=8.5) -->
+    <path
+        android:pathData="M54,54m-8.5,0a8.5,8.5 0,1 1,17 0a8.5,8.5 0,1 1,-17 0"
+        android:strokeWidth="4.2"
+        android:strokeColor="#FFFFFFFF"
+        android:fillColor="#FF0F172A" />
 </vector>

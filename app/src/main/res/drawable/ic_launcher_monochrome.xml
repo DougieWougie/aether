@@ -1,0 +1,61 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Upper Sync Orbit Arc -->
+    <path
+        android:pathData="M31.4,43.4 A25,25 0 0,1 76.6,43.4"
+        android:strokeWidth="4.5"
+        android:strokeColor="#FF000000"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+
+    <!-- Upper Orbit Arrowhead -->
+    <path
+        android:pathData="M71.5,42.5 L78.5,45.5 L79.5,38.0"
+        android:strokeWidth="4.5"
+        android:strokeColor="#FF000000"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000" />
+
+    <!-- Lower Sync Orbit Arc -->
+    <path
+        android:pathData="M76.6,64.6 A25,25 0 0,1 31.4,64.6"
+        android:strokeWidth="4.5"
+        android:strokeColor="#FF000000"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+
+    <!-- Lower Orbit Arrowhead -->
+    <path
+        android:pathData="M36.5,65.5 L29.5,62.5 L28.5,70.0"
+        android:strokeWidth="4.5"
+        android:strokeColor="#FF000000"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000" />
+
+    <!-- Left Node -->
+    <path
+        android:pathData="M41,54m-5.5,0a5.5,5.5 0,1 1,11 0a5.5,5.5 0,1 1,-11 0"
+        android:strokeWidth="3.8"
+        android:strokeColor="#FF000000"
+        android:fillColor="#00000000" />
+
+    <!-- Right Node -->
+    <path
+        android:pathData="M67,54m-5.5,0a5.5,5.5 0,1 1,11 0a5.5,5.5 0,1 1,-11 0"
+        android:strokeWidth="3.8"
+        android:strokeColor="#FF000000"
+        android:fillColor="#00000000" />
+
+    <!-- Center Hub -->
+    <path
+        android:pathData="M54,54m-8.5,0a8.5,8.5 0,1 1,17 0a8.5,8.5 0,1 1,-17 0"
+        android:strokeWidth="4.2"
+        android:strokeColor="#FF000000"
+        android:fillColor="#00000000" />
+</vector>

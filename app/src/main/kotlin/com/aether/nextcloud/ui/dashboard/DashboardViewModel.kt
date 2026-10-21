@@ -2,6 +2,7 @@ package com.aether.nextcloud.ui.dashboard
 
 import android.net.Uri
 import android.provider.DocumentsContract
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -11,6 +12,7 @@ import com.aether.nextcloud.auth.AccountRepository
 import com.aether.nextcloud.auth.AetherCredentials
 import com.aether.nextcloud.core.AetherResult
 import com.aether.nextcloud.core.describe
+import com.aether.nextcloud.data.AvatarRepository
 import com.aether.nextcloud.data.DocumentRepository
 import com.aether.nextcloud.data.QuotaRepository
 import com.aether.nextcloud.data.cache.DocumentDiskCache
@@ -55,6 +57,7 @@ data class DashboardUiState(
     val backedUpCount: Int = 0,
     val lastBackupAt: Long? = null,
     val storage: StorageUsage = StorageUsage(),
+    val avatar: ImageBitmap? = null,
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -64,6 +67,7 @@ class DashboardViewModel @Inject constructor(
     private val accountRepository: AccountRepository,
     private val accountCleaner: AccountCleaner,
     private val quotaRepository: QuotaRepository,
+    private val avatars: AvatarRepository,
     private val documents: DocumentRepository,
     private val diskCache: DocumentDiskCache,
     private val settings: SettingsRepository,
@@ -98,16 +102,17 @@ class DashboardViewModel @Inject constructor(
     }
 
     private val message = MutableStateFlow<String?>(null)
+    private val avatar = MutableStateFlow<Pair<String, ImageBitmap?>?>(null)
 
     val state: StateFlow<DashboardUiState> = combine(
         selected, tab, transferData, backupData,
-        combine(quotaRepository.snapshots, storage, message) { quotas, usage, msg -> Triple(quotas, usage, msg) },
-    ) { (accounts, account), currentTab, (active, recent, pinned), (count, last, backup), (quotas, usage, msg) ->
+        combine(quotaRepository.snapshots, storage, message, avatar, ::Extras),
+    ) { (accounts, account), currentTab, (active, recent, pinned), (count, last, backup), extras ->
         DashboardUiState(
             accounts = accounts,
             selected = account,
-            quota = account?.let { quotas[it.accountName]?.info },
-            quotaError = msg,
+            quota = account?.let { extras.quotas[it.accountName]?.info },
+            quotaError = extras.message,
             tab = currentTab,
             activeTransfers = active.filter { it.accountName == account?.accountName },
             recentTransfers = recent.filter { it.accountName == account?.accountName },
@@ -115,7 +120,8 @@ class DashboardViewModel @Inject constructor(
             backup = backup,
             backedUpCount = count,
             lastBackupAt = last,
-            storage = usage,
+            storage = extras.usage,
+            avatar = extras.avatar?.takeIf { it.first == account?.accountName }?.second,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DashboardUiState())
 
@@ -139,6 +145,8 @@ class DashboardViewModel @Inject constructor(
         viewModelScope.launch {
             val account = selected.first().second ?: return@launch
             message.value = null
+            if (avatar.value?.first != account.accountName) avatar.value = account.accountName to avatars.cached(account.accountName)
+            avatar.value = account.accountName to avatars.refresh(account)
             when (val result = quotaRepository.refresh(account)) {
                 is AetherResult.Failure -> message.value = result.error.describe()
                 is AetherResult.Success -> accountRepository.setDisplayName(account.accountName, result.value.displayName)
@@ -190,6 +198,13 @@ class DashboardViewModel @Inject constructor(
     private suspend fun refreshStorage() {
         storage.update { withContext(Dispatchers.IO) { StorageUsage(diskCache.cacheSizeBytes(), diskCache.pinnedSizeBytes()) } }
     }
+
+    private class Extras(
+        val quotas: Map<String, QuotaRepository.Snapshot>,
+        val usage: StorageUsage,
+        val message: String?,
+        val avatar: Pair<String, ImageBitmap?>?,
+    )
 
     private companion object {
         const val KEY_ACCOUNT = "account"

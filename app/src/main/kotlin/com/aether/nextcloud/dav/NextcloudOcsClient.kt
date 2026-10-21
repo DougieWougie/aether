@@ -118,6 +118,40 @@ class NextcloudOcsClient(
         }
     }
 
+    /**
+     * `GET <server>/index.php/avatar/<user>/<size>`. Nextcloud answers with a generated letter avatar when the user
+     * has not set a picture, so only a custom one is saved: the result is `true` if [target] now holds it, `false` if
+     * the user has none (any stale [target] is removed).
+     */
+    suspend fun downloadAvatar(credentials: AetherCredentials, target: File, size: Int = AVATAR_SIZE): AetherResult<Boolean> {
+        val url = "${credentials.serverUrl}/index.php/avatar".toHttpUrl().newBuilder()
+            .addPathSegment(credentials.loginName)
+            .addPathSegment(size.toString())
+            .build()
+        val request = request(credentials, url.toString()).get().build()
+        return client.execute(request) { response ->
+            if (response.code == 404) {
+                target.delete()
+                return@execute AetherResult.Success(false)
+            }
+            if (!response.isSuccessful) return@execute AetherResult.Failure(response.toError())
+            // Newer servers flag custom avatars; older ones answer 201 for generated ones and 200 for uploaded ones.
+            val custom = response.header("X-NC-IsCustomAvatar")?.let { it == "1" } ?: (response.code == 200)
+            if (!custom) {
+                target.delete()
+                return@execute AetherResult.Success(false)
+            }
+            try {
+                target.parentFile?.mkdirs()
+                target.outputStream().use { out -> response.body.byteStream().copyTo(out) }
+                AetherResult.Success(true)
+            } catch (e: IOException) {
+                target.delete()
+                AetherResult.Failure(AetherError.Network(e))
+            }
+        }
+    }
+
     private fun JsonElement?.isUnlimited(): Boolean {
         val primitive = this as? JsonPrimitive ?: return false
         return primitive.content == "none" || primitive.content == "-3"
@@ -125,5 +159,6 @@ class NextcloudOcsClient(
 
     companion object {
         const val PREVIEW_SIZE = 256
+        const val AVATAR_SIZE = 192
     }
 }

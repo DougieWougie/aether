@@ -12,12 +12,14 @@ import android.net.Uri
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -94,6 +96,8 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.material3.ButtonGroupDefaults
@@ -143,6 +147,7 @@ fun DashboardScreen(
             item {
                 Header(
                     account = state.selected,
+                    avatar = state.avatar,
                     accounts = state.accounts,
                     onSelect = viewModel::selectAccount,
                     onAddAccount = onAddAccount,
@@ -197,6 +202,7 @@ private fun DashboardNavigationBar(selected: DashboardTab, onSelect: (DashboardT
 @Composable
 private fun Header(
     account: AetherCredentials?,
+    avatar: ImageBitmap?,
     accounts: List<AetherCredentials>,
     onSelect: (String) -> Unit,
     onAddAccount: () -> Unit,
@@ -204,11 +210,20 @@ private fun Header(
 ) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
         MorphingShapeBadge(MaterialShapes.Cookie6Sided, size = 52.dp, container = MaterialTheme.colorScheme.tertiaryContainer) {
-            Text(
-                (account?.displayName ?: "A").take(1).uppercase(),
-                style = MaterialTheme.typography.titleLargeEmphasized,
-                color = MaterialTheme.colorScheme.onTertiaryContainer,
-            )
+            if (avatar != null) {
+                Image(
+                    avatar,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize().padding(5.dp).clip(CircleShape),
+                )
+            } else {
+                Text(
+                    (account?.displayName ?: "A").take(1).uppercase(),
+                    style = MaterialTheme.typography.titleLargeEmphasized,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                )
+            }
         }
         Column(Modifier.weight(1f)) {
             Text(account?.displayName ?: "Aether", style = MaterialTheme.typography.headlineSmallEmphasized, maxLines = 1, overflow = TextOverflow.Ellipsis)

@@ -1,5 +1,6 @@
 package com.aether.nextcloud.auth
 
+import com.aether.nextcloud.data.AvatarRepository
 import com.aether.nextcloud.data.DocumentRepository
 import com.aether.nextcloud.data.QuotaRepository
 import com.aether.nextcloud.data.local.AetherDatabase
@@ -21,6 +22,7 @@ class AccountCleaner @Inject constructor(
     private val documents: DocumentRepository,
     private val database: AetherDatabase,
     private val quotas: QuotaRepository,
+    private val avatars: AvatarRepository,
     private val ocs: NextcloudOcsClient,
     @ApplicationScope private val scope: CoroutineScope,
 ) {
@@ -34,6 +36,7 @@ class AccountCleaner @Inject constructor(
             database.transferDao().deleteAccount(accountName)
             database.backedUpMediaDao().deleteAccount(accountName)
             quotas.forget(accountName)
+            avatars.forget(accountName)
             accounts.notifyRootsChanged()
         }
     }

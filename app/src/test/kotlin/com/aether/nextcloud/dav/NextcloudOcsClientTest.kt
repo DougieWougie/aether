@@ -103,4 +103,36 @@ class NextcloudOcsClientTest {
         assertEquals("PNGDATA", target.readText())
         assertTrue(server.takeRequest().path!!.contains("fileId=1050"))
     }
+
+    @Test
+    fun `downloadAvatar saves a custom avatar`() = runBlocking {
+        server.enqueue(MockResponse().setBody("AVATAR").addHeader("X-NC-IsCustomAvatar", "1"))
+        val target = File(tmp.root, "avatars/alice.png")
+
+        assertEquals(AetherResult.Success(true), ocs.downloadAvatar(credentials, target))
+
+        assertEquals("AVATAR", target.readText())
+        assertEquals("/index.php/avatar/alice/192", server.takeRequest().path)
+    }
+
+    @Test
+    fun `downloadAvatar ignores generated avatars and removes a stale file`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(201).setBody("LETTER"))
+        server.enqueue(MockResponse().setBody("LETTER").addHeader("X-NC-IsCustomAvatar", "0"))
+        val target = File(tmp.root, "avatars/alice.png").apply { parentFile!!.mkdirs(); writeText("old") }
+
+        assertEquals(AetherResult.Success(false), ocs.downloadAvatar(credentials, target))
+        assertTrue(!target.exists())
+        assertEquals(AetherResult.Success(false), ocs.downloadAvatar(credentials, target))
+        assertTrue(!target.exists())
+    }
+
+    @Test
+    fun `downloadAvatar keeps the cached file when the request fails`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(500))
+        val target = File(tmp.root, "avatars/alice.png").apply { parentFile!!.mkdirs(); writeText("old") }
+
+        assertTrue(ocs.downloadAvatar(credentials, target) is AetherResult.Failure)
+        assertEquals("old", target.readText())
+    }
 }

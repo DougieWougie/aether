@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="aetherBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0F172A" />
+      <stop offset="55%" stop-color="#072F49" />
+      <stop offset="100%" stop-color="#0082C9" />
+    </linearGradient>
+  </defs>
+
+  <!-- Full-bleed 512x512 square canvas for Play Store dynamic masking -->
+  <rect width="512" height="512" fill="url(#aetherBg)" />
+
+  <!-- Subtle outer orbital guide -->
+  <circle cx="256" cy="256" r="185" fill="none" stroke="#38BDF8" stroke-opacity="0.18" stroke-width="4" />
+
+  <!-- Upper Sync Orbit Arc -->
+  <path d="M 126 196 A 142 142 0 0 1 386 196" fill="none" stroke="#38BDF8" stroke-width="24" stroke-linecap="round" />
+  <polyline points="354,191 395,208 401,164" fill="none" stroke="#38BDF8" stroke-width="24" stroke-linecap="round" stroke-linejoin="round" />
+
+  <!-- Lower Sync Orbit Arc -->
+  <path d="M 386 316 A 142 142 0 0 1 126 316" fill="none" stroke="#38BDF8" stroke-width="24" stroke-linecap="round" />
+  <polyline points="158,321 117,304 111,348" fill="none" stroke="#38BDF8" stroke-width="24" stroke-linecap="round" stroke-linejoin="round" />
+
+  <!-- Nextcloud-style Interconnected Nodes -->
+  <circle cx="182" cy="256" r="32" fill="#0F172A" stroke="#E0F2FE" stroke-width="20" />
+  <circle cx="330" cy="256" r="32" fill="#0F172A" stroke="#E0F2FE" stroke-width="20" />
+  <circle cx="256" cy="256" r="48" fill="#0F172A" stroke="#FFFFFF" stroke-width="24" />
+</svg>

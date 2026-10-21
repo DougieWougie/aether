@@ -11,6 +11,12 @@ All architectural decisions and rationales are recorded in [`docs/adr/`](docs/ad
 
 ---
 
+## License
+
+Aether is licensed under the **GNU General Public License v3.0 or later** (see [`LICENSE`](LICENSE)). Only add dependencies whose licenses are GPLv3-compatible (Apache-2.0, MIT and BSD are fine).
+
+---
+
 ## Core Architectural Decisions (Summary)
 
 1. **[ADR-0001](docs/adr/0001-saf-documents-provider-primary-interface.md): System `DocumentsProvider` First**

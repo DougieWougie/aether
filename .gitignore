@@ -12,3 +12,31 @@ build/
 *.jks
 *.keystore
 .kotlin/
+
+# Per-developer Claude Code settings (shared settings.json and hooks stay tracked)
+.claude/settings.local.json
+
+# Signing and secrets
+*.p12
+*.pem
+*.key
+keystore.properties
+google-services.json
+.env
+.env.*
+
+# Local compose overrides (e.g. SELinux :z bind mounts for a dev Nextcloud)
+compose.override.yml
+
+# Logs and crash dumps
+*.log
+hs_err_pid*
+replay_pid*
+
+# Test output and device pulls
+/screenshots
+*.hprof
+*.orig
+*.rej
+.fleet/
+.vscode/

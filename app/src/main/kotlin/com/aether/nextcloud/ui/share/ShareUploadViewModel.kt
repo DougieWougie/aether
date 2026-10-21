@@ -2,6 +2,7 @@ package com.aether.nextcloud.ui.share
 
 import android.content.Context
 import android.content.Intent
+import android.content.ContentResolver
 import android.net.Uri
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
@@ -158,6 +159,16 @@ class ShareUploadViewModel @Inject constructor(
         )
     }
 
+    /**
+     * `content://<userId>@<authority>` addresses the same provider as `content://<authority>`, so a plain authority comparison
+     * is bypassable; user-id-prefixed authorities are rejected outright and the rest compared case-insensitively.
+     */
+    private fun isShareable(uri: Uri): Boolean {
+        val authority = uri.authority ?: return false
+        return uri.scheme == ContentResolver.SCHEME_CONTENT && '@' !in authority &&
+            !authority.equals(AetherConstants.AUTHORITY, ignoreCase = true)
+    }
+
     private fun readItems(intent: Intent): List<SharedItem> {
         val uris = when (intent.action) {
             Intent.ACTION_SEND -> listOfNotNull(IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java))
@@ -166,7 +177,11 @@ class ShareUploadViewModel @Inject constructor(
         }.ifEmpty {
             intent.clipData?.let { clip -> (0 until clip.itemCount).mapNotNull { clip.getItemAt(it).uri } }.orEmpty()
         }
-        if (uris.isNotEmpty()) return uris.map(::describe)
+        // Only content:// URIs go through a provider that enforces the sender's grant. A file:// URI would be opened with
+        // this app's own access, letting any sender make Aether read its private storage; Aether's own provider is pointless here.
+        val shareable = uris.filter(::isShareable)
+        if (shareable.isNotEmpty()) return shareable.map(::describe)
+        if (uris.isNotEmpty()) return emptyList()
 
         val text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()
         if (text.isNullOrBlank()) return emptyList()

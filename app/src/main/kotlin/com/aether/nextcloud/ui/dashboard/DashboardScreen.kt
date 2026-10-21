@@ -328,12 +328,25 @@ private fun StorageHero(state: DashboardUiState, onRetry: () -> Unit) {
                     }
                 }
                 Box(Modifier.size(116.dp), contentAlignment = Alignment.Center) {
-                    if (quota != null && total != null && total > 0) {
-                        CircularWavyProgressIndicator(
+                    val track = colors.onPrimaryContainer.copy(alpha = 0.16f)
+                    when {
+                        quota != null && total != null && total > 0 -> CircularWavyProgressIndicator(
                             progress = { (quota.usedBytes.toFloat() / total).coerceIn(0f, 1f) },
                             modifier = Modifier.size(116.dp),
                             color = colors.primary,
-                            trackColor = colors.onPrimaryContainer.copy(alpha = 0.16f),
+                            trackColor = track,
+                        )
+                        // Unlimited quota has no fraction to show: an indeterminate ring while syncing, otherwise a dim full ring.
+                        quota != null && syncing -> CircularWavyProgressIndicator(
+                            modifier = Modifier.size(116.dp),
+                            color = colors.primary,
+                            trackColor = track,
+                        )
+                        quota != null && !failed -> CircularWavyProgressIndicator(
+                            progress = { 1f },
+                            modifier = Modifier.size(116.dp),
+                            color = colors.primary.copy(alpha = 0.35f),
+                            trackColor = track,
                         )
                     }
                     MorphingShapeBadge(

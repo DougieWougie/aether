@@ -254,6 +254,16 @@ class WebDavClientTest {
     }
 
     @Test
+    fun `a locked file reports Locked for delete and upload`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(423))
+        server.enqueue(MockResponse().setResponseCode(423))
+        val file = tmp.newFile("locked.txt").apply { writeText("x") }
+
+        assertEquals(AetherResult.Failure(AetherError.Locked), dav.delete(url("/locked.txt")))
+        assertEquals(AetherResult.Failure(AetherError.Locked), dav.uploadFile(url("/locked.txt"), file, null))
+    }
+
+    @Test
     fun `network failures become Network errors`() = runBlocking {
         server.shutdown()
         assertTrue((dav.delete(url("/x")) as AetherResult.Failure).error is AetherError.Network)

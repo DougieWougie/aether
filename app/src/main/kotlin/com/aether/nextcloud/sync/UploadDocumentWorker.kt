@@ -170,7 +170,8 @@ class UploadDocumentWorker @AssistedInject constructor(
     }
 
     private suspend fun failed(error: AetherError, source: File, transferId: Long): Result {
-        val retryable = error is AetherError.Network || (error is AetherError.Http && error.code >= 500)
+        // A server-side lock normally clears once the other editor closes, so it is retried like a transient failure.
+        val retryable = error is AetherError.Network || error == AetherError.Locked || (error is AetherError.Http && error.code >= 500)
         if (retryable && runAttemptCount < MAX_ATTEMPTS) {
             setTransferState(transferId, TransferState.QUEUED, error.describe())
             return Result.retry()

@@ -316,6 +316,8 @@ class AetherDocumentsProvider : DocumentsProvider() {
         is AetherResult.Failure -> when (error) {
             AetherError.Unauthorized -> throw authenticationRequired()
             AetherError.NotFound -> throw FileNotFoundException("Not found")
+            // DocumentsUI only shows a generic failure for provider errors; the message still lands in logcat and the document service.
+            AetherError.Locked -> throw FileNotFoundException(error.describe())
             else -> throw FileNotFoundException(error.describe())
         }
     }

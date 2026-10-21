@@ -24,6 +24,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.outlined.CloudDownload
@@ -36,9 +38,8 @@ import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.FabPosition
-import androidx.compose.material3.FloatingToolbarDefaults
-import androidx.compose.material3.HorizontalFloatingToolbar
+import androidx.compose.material3.ShortNavigationBar
+import androidx.compose.material3.ShortNavigationBarItem
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.toShape
 import androidx.compose.material3.CircularWavyProgressIndicator
@@ -115,21 +116,28 @@ fun DashboardScreen(
         if (Build.VERSION.SDK_INT >= 33) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
 
+    val listState = rememberLazyListState()
+    val fabExpanded by remember { derivedStateOf { listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0 } }
+
     Scaffold(
         modifier = modifier,
-        floatingActionButtonPosition = FabPosition.Center,
+        bottomBar = { DashboardNavigationBar(selected = state.tab, onSelect = viewModel::selectTab) },
         floatingActionButton = {
-            DashboardToolbar(
-                selected = state.tab,
-                onSelect = viewModel::selectTab,
-                onOpenFiles = state.selected?.let { account ->
-                    { if (!openInSystemFiles(context, account)) notice = "No file manager found that can open Aether." }
-                },
-            )
+            state.selected?.let { account ->
+                ExtendedFloatingActionButton(
+                    onClick = { if (!openInSystemFiles(context, account)) notice = "No file manager found that can open Aether." },
+                    expanded = fabExpanded,
+                    icon = { Icon(Icons.Outlined.FolderOpen, contentDescription = null) },
+                    text = { Text("Files") },
+                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                )
+            }
         },
     ) { padding ->
         LazyColumn(
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = padding.calculateTopPadding() + 8.dp, bottom = padding.calculateBottomPadding() + 112.dp),
+            state = listState,
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = padding.calculateTopPadding() + 8.dp, bottom = padding.calculateBottomPadding() + 88.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             item {
@@ -164,52 +172,23 @@ fun DashboardScreen(
     }
 }
 
-/**
- * Floating toolbar: the three dashboard sections as a pill group (the selected one expands to show its label) with the
- * primary "Open in System Files" action as the toolbar's own FAB.
- */
+/** Section switcher: a short navigation bar with always-visible labels; the Files FAB floats above it. */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun DashboardToolbar(selected: DashboardTab, onSelect: (DashboardTab) -> Unit, onOpenFiles: (() -> Unit)?) {
+private fun DashboardNavigationBar(selected: DashboardTab, onSelect: (DashboardTab) -> Unit) {
     val tabs = listOf(
         Triple(DashboardTab.Transfers, "Transfers", Icons.Outlined.Sync),
         Triple(DashboardTab.Offline, "Offline", Icons.Outlined.PushPin),
         Triple(DashboardTab.Camera, "Camera", Icons.Outlined.PhotoCamera),
     )
-    HorizontalFloatingToolbar(
-        expanded = true,
-        colors = FloatingToolbarDefaults.vibrantFloatingToolbarColors(),
-        floatingActionButton = {
-            if (onOpenFiles != null) {
-                FloatingToolbarDefaults.VibrantFloatingActionButton(onClick = onOpenFiles) {
-                    Icon(Icons.Outlined.FolderOpen, contentDescription = "Open in System Files")
-                }
-            }
-        },
-        content = {
-            tabs.forEach { (tab, label, icon) -> ToolbarTab(tab == selected, icon, label) { onSelect(tab) } }
-        },
-    )
-}
-
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
-@Composable
-private fun ToolbarTab(selected: Boolean, icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
-        shape = CircleShape,
-        color = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
-        contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onPrimaryContainer,
-    ) {
-        Row(
-            Modifier.padding(horizontal = 14.dp, vertical = 10.dp).animateContentSize(MaterialTheme.motionScheme.fastSpatialSpec()),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(icon, contentDescription = if (selected) null else label, modifier = Modifier.size(22.dp))
-            if (selected) {
-                Spacer(Modifier.size(8.dp))
-                Text(label, style = MaterialTheme.typography.labelLargeEmphasized, maxLines = 1)
-            }
+    ShortNavigationBar {
+        tabs.forEach { (tab, label, icon) ->
+            ShortNavigationBarItem(
+                selected = tab == selected,
+                onClick = { onSelect(tab) },
+                icon = { Icon(icon, contentDescription = null) },
+                label = { Text(label) },
+            )
         }
     }
 }

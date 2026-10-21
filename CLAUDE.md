@@ -166,7 +166,7 @@ com.aether.nextcloud/
 - Always annotate composables using expressive APIs with `@OptIn(ExperimentalMaterial3ExpressiveApi::class)`.
 - Use `MaterialTheme.motionScheme.defaultSpatialSpec()` / `fastSpatialSpec()` for layout, expansion, and shape morphing animations—**never** use hardcoded `tween()` where a spring spec belongs.
 - Use `LoadingIndicator` / `ContainedLoadingIndicator` instead of legacy `CircularProgressIndicator` where appropriate.
-- Include an **"Open in System Files"** primary action (`FloatingToolbar` or `ExtendedFloatingActionButton`) on the Dashboard that launches `Intent(Intent.ACTION_VIEW)` with `DocumentsContract.buildRootUri(AUTHORITY, accountRootId)`.
+- Include an **"Open in System Files"** primary action (`ExtendedFloatingActionButton`, with section navigation in a `ShortNavigationBar`) on the Dashboard that launches `Intent(Intent.ACTION_VIEW)` with `DocumentsContract.buildRootUri(AUTHORITY, accountRootId)`.
 
 ---
 

@@ -13,4 +13,7 @@ data class BackedUpMediaEntity(
     val size: Long,
     val remotePath: String,
     val backedUpAt: Long,
+    /** `MediaStore.MediaColumns.BUCKET_ID`; null for items uploaded before albums were recorded. */
+    val bucketId: Long? = null,
+    val bucketName: String? = null,
 )

@@ -14,10 +14,15 @@ import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 private val Context.settingsStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
+
+/** A MediaStore album (bucket) chosen for camera backup; the name is kept so it can be shown without reading MediaStore. */
+@Serializable
+data class BackupAlbum(val id: Long, val name: String)
 
 data class BackupSettings(
     val enabled: Boolean = false,
@@ -28,6 +33,8 @@ data class BackupSettings(
     val includeVideos: Boolean = true,
     /** Only media added after this moment (epoch millis) is uploaded, so enabling backup never floods the server with the whole library. */
     val backupSinceMillis: Long = 0,
+    /** Albums to back up; null means every album, including ones created later. */
+    val albums: List<BackupAlbum>? = null,
 ) {
     companion object {
         const val DEFAULT_FOLDER = "/Photos/Camera Uploads"
@@ -53,6 +60,7 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
             chargingOnly = p[BACKUP_CHARGING] ?: false,
             includeVideos = p[BACKUP_VIDEOS] ?: true,
             backupSinceMillis = p[BACKUP_SINCE] ?: 0,
+            albums = p[BACKUP_ALBUMS]?.let { runCatching { Json.decodeFromString<List<BackupAlbum>>(it) }.getOrNull() },
         )
     }
 
@@ -73,6 +81,7 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
             p[BACKUP_CHARGING] = after.chargingOnly
             p[BACKUP_VIDEOS] = after.includeVideos
             p[BACKUP_SINCE] = after.backupSinceMillis
+            after.albums?.let { p[BACKUP_ALBUMS] = Json.encodeToString(it) } ?: p.remove(BACKUP_ALBUMS)
         }
         return after
     }
@@ -105,6 +114,7 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
         private val BACKUP_CHARGING = booleanPreferencesKey("backup_charging_only")
         private val BACKUP_VIDEOS = booleanPreferencesKey("backup_include_videos")
         private val BACKUP_SINCE = longPreferencesKey("backup_since")
+        private val BACKUP_ALBUMS = stringPreferencesKey("backup_albums")
         private val PINNED_UNMETERED = booleanPreferencesKey("pinned_unmetered_only")
     }
 }

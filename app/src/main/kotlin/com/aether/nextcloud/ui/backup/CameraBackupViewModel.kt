@@ -7,8 +7,11 @@ import com.aether.nextcloud.auth.AccountRepository
 import com.aether.nextcloud.auth.AetherCredentials
 import com.aether.nextcloud.data.BackupStats
 import com.aether.nextcloud.data.CameraBackupStatsRepository
+import com.aether.nextcloud.data.MediaAlbum
+import com.aether.nextcloud.data.MediaAlbumRepository
 import com.aether.nextcloud.data.local.AetherDatabase
 import com.aether.nextcloud.data.local.entity.BackedUpMediaEntity
+import com.aether.nextcloud.data.prefs.BackupAlbum
 import com.aether.nextcloud.data.prefs.BackupSettings
 import com.aether.nextcloud.data.prefs.SettingsRepository
 import com.aether.nextcloud.provider.DocumentId
@@ -16,6 +19,7 @@ import com.aether.nextcloud.sync.SyncScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
@@ -31,6 +35,8 @@ data class CameraBackupUiState(
     val backedUpCount: Int = 0,
     val running: Boolean = false,
     val stats: BackupStats = BackupStats(),
+    /** Items backed up per album id; items from before albums were recorded are not counted. */
+    val albumUploads: Map<Long, Int> = emptyMap(),
 )
 
 @HiltViewModel
@@ -38,6 +44,7 @@ class CameraBackupViewModel @Inject constructor(
     private val settings: SettingsRepository,
     private val scheduler: SyncScheduler,
     private val cameraStats: CameraBackupStatsRepository,
+    private val mediaAlbums: MediaAlbumRepository,
     private val accountRepository: AccountRepository,
     database: AetherDatabase,
 ) : ViewModel() {
@@ -51,12 +58,27 @@ class CameraBackupViewModel @Inject constructor(
         val account = backup.accountName ?: accounts.firstOrNull()?.accountName
         val count = if (account == null) flowOf(0) else backedUp.observeCount(account)
         val stats = if (account == null) flowOf(BackupStats()) else cameraStats.observe(account, RECENT_UPLOADS)
-        combine(count, scheduler.observeBackupRunning(), stats) { n, running, s -> CameraBackupUiState(backup, accounts, n, running, s) }
+        val uploads = if (account == null) flowOf(emptyList()) else backedUp.observeAlbumUploads(account)
+        combine(count, scheduler.observeBackupRunning(), stats, uploads) { n, running, s, perAlbum ->
+            CameraBackupUiState(backup, accounts, n, running, s, perAlbum.associate { it.bucketId to it.count })
+        }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CameraBackupUiState())
+
+    private val _albums = MutableStateFlow<List<MediaAlbum>?>(null)
+
+    /** Albums on the phone; null until [loadAlbums] has run. */
+    val albums: StateFlow<List<MediaAlbum>?> = _albums
 
     init {
         refreshServerSize()
     }
+
+    fun loadAlbums() {
+        viewModelScope.launch { _albums.value = mediaAlbums.albums(includeVideos = true) }
+    }
+
+    /** Null backs up every album, including ones created later. */
+    fun setAlbums(albums: List<BackupAlbum>?) = update { it.copy(albums = albums) }
 
     /** Re-reads the backup folder's size on the server; the stats show this phone's total until it arrives. */
     fun refreshServerSize() {

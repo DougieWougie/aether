@@ -70,6 +70,8 @@ class CameraBackupWorker @AssistedInject constructor(
         val modifiedMillis: Long,
         val takenMillis: Long,
         val isVideo: Boolean,
+        val bucketId: Long?,
+        val bucketName: String?,
     )
 
     override suspend fun getForegroundInfo(): ForegroundInfo =
@@ -165,18 +167,22 @@ class CameraBackupWorker @AssistedInject constructor(
                 size = item.size,
                 remotePath = remotePath,
                 backedUpAt = System.currentTimeMillis(),
+                bucketId = item.bucketId,
+                bucketName = item.bucketName,
             ),
         )
     }
 
     private fun queryNewMedia(settings: BackupSettings): List<MediaItem> {
         val sinceSeconds = settings.backupSinceMillis / 1000
-        val items = queryCollection(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, isVideo = false, sinceSeconds)
-        val videos = if (settings.includeVideos) queryCollection(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, isVideo = true, sinceSeconds) else emptyList()
+        val albumIds = settings.albums?.map { it.id }
+        if (albumIds != null && albumIds.isEmpty()) return emptyList()
+        val items = queryCollection(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, isVideo = false, sinceSeconds, albumIds)
+        val videos = if (settings.includeVideos) queryCollection(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, isVideo = true, sinceSeconds, albumIds) else emptyList()
         return (items + videos).sortedBy { it.modifiedMillis }
     }
 
-    private fun queryCollection(collection: Uri, isVideo: Boolean, sinceSeconds: Long): List<MediaItem> {
+    private fun queryCollection(collection: Uri, isVideo: Boolean, sinceSeconds: Long, albumIds: List<Long>?): List<MediaItem> {
         val projection = arrayOf(
             MediaStore.MediaColumns._ID,
             MediaStore.MediaColumns.DISPLAY_NAME,
@@ -184,11 +190,15 @@ class CameraBackupWorker @AssistedInject constructor(
             MediaStore.MediaColumns.SIZE,
             MediaStore.MediaColumns.DATE_MODIFIED,
             MediaStore.MediaColumns.DATE_TAKEN,
+            MediaStore.MediaColumns.BUCKET_ID,
+            MediaStore.MediaColumns.BUCKET_DISPLAY_NAME,
         )
-        val selection = "${MediaStore.MediaColumns.DATE_ADDED} > ? AND ${MediaStore.MediaColumns.IS_PENDING} = 0 AND ${MediaStore.MediaColumns.SIZE} > 0"
+        val albumFilter = albumIds?.let { " AND ${MediaStore.MediaColumns.BUCKET_ID} IN (${it.joinToString(",") { "?" }})" }.orEmpty()
+        val selection = "${MediaStore.MediaColumns.DATE_ADDED} > ? AND ${MediaStore.MediaColumns.IS_PENDING} = 0 AND ${MediaStore.MediaColumns.SIZE} > 0$albumFilter"
+        val selectionArgs = arrayOf(sinceSeconds.toString()) + (albumIds?.map { it.toString() } ?: emptyList())
         val result = mutableListOf<MediaItem>()
         applicationContext.contentResolver.query(
-            collection, projection, selection, arrayOf(sinceSeconds.toString()), "${MediaStore.MediaColumns.DATE_ADDED} ASC",
+            collection, projection, selection, selectionArgs, "${MediaStore.MediaColumns.DATE_ADDED} ASC",
         )?.use { cursor ->
             while (cursor.moveToNext()) {
                 val id = cursor.getLong(0)
@@ -202,6 +212,8 @@ class CameraBackupWorker @AssistedInject constructor(
                     modifiedMillis = modified,
                     takenMillis = cursor.getLong(5).takeIf { it > 0 } ?: modified,
                     isVideo = isVideo,
+                    bucketId = if (cursor.isNull(6)) null else cursor.getLong(6),
+                    bucketName = cursor.getString(7),
                 )
             }
         }

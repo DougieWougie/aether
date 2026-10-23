@@ -10,6 +10,9 @@ import kotlinx.coroutines.flow.Flow
 /** Backed-up items of one kind (photos or videos) and their combined size. */
 data class MediaTotals(val isVideo: Boolean, val count: Int, val bytes: Long)
 
+/** Items uploaded from one album. */
+data class AlbumUploads(val bucketId: Long, val count: Int)
+
 @Dao
 interface BackedUpMediaDao {
     @Query("SELECT * FROM backed_up_media WHERE accountName = :account AND mediaId = :mediaId AND isVideo = :isVideo")
@@ -23,6 +26,9 @@ interface BackedUpMediaDao {
 
     @Query("SELECT isVideo, COUNT(*) AS count, COALESCE(SUM(size), 0) AS bytes FROM backed_up_media WHERE accountName = :account GROUP BY isVideo")
     fun observeTotals(account: String): Flow<List<MediaTotals>>
+
+    @Query("SELECT bucketId, COUNT(*) AS count FROM backed_up_media WHERE accountName = :account AND bucketId IS NOT NULL GROUP BY bucketId")
+    fun observeAlbumUploads(account: String): Flow<List<AlbumUploads>>
 
     @Query("SELECT * FROM backed_up_media WHERE accountName = :account ORDER BY backedUpAt DESC LIMIT :limit")
     fun observeRecent(account: String, limit: Int): Flow<List<BackedUpMediaEntity>>

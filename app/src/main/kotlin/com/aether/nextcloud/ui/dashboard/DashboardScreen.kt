@@ -406,6 +406,13 @@ private fun QuotaArcGauge(fraction: Float?, modifier: Modifier = Modifier) {
 }
 
 @Composable
+private fun CameraChip(text: String) {
+    Surface(shape = CircleShape, color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.10f)) {
+        Text(text, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
+    }
+}
+
+@Composable
 private fun StatChip(text: String) {
     Surface(shape = CircleShape, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.10f)) {
         Text(text, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
@@ -622,6 +629,17 @@ private fun CameraSection(state: DashboardUiState, onLoadThumbnail: ThumbnailLoa
                     spinning = backup.enabled && state.backupRunning,
                 ) {
                     Icon(Icons.Outlined.PhotoCamera, contentDescription = null, tint = colors.onTertiary, modifier = Modifier.size(34.dp))
+                }
+            }
+            if (backup.enabled) {
+                val albums = backup.albums
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (albums == null) {
+                        CameraChip("All albums")
+                    } else {
+                        albums.take(3).forEach { CameraChip(it.name) }
+                        if (albums.size > 3) CameraChip("+${albums.size - 3}")
+                    }
                 }
             }
             if (backup.enabled && stats.totalCount > 0) {

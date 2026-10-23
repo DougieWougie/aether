@@ -83,6 +83,17 @@ fun CameraBackupSettingsScreen(
     val settings = state.settings
     var folder by remember(settings.remoteFolder) { mutableStateOf(settings.remoteFolder) }
     var permissionDenied by remember { mutableStateOf(false) }
+    var showAlbums by remember { mutableStateOf(false) }
+    val availableAlbums by viewModel.albums.collectAsStateWithLifecycle()
+    if (showAlbums) {
+        AlbumSheet(
+            selected = settings.albums,
+            available = availableAlbums,
+            uploads = state.albumUploads,
+            onChange = viewModel::setAlbums,
+            onDismiss = { showAlbums = false },
+        )
+    }
 
     val requestPermissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted ->
         // Partial photo access ("selected photos") still counts: backup then uploads what the user shared with Aether.
@@ -183,6 +194,10 @@ fun CameraBackupSettingsScreen(
                         }
                     }
                 }
+            }
+
+            item {
+                AlbumsCard(settings.albums, onClick = { viewModel.loadAlbums(); showAlbums = true })
             }
 
             item {

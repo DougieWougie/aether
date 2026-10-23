@@ -46,3 +46,13 @@ We will implement a **Hybrid Synchronization Architecture**:
 ## Implementation notes: locked files (2026-10-21)
 
 HTTP 423 from the server maps to `AetherError.Locked` (a file held by the web editor or Files Lock). `UploadDocumentWorker` treats it like a transient failure and retries with backoff before giving up, keeping the staged bytes meanwhile; the transfer row reads "This file is locked on the server…". Provider calls (delete, rename, open) surface it as a `FileNotFoundException` carrying the same message; DocumentsUI itself only shows a generic failure.
+
+## Implementation notes: album selection (2026-10-23)
+
+Camera backup can be limited to chosen MediaStore albums (buckets).
+
+- **Setting.** `BackupSettings.albums` is a list of `BackupAlbum(id, name)`, stored as JSON in DataStore. `null` means every album and is the default, so existing installs keep their behaviour and albums created later are included. An explicit list that is empty is never produced by the UI (the last album cannot be unchecked), and the worker treats it as "nothing to back up".
+- **Query.** `CameraBackupWorker` adds `AND BUCKET_ID IN (…)` to its MediaStore selection when a list is set. Changing the list reschedules the content-URI trigger like any other backup setting.
+- **Only new photos.** The `backupSinceMillis` cut-off still applies to every album. Adding an album does not upload the photos it already contained; only items added after backup was enabled are considered. This keeps enabling or widening backup from flooding the server, matching the original rule.
+- **Log.** `BackedUpMediaEntity` gained nullable `bucketId` and `bucketName` (Room schema version 2, `MIGRATION_1_2`, schema exported). Items uploaded before this change have no album recorded and are not counted per album.
+- **Picking.** The album list comes from a MediaStore scan (`MediaAlbumRepository`), so with partial photo access only the photos shared with Aether are counted. The picker is a bottom sheet opened from an Albums card on the Camera backup screen; the dashboard Camera tab shows the selected albums as chips.

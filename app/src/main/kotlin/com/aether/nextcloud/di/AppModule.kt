@@ -64,7 +64,7 @@ object AppModule {
     @Provides
     @Singleton
     fun database(@ApplicationContext context: Context): AetherDatabase =
-        Room.databaseBuilder(context, AetherDatabase::class.java, "aether.db").build()
+        Room.databaseBuilder(context, AetherDatabase::class.java, "aether.db").addMigrations(AetherDatabase.MIGRATION_1_2).build()
 
     @Provides
     @Singleton

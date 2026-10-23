@@ -654,11 +654,13 @@ private fun CameraSection(state: DashboardUiState) {
             }
             state.lastBackupAt?.takeIf { backup.enabled }?.let { Text("Last backup " + relative(it), style = MaterialTheme.typography.bodyMedium) }
             AnimatedVisibility(expanded) { CameraBackupSettings() }
-            Button(
-                onClick = { expanded = !expanded },
-                shapes = ButtonDefaults.shapes(),
-                colors = ButtonDefaults.buttonColors(containerColor = colors.tertiary, contentColor = colors.onTertiary),
-            ) { Text(if (expanded) "Done" else if (backup.enabled) "Settings" else "Set up") }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                Button(
+                    onClick = { expanded = !expanded },
+                    shapes = ButtonDefaults.shapes(),
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.tertiary, contentColor = colors.onTertiary),
+                ) { Text(if (expanded) "Done" else if (backup.enabled) "Settings" else "Set up") }
+            }
         }
     }
 }

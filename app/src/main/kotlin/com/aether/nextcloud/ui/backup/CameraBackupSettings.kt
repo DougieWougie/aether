@@ -8,10 +8,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.KeyboardActions
@@ -22,17 +19,14 @@ import androidx.compose.material.icons.outlined.Videocam
 import androidx.compose.material.icons.outlined.Wifi
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.ToggleButton
-import androidx.compose.material3.ToggleButtonDefaults
-import androidx.compose.material3.ToggleButtonShapes
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -128,10 +122,10 @@ fun CameraBackupSettings(modifier: Modifier = Modifier, viewModel: CameraBackupV
 
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Only back up when…", style = MaterialTheme.typography.labelLargeEmphasized)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween)) {
-                OptionToggle("Wi-Fi", Icons.Outlined.Wifi, settings.unmeteredOnly, viewModel::setUnmeteredOnly, ButtonGroupDefaults.connectedLeadingButtonShapes(), Modifier.weight(1f))
-                OptionToggle("Charging", Icons.Outlined.BatteryChargingFull, settings.chargingOnly, viewModel::setChargingOnly, ButtonGroupDefaults.connectedMiddleButtonShapes(), Modifier.weight(1f))
-                OptionToggle("Videos", Icons.Outlined.Videocam, settings.includeVideos, viewModel::setIncludeVideos, ButtonGroupDefaults.connectedTrailingButtonShapes(), Modifier.weight(1f))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OptionChip("Wi-Fi", Icons.Outlined.Wifi, settings.unmeteredOnly, viewModel::setUnmeteredOnly)
+                OptionChip("Charging", Icons.Outlined.BatteryChargingFull, settings.chargingOnly, viewModel::setChargingOnly)
+                OptionChip("Videos", Icons.Outlined.Videocam, settings.includeVideos, viewModel::setIncludeVideos)
             }
             Text(
                 buildString {
@@ -146,19 +140,12 @@ fun CameraBackupSettings(modifier: Modifier = Modifier, viewModel: CameraBackupV
     }
 }
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun OptionToggle(
-    label: String,
-    icon: ImageVector,
-    checked: Boolean,
-    onChange: (Boolean) -> Unit,
-    shapes: ToggleButtonShapes,
-    modifier: Modifier = Modifier,
-) {
-    ToggleButton(checked = checked, onCheckedChange = onChange, shapes = shapes, modifier = modifier.heightIn(min = ButtonDefaults.MediumContainerHeight)) {
-        Icon(icon, contentDescription = null, modifier = Modifier.size(ToggleButtonDefaults.IconSize))
-        Spacer(Modifier.size(ToggleButtonDefaults.IconSpacing))
-        Text(label, maxLines = 1)
-    }
+private fun OptionChip(label: String, icon: ImageVector, checked: Boolean, onChange: (Boolean) -> Unit) {
+    FilterChip(
+        selected = checked,
+        onClick = { onChange(!checked) },
+        label = { Text(label) },
+        leadingIcon = { Icon(icon, contentDescription = null, modifier = Modifier.size(FilterChipDefaults.IconSize)) },
+    )
 }

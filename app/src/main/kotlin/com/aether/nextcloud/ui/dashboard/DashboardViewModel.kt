@@ -13,6 +13,9 @@ import com.aether.nextcloud.auth.AetherCredentials
 import com.aether.nextcloud.core.AetherResult
 import com.aether.nextcloud.core.describe
 import com.aether.nextcloud.data.AvatarRepository
+import com.aether.nextcloud.data.BackupStats
+import com.aether.nextcloud.data.CameraBackupStatsRepository
+import com.aether.nextcloud.data.local.entity.BackedUpMediaEntity
 import com.aether.nextcloud.data.DocumentRepository
 import com.aether.nextcloud.data.QuotaRepository
 import com.aether.nextcloud.data.cache.DocumentDiskCache
@@ -56,6 +59,7 @@ data class DashboardUiState(
     val backup: BackupSettings = BackupSettings(),
     val backedUpCount: Int = 0,
     val lastBackupAt: Long? = null,
+    val backupStats: BackupStats = BackupStats(),
     val backupRunning: Boolean = false,
     val storage: StorageUsage = StorageUsage(),
     val avatar: ImageBitmap? = null,
@@ -72,6 +76,7 @@ class DashboardViewModel @Inject constructor(
     private val documents: DocumentRepository,
     private val diskCache: DocumentDiskCache,
     private val settings: SettingsRepository,
+    private val cameraStats: CameraBackupStatsRepository,
     private val scheduler: SyncScheduler,
     database: AetherDatabase,
 ) : ViewModel() {
@@ -92,13 +97,14 @@ class DashboardViewModel @Inject constructor(
 
     private val backupData = selected.flatMapLatest { (_, account) ->
         if (account == null) {
-            flowOf(Triple(0, null as Long?, BackupSettings()))
+            flowOf(BackupData())
         } else {
             combine(
                 database.backedUpMediaDao().observeCount(account.accountName),
                 database.backedUpMediaDao().observeLastBackupAt(account.accountName),
                 settings.backup,
-            ) { count, last, backup -> Triple(count, last, backup) }
+                cameraStats.observe(account.accountName, RECENT_UPLOADS),
+            ) { count, last, backup, stats -> BackupData(count, last, backup, stats) }
         }
     }
 
@@ -108,7 +114,7 @@ class DashboardViewModel @Inject constructor(
     val state: StateFlow<DashboardUiState> = combine(
         selected, tab, transferData, backupData,
         combine(quotaRepository.snapshots, storage, message, avatar, scheduler.observeBackupRunning(), ::Extras),
-    ) { (accounts, account), currentTab, (active, recent, pinned), (count, last, backup), extras ->
+    ) { (accounts, account), currentTab, (active, recent, pinned), backupData, extras ->
         DashboardUiState(
             accounts = accounts,
             selected = account,
@@ -118,9 +124,10 @@ class DashboardViewModel @Inject constructor(
             activeTransfers = active.filter { it.accountName == account?.accountName },
             recentTransfers = recent.filter { it.accountName == account?.accountName },
             pinned = pinned.filter { it.accountName == account?.accountName },
-            backup = backup,
-            backedUpCount = count,
-            lastBackupAt = last,
+            backup = backupData.backup,
+            backedUpCount = backupData.count,
+            lastBackupAt = backupData.lastBackupAt,
+            backupStats = backupData.stats,
             backupRunning = extras.backupRunning,
             storage = extras.usage,
             avatar = extras.avatar?.takeIf { it.first == account?.accountName }?.second,
@@ -154,6 +161,8 @@ class DashboardViewModel @Inject constructor(
                 is AetherResult.Success -> accountRepository.setDisplayName(account.accountName, result.value.displayName)
             }
             refreshStorage()
+            val backup = settings.backup.first()
+            if (backup.enabled) cameraStats.refreshServerSize(account, backup.remoteFolder)
         }
     }
 
@@ -162,6 +171,12 @@ class DashboardViewModel @Inject constructor(
             documents.setPinned(DocumentId.parse(document.documentId), false)
             refreshStorage()
         }
+    }
+
+    /** Thumbnail of an uploaded item for the Camera tab, fetched with the selected account's credentials. */
+    suspend fun thumbnail(item: BackedUpMediaEntity): ImageBitmap? {
+        val credentials = accountRepository.credentials(item.accountName) ?: return null
+        return cameraStats.thumbnail(credentials, item)
     }
 
     fun syncPinsNow() = scheduler.syncPinsNow()
@@ -201,6 +216,13 @@ class DashboardViewModel @Inject constructor(
         storage.update { withContext(Dispatchers.IO) { StorageUsage(diskCache.cacheSizeBytes(), diskCache.pinnedSizeBytes()) } }
     }
 
+    private class BackupData(
+        val count: Int = 0,
+        val lastBackupAt: Long? = null,
+        val backup: BackupSettings = BackupSettings(),
+        val stats: BackupStats = BackupStats(),
+    )
+
     private class Extras(
         val quotas: Map<String, QuotaRepository.Snapshot>,
         val usage: StorageUsage,
@@ -210,6 +232,7 @@ class DashboardViewModel @Inject constructor(
     )
 
     private companion object {
+        const val RECENT_UPLOADS = 6
         const val KEY_ACCOUNT = "account"
         const val KEY_TAB = "tab"
         const val RECENT_TRANSFERS = 10

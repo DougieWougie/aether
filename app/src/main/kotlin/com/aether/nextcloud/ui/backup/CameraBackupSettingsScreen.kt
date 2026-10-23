@@ -2,7 +2,9 @@ package com.aether.nextcloud.ui.backup
 
 import android.Manifest
 import android.os.Build
+import android.text.format.Formatter
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.ui.platform.LocalContext
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -128,6 +130,22 @@ fun CameraBackupSettingsScreen(
                             spinning = settings.enabled && state.running,
                         ) {
                             Icon(Icons.Outlined.PhotoCamera, contentDescription = null, tint = colors.onTertiary, modifier = Modifier.size(30.dp))
+                        }
+                    }
+                }
+            }
+            if (settings.enabled && state.stats.totalCount > 0) {
+                item {
+                    val colors = MaterialTheme.colorScheme
+                    Surface(shape = HeroShape, color = colors.tertiaryContainer, contentColor = colors.onTertiaryContainer, modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                            state.stats.serverBytes?.let {
+                                Text("${Formatter.formatShortFileSize(LocalContext.current, it)} in ${settings.remoteFolder}", style = MaterialTheme.typography.titleMediumEmphasized)
+                            }
+                            Text("Uploaded from this phone", style = MaterialTheme.typography.labelLargeEmphasized)
+                            MediaSplit(state.stats)
+                            Text("Recent uploads", style = MaterialTheme.typography.labelLargeEmphasized)
+                            RecentUploads(state.stats.recent, viewModel::thumbnail, thumbSize = 72.dp)
                         }
                     }
                 }

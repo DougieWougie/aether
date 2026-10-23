@@ -182,9 +182,9 @@ fun DashboardScreen(
 @Composable
 private fun DashboardNavigationBar(selected: DashboardTab, onSelect: (DashboardTab) -> Unit) {
     val tabs = listOf(
-        Triple(DashboardTab.Transfers, "Transfers", Icons.Outlined.Sync),
         Triple(DashboardTab.Pinned, "Pinned", Icons.Outlined.PushPin),
         Triple(DashboardTab.Camera, "Camera", Icons.Outlined.PhotoCamera),
+        Triple(DashboardTab.Transfers, "Transfers", Icons.Outlined.Sync),
     )
     ShortNavigationBar {
         tabs.forEach { (tab, label, icon) ->

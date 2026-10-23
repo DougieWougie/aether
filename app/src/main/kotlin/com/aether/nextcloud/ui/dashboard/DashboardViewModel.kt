@@ -40,7 +40,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-enum class DashboardTab { Transfers, Pinned, Camera }
+enum class DashboardTab { Pinned, Camera, Transfers }
 
 data class StorageUsage(val cacheBytes: Long = 0, val pinnedBytes: Long = 0)
 
@@ -49,7 +49,7 @@ data class DashboardUiState(
     val selected: AetherCredentials? = null,
     val quota: UserInfo? = null,
     val quotaError: String? = null,
-    val tab: DashboardTab = DashboardTab.Transfers,
+    val tab: DashboardTab = DashboardTab.Pinned,
     val activeTransfers: List<TransferEntity> = emptyList(),
     val recentTransfers: List<TransferEntity> = emptyList(),
     val pinned: List<DocumentEntity> = emptyList(),
@@ -77,7 +77,7 @@ class DashboardViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val selectedName = MutableStateFlow(savedState.get<String>(KEY_ACCOUNT))
-    private val tab = MutableStateFlow(savedState.get<String>(KEY_TAB)?.let { name -> DashboardTab.entries.firstOrNull { it.name == name } } ?: DashboardTab.Transfers)
+    private val tab = MutableStateFlow(savedState.get<String>(KEY_TAB)?.let { name -> DashboardTab.entries.firstOrNull { it.name == name } } ?: DashboardTab.Pinned)
     private val storage = MutableStateFlow(StorageUsage())
 
     private val selected = combine(accountRepository.observeAccounts(), selectedName) { accounts, name ->

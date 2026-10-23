@@ -155,8 +155,6 @@ fun CameraBackupSettingsScreen(
                             }
                             Text("Uploaded from this phone", style = MaterialTheme.typography.labelLargeEmphasized)
                             MediaSplit(state.stats)
-                            Text("Recent uploads", style = MaterialTheme.typography.labelLargeEmphasized)
-                            RecentUploads(state.stats.recent, viewModel::thumbnail, thumbSize = 72.dp)
                         }
                     }
                 }

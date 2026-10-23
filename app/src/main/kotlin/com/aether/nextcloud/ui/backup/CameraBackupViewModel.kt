@@ -1,6 +1,5 @@
 package com.aether.nextcloud.ui.backup
 
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.aether.nextcloud.auth.AccountRepository
@@ -10,7 +9,6 @@ import com.aether.nextcloud.data.CameraBackupStatsRepository
 import com.aether.nextcloud.data.MediaAlbum
 import com.aether.nextcloud.data.MediaAlbumRepository
 import com.aether.nextcloud.data.local.AetherDatabase
-import com.aether.nextcloud.data.local.entity.BackedUpMediaEntity
 import com.aether.nextcloud.data.prefs.BackupAlbum
 import com.aether.nextcloud.data.prefs.BackupSettings
 import com.aether.nextcloud.data.prefs.SettingsRepository
@@ -57,7 +55,7 @@ class CameraBackupViewModel @Inject constructor(
     }.flatMapLatest { (backup, accounts) ->
         val account = backup.accountName ?: accounts.firstOrNull()?.accountName
         val count = if (account == null) flowOf(0) else backedUp.observeCount(account)
-        val stats = if (account == null) flowOf(BackupStats()) else cameraStats.observe(account, RECENT_UPLOADS)
+        val stats = if (account == null) flowOf(BackupStats()) else cameraStats.observe(account)
         val uploads = if (account == null) flowOf(emptyList()) else backedUp.observeAlbumUploads(account)
         combine(count, scheduler.observeBackupRunning(), stats, uploads) { n, running, s, perAlbum ->
             CameraBackupUiState(backup, accounts, n, running, s, perAlbum.associate { it.bucketId to it.count })
@@ -90,11 +88,6 @@ class CameraBackupViewModel @Inject constructor(
         }
     }
 
-    suspend fun thumbnail(item: BackedUpMediaEntity): ImageBitmap? {
-        val credentials = accountRepository.credentials(item.accountName) ?: return null
-        return cameraStats.thumbnail(credentials, item)
-    }
-
     /** Call only once media permission is granted. Defaults the destination account to the first signed-in one. */
     fun setEnabled(enabled: Boolean) = update {
         val account = it.accountName ?: state.value.accounts.firstOrNull()?.accountName
@@ -110,10 +103,6 @@ class CameraBackupViewModel @Inject constructor(
     fun setChargingOnly(value: Boolean) = update { it.copy(chargingOnly = value) }
 
     fun setIncludeVideos(value: Boolean) = update { it.copy(includeVideos = value) }
-
-    private companion object {
-        const val RECENT_UPLOADS = 12
-    }
 
     private fun update(transform: (BackupSettings) -> BackupSettings) {
         viewModelScope.launch { scheduler.applyBackup(settings.updateBackup(transform)) }

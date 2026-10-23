@@ -30,9 +30,6 @@ interface BackedUpMediaDao {
     @Query("SELECT bucketId, COUNT(*) AS count FROM backed_up_media WHERE accountName = :account AND bucketId IS NOT NULL GROUP BY bucketId")
     fun observeAlbumUploads(account: String): Flow<List<AlbumUploads>>
 
-    @Query("SELECT * FROM backed_up_media WHERE accountName = :account ORDER BY backedUpAt DESC LIMIT :limit")
-    fun observeRecent(account: String, limit: Int): Flow<List<BackedUpMediaEntity>>
-
     @Query("SELECT MAX(backedUpAt) FROM backed_up_media WHERE accountName = :account")
     fun observeLastBackupAt(account: String): Flow<Long?>
 

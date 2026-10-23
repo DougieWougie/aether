@@ -15,7 +15,6 @@ import com.aether.nextcloud.core.describe
 import com.aether.nextcloud.data.AvatarRepository
 import com.aether.nextcloud.data.BackupStats
 import com.aether.nextcloud.data.CameraBackupStatsRepository
-import com.aether.nextcloud.data.local.entity.BackedUpMediaEntity
 import com.aether.nextcloud.data.DocumentRepository
 import com.aether.nextcloud.data.QuotaRepository
 import com.aether.nextcloud.data.cache.DocumentDiskCache
@@ -103,7 +102,7 @@ class DashboardViewModel @Inject constructor(
                 database.backedUpMediaDao().observeCount(account.accountName),
                 database.backedUpMediaDao().observeLastBackupAt(account.accountName),
                 settings.backup,
-                cameraStats.observe(account.accountName, RECENT_UPLOADS),
+                cameraStats.observe(account.accountName),
             ) { count, last, backup, stats -> BackupData(count, last, backup, stats) }
         }
     }
@@ -173,12 +172,6 @@ class DashboardViewModel @Inject constructor(
         }
     }
 
-    /** Thumbnail of an uploaded item for the Camera tab, fetched with the selected account's credentials. */
-    suspend fun thumbnail(item: BackedUpMediaEntity): ImageBitmap? {
-        val credentials = accountRepository.credentials(item.accountName) ?: return null
-        return cameraStats.thumbnail(credentials, item)
-    }
-
     fun syncPinsNow() = scheduler.syncPinsNow()
 
     /**
@@ -232,7 +225,6 @@ class DashboardViewModel @Inject constructor(
     )
 
     private companion object {
-        const val RECENT_UPLOADS = 6
         const val KEY_ACCOUNT = "account"
         const val KEY_TAB = "tab"
         const val RECENT_TRANSFERS = 10

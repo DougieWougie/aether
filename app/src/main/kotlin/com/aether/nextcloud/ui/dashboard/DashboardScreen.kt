@@ -24,8 +24,6 @@ import android.net.Uri
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
-import com.aether.nextcloud.ui.backup.ThumbnailLoader
-import com.aether.nextcloud.ui.backup.RecentUploads
 import com.aether.nextcloud.ui.backup.MediaSplit
 import kotlin.math.roundToInt
 import androidx.compose.animation.core.animateFloatAsState
@@ -201,7 +199,7 @@ fun DashboardScreen(
                         when (tab) {
                             DashboardTab.Transfers -> TransfersSection(state.activeTransfers, state.recentTransfers)
                             DashboardTab.Pinned -> PinnedSection(pinned = state.pinned, onUnpin = viewModel::unpin)
-                            DashboardTab.Camera -> CameraSection(state, viewModel::thumbnail, onOpenCameraBackup)
+                            DashboardTab.Camera -> CameraSection(state, onOpenCameraBackup)
                         }
                     }
                 }
@@ -593,7 +591,7 @@ private fun PinnedSection(
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun CameraSection(state: DashboardUiState, onLoadThumbnail: ThumbnailLoader, onConfigure: () -> Unit) {
+private fun CameraSection(state: DashboardUiState, onConfigure: () -> Unit) {
     val context = LocalContext.current
     val backup = state.backup
     val stats = state.backupStats
@@ -644,7 +642,6 @@ private fun CameraSection(state: DashboardUiState, onLoadThumbnail: ThumbnailLoa
             }
             if (backup.enabled && stats.totalCount > 0) {
                 MediaSplit(stats)
-                RecentUploads(stats.recent, onLoadThumbnail, thumbSize = 64.dp)
             }
             state.lastBackupAt?.takeIf { backup.enabled }?.let { Text("Last backup " + relative(it), style = MaterialTheme.typography.bodyMedium) }
             Button(

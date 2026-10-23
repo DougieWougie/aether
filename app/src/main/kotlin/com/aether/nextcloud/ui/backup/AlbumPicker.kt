@@ -36,7 +36,7 @@ import com.aether.nextcloud.ui.components.HeroShape
 @Composable
 fun AlbumsCard(albums: List<BackupAlbum>?, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
-    Surface(onClick = onClick, shape = HeroShape, color = colors.surfaceContainerHigh, modifier = modifier.fillMaxWidth()) {
+    Surface(onClick = onClick, shape = HeroShape, color = colors.onTertiaryContainer.copy(alpha = 0.08f), contentColor = colors.onTertiaryContainer, modifier = modifier.fillMaxWidth()) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Albums", style = MaterialTheme.typography.labelLargeEmphasized)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -49,7 +49,6 @@ fun AlbumsCard(albums: List<BackupAlbum>?, onClick: () -> Unit, modifier: Modifi
             Text(
                 if (albums == null) "Every album on this phone, including ones created later." else "Only these albums are backed up. Photos already in an album you add are not uploaded.",
                 style = MaterialTheme.typography.bodySmall,
-                color = colors.onSurfaceVariant,
             )
         }
     }

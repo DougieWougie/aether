@@ -107,7 +107,7 @@ com.aether.nextcloud/
 │   │   ├── ShareUploadActivity.kt      # ACTION_SEND / ACTION_SEND_MULTIPLE modal sheet
 │   │   └── ShareUploadViewModel.kt
 │   └── backup/
-│       └── CameraBackupSettingsScreen.kt
+│       └── CameraBackupSettings.kt
 └── di/
     └── AppModule.kt                    # Hilt modules
 ```

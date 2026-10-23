@@ -24,6 +24,8 @@ import android.net.Uri
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import com.aether.nextcloud.ui.backup.CameraBackupSettings
 import com.aether.nextcloud.ui.backup.MediaSplit
 import kotlin.math.roundToInt
 import androidx.compose.animation.core.animateFloatAsState
@@ -125,7 +127,6 @@ import androidx.compose.material3.ToggleButtonDefaults
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun DashboardScreen(
-    onOpenCameraBackup: () -> Unit,
     onAddAccount: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: DashboardViewModel = hiltViewModel(),
@@ -199,7 +200,7 @@ fun DashboardScreen(
                         when (tab) {
                             DashboardTab.Transfers -> TransfersSection(state.activeTransfers, state.recentTransfers)
                             DashboardTab.Pinned -> PinnedSection(pinned = state.pinned, onUnpin = viewModel::unpin)
-                            DashboardTab.Camera -> CameraSection(state, onOpenCameraBackup)
+                            DashboardTab.Camera -> CameraSection(state)
                         }
                     }
                 }
@@ -591,12 +592,18 @@ private fun PinnedSection(
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun CameraSection(state: DashboardUiState, onConfigure: () -> Unit) {
+private fun CameraSection(state: DashboardUiState) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
     val context = LocalContext.current
     val backup = state.backup
     val stats = state.backupStats
     val colors = MaterialTheme.colorScheme
-    Surface(shape = HeroShapeAlt, color = colors.tertiaryContainer, contentColor = colors.onTertiaryContainer, modifier = Modifier.fillMaxWidth()) {
+    Surface(
+        shape = HeroShapeAlt,
+        color = colors.tertiaryContainer,
+        contentColor = colors.onTertiaryContainer,
+        modifier = Modifier.fillMaxWidth().animateContentSize(MaterialTheme.motionScheme.defaultSpatialSpec()),
+    ) {
         Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
@@ -644,11 +651,12 @@ private fun CameraSection(state: DashboardUiState, onConfigure: () -> Unit) {
                 MediaSplit(stats)
             }
             state.lastBackupAt?.takeIf { backup.enabled }?.let { Text("Last backup " + relative(it), style = MaterialTheme.typography.bodyMedium) }
+            AnimatedVisibility(expanded) { CameraBackupSettings() }
             Button(
-                onClick = onConfigure,
+                onClick = { expanded = !expanded },
                 shapes = ButtonDefaults.shapes(),
                 colors = ButtonDefaults.buttonColors(containerColor = colors.tertiary, contentColor = colors.onTertiary),
-            ) { Text(if (backup.enabled) "Settings" else "Set up") }
+            ) { Text(if (expanded) "Done" else if (backup.enabled) "Settings" else "Set up") }
         }
     }
 }

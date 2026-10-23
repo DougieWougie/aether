@@ -45,3 +45,7 @@ The first pass used expressive components inside a stock layout. The redesign ma
 - **Buttons.** Main actions use `ButtonDefaults.shapes()` (round-to-square press morph) and `ButtonDefaults.LargeContainerHeight`/`MediumContainerHeight`. Camera options are a connected `ToggleButton` group instead of switch rows.
 - **Typography.** Display and headline `*Emphasized` styles are heavier (ExtraBold/Bold) so key numbers read as graphics.
 - Dynamic Color remains the default, with the fixed palette as fallback below Android 12.
+
+## Implementation notes: Camera settings inside the tile (2026-10-23)
+
+The separate Camera backup screen and its route are gone. The Camera tab's tile (`tertiaryContainer`) expands in place, via `animateContentSize` with `motionScheme.defaultSpatialSpec()`, to reveal `CameraBackupSettings`: turn on or off, destination account, albums, destination folder and the Wi-Fi / charging / videos toggles. The tile's button reads "Set up" (backup off), "Settings" (on) and "Done" (expanded). When backup is off the expansion is the same, with "Turn on backup" first; the photo permission is requested when that button is pressed.

@@ -23,14 +23,13 @@ import androidx.compose.ui.Modifier
 import androidx.core.content.IntentCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.aether.nextcloud.auth.AccountRepository
-import com.aether.nextcloud.ui.backup.CameraBackupSettingsScreen
 import com.aether.nextcloud.ui.dashboard.DashboardScreen
 import com.aether.nextcloud.ui.login.LoginScreen
 import com.aether.nextcloud.ui.theme.AetherTheme
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
-private enum class Route { Home, CameraBackup, AddAccount }
+private enum class Route { Home, AddAccount }
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -90,9 +89,7 @@ private fun AetherNavigation(accounts: AccountRepository, onAccountAdded: (Strin
                 onAccountAdded(name)
             },
         )
-        route == Route.CameraBackup -> CameraBackupSettingsScreen(onBack = { route = Route.Home })
         else -> DashboardScreen(
-            onOpenCameraBackup = { route = Route.CameraBackup },
             onAddAccount = { route = Route.AddAccount },
         )
     }

@@ -21,6 +21,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import kotlin.math.roundToInt
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -44,7 +47,6 @@ import androidx.compose.material3.ShortNavigationBar
 import androidx.compose.material3.ShortNavigationBarItem
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.toShape
-import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -295,6 +297,7 @@ private fun StorageHero(state: DashboardUiState, onRetry: () -> Unit) {
     val syncing = state.activeTransfers.isNotEmpty()
     val failed = state.quotaError != null
     val colors = MaterialTheme.colorScheme
+    val fraction = if (quota != null && total != null && total > 0) (quota.usedBytes.toFloat() / total).coerceIn(0f, 1f) else null
 
     Surface(shape = HeroShape, color = colors.primaryContainer, contentColor = colors.onPrimaryContainer, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -303,15 +306,21 @@ private fun StorageHero(state: DashboardUiState, onRetry: () -> Unit) {
                     Text("Storage", style = MaterialTheme.typography.labelLargeEmphasized)
                     when {
                         quota != null -> {
-                            val (value, unit) = splitSize(Formatter.formatShortFileSize(context, quota.usedBytes))
-                            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text(value, style = MaterialTheme.typography.displayLargeEmphasized, maxLines = 1)
-                                Text(unit, style = MaterialTheme.typography.headlineMediumEmphasized, modifier = Modifier.padding(bottom = 10.dp))
+                            val used = Formatter.formatShortFileSize(context, quota.usedBytes)
+                            if (fraction != null) {
+                                Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text("${(fraction * 100).roundToInt()}", style = MaterialTheme.typography.displayLargeEmphasized, maxLines = 1)
+                                    Text("%", style = MaterialTheme.typography.headlineMediumEmphasized, modifier = Modifier.padding(bottom = 10.dp))
+                                }
+                                Text("$used of ${Formatter.formatShortFileSize(context, total!!)}", style = MaterialTheme.typography.titleMedium)
+                            } else {
+                                val (value, unit) = splitSize(used)
+                                Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text(value, style = MaterialTheme.typography.displayLargeEmphasized, maxLines = 1)
+                                    Text(unit, style = MaterialTheme.typography.headlineMediumEmphasized, modifier = Modifier.padding(bottom = 10.dp))
+                                }
+                                Text("used · unlimited quota", style = MaterialTheme.typography.titleMedium)
                             }
-                            Text(
-                                if (total != null) "used of ${Formatter.formatShortFileSize(context, total)}" else "used · unlimited quota",
-                                style = MaterialTheme.typography.titleMedium,
-                            )
                         }
                         failed -> {
                             Text("Couldn't load", style = MaterialTheme.typography.headlineMediumEmphasized)
@@ -321,28 +330,7 @@ private fun StorageHero(state: DashboardUiState, onRetry: () -> Unit) {
                         else -> Text("Loading…", style = MaterialTheme.typography.headlineMediumEmphasized)
                     }
                 }
-                Box(Modifier.size(116.dp), contentAlignment = Alignment.Center) {
-                    val track = colors.onPrimaryContainer.copy(alpha = 0.16f)
-                    when {
-                        quota != null && total != null && total > 0 -> CircularWavyProgressIndicator(
-                            progress = { (quota.usedBytes.toFloat() / total).coerceIn(0f, 1f) },
-                            modifier = Modifier.size(116.dp),
-                            color = colors.primary,
-                            trackColor = track,
-                        )
-                        // Unlimited quota has no fraction to show: an indeterminate ring while syncing, otherwise a dim full ring.
-                        quota != null && syncing -> CircularWavyProgressIndicator(
-                            modifier = Modifier.size(116.dp),
-                            color = colors.primary,
-                            trackColor = track,
-                        )
-                        quota != null && !failed -> CircularWavyProgressIndicator(
-                            progress = { 1f },
-                            modifier = Modifier.size(116.dp),
-                            color = colors.primary.copy(alpha = 0.35f),
-                            trackColor = track,
-                        )
-                    }
+                Box(Modifier.size(84.dp), contentAlignment = Alignment.Center) {
                     MorphingShapeBadge(
                         shape = when {
                             failed -> MaterialShapes.Pentagon
@@ -360,6 +348,11 @@ private fun StorageHero(state: DashboardUiState, onRetry: () -> Unit) {
                             modifier = Modifier.size(32.dp),
                         )
                     }
+                }
+            }
+            if (fraction != null) {
+                Box(Modifier.fillMaxWidth().height(14.dp).clip(CircleShape).background(colors.onPrimaryContainer.copy(alpha = 0.16f))) {
+                    Box(Modifier.fillMaxWidth(fraction).fillMaxHeight().clip(CircleShape).background(colors.primary))
                 }
             }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

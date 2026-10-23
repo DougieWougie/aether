@@ -12,6 +12,12 @@ import android.net.Uri
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -44,7 +50,6 @@ import androidx.compose.material3.ShortNavigationBar
 import androidx.compose.material3.ShortNavigationBarItem
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.toShape
-import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -322,27 +327,10 @@ private fun StorageHero(state: DashboardUiState, onRetry: () -> Unit) {
                     }
                 }
                 Box(Modifier.size(116.dp), contentAlignment = Alignment.Center) {
-                    val track = colors.onPrimaryContainer.copy(alpha = 0.16f)
-                    when {
-                        quota != null && total != null && total > 0 -> CircularWavyProgressIndicator(
-                            progress = { (quota.usedBytes.toFloat() / total).coerceIn(0f, 1f) },
-                            modifier = Modifier.size(116.dp),
-                            color = colors.primary,
-                            trackColor = track,
-                        )
-                        // Unlimited quota has no fraction to show: an indeterminate ring while syncing, otherwise a dim full ring.
-                        quota != null && syncing -> CircularWavyProgressIndicator(
-                            modifier = Modifier.size(116.dp),
-                            color = colors.primary,
-                            trackColor = track,
-                        )
-                        quota != null && !failed -> CircularWavyProgressIndicator(
-                            progress = { 1f },
-                            modifier = Modifier.size(116.dp),
-                            color = colors.primary.copy(alpha = 0.35f),
-                            trackColor = track,
-                        )
-                    }
+                    QuotaArcGauge(
+                        fraction = if (quota != null && total != null && total > 0) (quota.usedBytes.toFloat() / total).coerceIn(0f, 1f) else null,
+                        modifier = Modifier.size(116.dp),
+                    )
                     MorphingShapeBadge(
                         shape = when {
                             failed -> MaterialShapes.Pentagon
@@ -372,6 +360,31 @@ private fun StorageHero(state: DashboardUiState, onRetry: () -> Unit) {
                 if (state.storage.pinnedBytes > 0) StatChip("${Formatter.formatShortFileSize(context, state.storage.pinnedBytes)} pinned")
                 if (state.storage.cacheBytes > 0) StatChip("${Formatter.formatShortFileSize(context, state.storage.cacheBytes)} cache")
             }
+        }
+    }
+}
+
+/** Open 270° gauge: primary normally, tertiary from 80% and error from 95% so a nearly full account stands out. No fraction (unlimited quota) draws the track only. */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun QuotaArcGauge(fraction: Float?, modifier: Modifier = Modifier) {
+    val colors = MaterialTheme.colorScheme
+    val sweepFraction by animateFloatAsState(fraction ?: 0f, MaterialTheme.motionScheme.defaultSpatialSpec(), label = "quotaSweep")
+    val track = colors.onPrimaryContainer.copy(alpha = 0.16f)
+    val progress = when {
+        fraction == null -> colors.primary
+        fraction >= 0.95f -> colors.error
+        fraction >= 0.8f -> colors.tertiary
+        else -> colors.primary
+    }
+    Canvas(modifier) {
+        val stroke = 12.dp.toPx()
+        val inset = stroke / 2
+        val arcSize = Size(size.width - stroke, size.height - stroke)
+        val style = Stroke(width = stroke, cap = StrokeCap.Round)
+        drawArc(track, startAngle = 135f, sweepAngle = 270f, useCenter = false, topLeft = Offset(inset, inset), size = arcSize, style = style)
+        if (fraction != null && sweepFraction > 0f) {
+            drawArc(progress, startAngle = 135f, sweepAngle = 270f * sweepFraction, useCenter = false, topLeft = Offset(inset, inset), size = arcSize, style = style)
         }
     }
 }

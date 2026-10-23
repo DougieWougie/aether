@@ -87,7 +87,7 @@ class DashboardViewModel @Inject constructor(
     private val transferData = combine(
         database.transferDao().observeActive(),
         database.transferDao().observeRecent(RECENT_TRANSFERS),
-        database.documentDao().observePinned(),
+        database.documentDao().observePinnedRoots(),
     ) { active, recent, pinned -> Triple(active, recent, pinned) }
 
     private val backupData = selected.flatMapLatest { (_, account) ->

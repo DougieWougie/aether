@@ -40,8 +40,12 @@ interface DocumentDao {
     @Query("SELECT * FROM documents WHERE isPinned = 1 ORDER BY accountName, path")
     fun pinned(): List<DocumentEntity>
 
-    @Query("SELECT * FROM documents WHERE isPinned = 1 ORDER BY accountName, path")
-    fun observePinned(): Flow<List<DocumentEntity>>
+    /** Pinned items the user chose directly: a pinned folder's contents carry the flag too, but belong to the folder. */
+    @Query(
+        "SELECT * FROM documents WHERE isPinned = 1 " +
+            "AND (parentId IS NULL OR parentId NOT IN (SELECT documentId FROM documents WHERE isPinned = 1)) ORDER BY accountName, path",
+    )
+    fun observePinnedRoots(): Flow<List<DocumentEntity>>
 
     @Query("UPDATE documents SET isPinned = :pinned WHERE documentId = :id")
     fun setPinned(id: String, pinned: Boolean)

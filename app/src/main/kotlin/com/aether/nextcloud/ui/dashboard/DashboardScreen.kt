@@ -8,6 +8,18 @@ import android.provider.DocumentsContract
 import android.text.format.DateUtils
 import android.text.format.Formatter
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.material3.ToggleFloatingActionButton
+import androidx.compose.material3.ToggleFloatingActionButtonDefaults.animateIcon
+import androidx.compose.material3.FloatingActionButtonMenuItem
+import androidx.compose.material3.FloatingActionButtonMenu
+import androidx.compose.material.icons.outlined.CreateNewFolder
+import androidx.compose.material.icons.outlined.Close
+import androidx.activity.compose.BackHandler
 import android.net.Uri
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.result.contract.ActivityResultContracts
@@ -127,6 +139,12 @@ fun DashboardScreen(
     }
 
     val listState = rememberLazyListState()
+    val rootDocumentUri = state.selected?.let { DocumentsContract.buildDocumentUri(AetherConstants.AUTHORITY, DocumentId.root(it.accountName).toString()) }
+    val pickFiles = rememberLauncherForActivityResult(PickAetherDocuments()) { viewModel.pin(it) }
+    val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri -> if (uri != null) viewModel.pin(listOf(uri)) }
+    var fabMenuExpanded by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(state.tab) { fabMenuExpanded = false }
+    BackHandler(fabMenuExpanded) { fabMenuExpanded = false }
     val fabExpanded by remember { derivedStateOf { listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0 } }
 
     Scaffold(
@@ -134,14 +152,27 @@ fun DashboardScreen(
         bottomBar = { DashboardNavigationBar(selected = state.tab, onSelect = viewModel::selectTab) },
         floatingActionButton = {
             state.selected?.let { account ->
-                ExtendedFloatingActionButton(
-                    onClick = { if (!openInSystemFiles(context, account)) notice = "No file manager found that can open Aether." },
-                    expanded = fabExpanded,
-                    icon = { Icon(Icons.Outlined.FolderOpen, contentDescription = null) },
-                    text = { Text("Files") },
-                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-                )
+                val openFiles = { if (!openInSystemFiles(context, account)) notice = "No file manager found that can open Aether." }
+                if (state.tab == DashboardTab.Pinned) {
+                    PinnedFabMenu(
+                        expanded = fabMenuExpanded,
+                        onExpandedChange = { fabMenuExpanded = it },
+                        canSync = state.pinned.isNotEmpty(),
+                        onPinFiles = { pickFiles.launch(rootDocumentUri) },
+                        onPinFolder = { pickFolder.launch(rootDocumentUri) },
+                        onSyncNow = viewModel::syncPinsNow,
+                        onOpenFiles = openFiles,
+                    )
+                } else {
+                    ExtendedFloatingActionButton(
+                        onClick = openFiles,
+                        expanded = fabExpanded,
+                        icon = { Icon(Icons.Outlined.FolderOpen, contentDescription = null) },
+                        text = { Text("Files") },
+                        containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                    )
+                }
             }
         },
     ) { padding ->
@@ -166,13 +197,7 @@ fun DashboardScreen(
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         when (tab) {
                             DashboardTab.Transfers -> TransfersSection(state.activeTransfers, state.recentTransfers)
-                            DashboardTab.Pinned -> PinnedSection(
-                                pinned = state.pinned,
-                                rootDocumentUri = state.selected?.let { DocumentsContract.buildDocumentUri(AetherConstants.AUTHORITY, DocumentId.root(it.accountName).toString()) },
-                                onPick = viewModel::pin,
-                                onUnpin = viewModel::unpin,
-                                onSyncNow = viewModel::syncPinsNow,
-                            )
+                            DashboardTab.Pinned -> PinnedSection(pinned = state.pinned, onUnpin = viewModel::unpin)
                             DashboardTab.Camera -> CameraSection(state, onOpenCameraBackup)
                         }
                     }
@@ -384,6 +409,44 @@ private fun StatChip(text: String) {
     }
 }
 
+/** Pin actions live in a FAB menu on the Pinned tab; "Files" stays reachable from it, as on the other tabs. */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun PinnedFabMenu(
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    canSync: Boolean,
+    onPinFiles: () -> Unit,
+    onPinFolder: () -> Unit,
+    onSyncNow: () -> Unit,
+    onOpenFiles: () -> Unit,
+) {
+    fun item(action: () -> Unit): () -> Unit = { onExpandedChange(false); action() }
+    FloatingActionButtonMenu(
+        expanded = expanded,
+        button = {
+            ToggleFloatingActionButton(
+                checked = expanded,
+                onCheckedChange = onExpandedChange,
+                modifier = Modifier.semantics {
+                    stateDescription = if (expanded) "Expanded" else "Collapsed"
+                    contentDescription = "Pin menu"
+                },
+            ) {
+                val icon by remember { derivedStateOf { if (checkedProgress > 0.5f) Icons.Outlined.Close else Icons.Outlined.PushPin } }
+                Icon(rememberVectorPainter(icon), contentDescription = null, modifier = Modifier.animateIcon({ checkedProgress }))
+            }
+        },
+    ) {
+        FloatingActionButtonMenuItem(onClick = item(onPinFiles), text = { Text("Pin files") }, icon = { Icon(Icons.Outlined.PushPin, contentDescription = null) })
+        FloatingActionButtonMenuItem(onClick = item(onPinFolder), text = { Text("Pin folder") }, icon = { Icon(Icons.Outlined.CreateNewFolder, contentDescription = null) })
+        if (canSync) {
+            FloatingActionButtonMenuItem(onClick = item(onSyncNow), text = { Text("Sync now") }, icon = { Icon(Icons.Outlined.Sync, contentDescription = null) })
+        }
+        FloatingActionButtonMenuItem(onClick = item(onOpenFiles), text = { Text("Files") }, icon = { Icon(Icons.Outlined.FolderOpen, contentDescription = null) })
+    }
+}
+
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun SectionTitle(text: String) {
@@ -480,37 +543,12 @@ private class PickAetherDocuments : ActivityResultContract<Uri?, List<Uri>>() {
     }
 }
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun PinnedSection(
     pinned: List<DocumentEntity>,
-    rootDocumentUri: Uri?,
-    onPick: (List<Uri>) -> Unit,
     onUnpin: (DocumentEntity) -> Unit,
-    onSyncNow: () -> Unit,
 ) {
-    val pickFiles = rememberLauncherForActivityResult(PickAetherDocuments()) { onPick(it) }
-    val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri -> if (uri != null) onPick(listOf(uri)) }
-
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Button(onClick = { pickFiles.launch(rootDocumentUri) }, shapes = ButtonDefaults.shapes()) {
-            Icon(Icons.Outlined.PushPin, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
-            Spacer(Modifier.size(ButtonDefaults.IconSpacing))
-            Text("Pin files")
-        }
-        FilledTonalButton(onClick = { pickFolder.launch(rootDocumentUri) }, shapes = ButtonDefaults.shapes()) {
-            Icon(Icons.Outlined.FolderOpen, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
-            Spacer(Modifier.size(ButtonDefaults.IconSpacing))
-            Text("Pin folder")
-        }
-        if (pinned.isNotEmpty()) {
-            OutlinedButton(onClick = onSyncNow, shapes = ButtonDefaults.shapes()) {
-                Icon(Icons.Outlined.Sync, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
-                Spacer(Modifier.size(ButtonDefaults.IconSpacing))
-                Text("Sync now")
-            }
-        }
-    }
     if (pinned.isEmpty()) {
         EmptyState(MaterialShapes.Cookie9Sided, Icons.Outlined.PushPin, "Nothing pinned yet", "Pinned files and folders are kept on this device and stay up to date.")
         return

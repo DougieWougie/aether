@@ -12,6 +12,7 @@ import android.net.Uri
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
+import kotlin.math.roundToInt
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.ui.geometry.Offset
@@ -300,6 +301,7 @@ private fun StorageHero(state: DashboardUiState, onRetry: () -> Unit) {
     val syncing = state.activeTransfers.isNotEmpty()
     val failed = state.quotaError != null
     val colors = MaterialTheme.colorScheme
+    val fraction = if (quota != null && total != null && total > 0) (quota.usedBytes.toFloat() / total).coerceIn(0f, 1f) else null
 
     Surface(shape = HeroShape, color = colors.primaryContainer, contentColor = colors.onPrimaryContainer, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -327,36 +329,22 @@ private fun StorageHero(state: DashboardUiState, onRetry: () -> Unit) {
                     }
                 }
                 Box(Modifier.size(116.dp), contentAlignment = Alignment.Center) {
-                    QuotaArcGauge(
-                        fraction = if (quota != null && total != null && total > 0) (quota.usedBytes.toFloat() / total).coerceIn(0f, 1f) else null,
-                        modifier = Modifier.size(116.dp),
-                    )
-                    MorphingShapeBadge(
-                        shape = when {
-                            failed -> MaterialShapes.Pentagon
-                            syncing -> MaterialShapes.Sunny
-                            else -> MaterialShapes.Cookie9Sided
-                        },
-                        size = 76.dp,
-                        container = if (failed) colors.errorContainer else colors.primary,
-                        spinning = syncing,
-                    ) {
-                        Icon(
-                            if (syncing) Icons.Outlined.Sync else Icons.Outlined.CloudUpload,
-                            contentDescription = null,
-                            tint = if (failed) colors.onErrorContainer else colors.onPrimary,
-                            modifier = Modifier.size(32.dp),
+                    QuotaArcGauge(fraction = fraction, modifier = Modifier.size(116.dp))
+                    when {
+                        failed -> MorphingShapeBadge(shape = MaterialShapes.Pentagon, size = 76.dp, container = colors.errorContainer) {
+                            Text("!", style = MaterialTheme.typography.headlineMediumEmphasized, color = colors.onErrorContainer)
+                        }
+                        syncing -> MorphingShapeBadge(shape = MaterialShapes.Sunny, size = 76.dp, container = colors.primary, spinning = true) {
+                            Text("${state.activeTransfers.size}", style = MaterialTheme.typography.titleLargeEmphasized, color = colors.onPrimary)
+                        }
+                        quota != null -> Text(
+                            if (fraction != null) "${(fraction * 100).roundToInt()}%" else "∞",
+                            style = MaterialTheme.typography.headlineMediumEmphasized,
                         )
                     }
                 }
             }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                StatChip(
-                    when {
-                        syncing -> "Syncing ${state.activeTransfers.size} ${if (state.activeTransfers.size == 1) "file" else "files"}"
-                        else -> "Up to date"
-                    },
-                )
                 if (state.storage.pinnedBytes > 0) StatChip("${Formatter.formatShortFileSize(context, state.storage.pinnedBytes)} pinned")
                 if (state.storage.cacheBytes > 0) StatChip("${Formatter.formatShortFileSize(context, state.storage.cacheBytes)} cache")
             }

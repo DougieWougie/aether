@@ -312,7 +312,7 @@ private fun StorageHero(state: DashboardUiState, onRetry: () -> Unit) {
                                     Text("${(fraction * 100).roundToInt()}", style = MaterialTheme.typography.displayLargeEmphasized, maxLines = 1)
                                     Text("%", style = MaterialTheme.typography.headlineMediumEmphasized, modifier = Modifier.padding(bottom = 10.dp))
                                 }
-                                Text("$used of ${Formatter.formatShortFileSize(context, total!!)}", style = MaterialTheme.typography.titleMedium)
+                                Text("of ${Formatter.formatShortFileSize(context, total!!)}", style = MaterialTheme.typography.titleMedium)
                             } else {
                                 val (value, unit) = splitSize(used)
                                 Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -350,11 +350,6 @@ private fun StorageHero(state: DashboardUiState, onRetry: () -> Unit) {
                     }
                 }
             }
-            if (fraction != null) {
-                Box(Modifier.fillMaxWidth().height(14.dp).clip(CircleShape).background(colors.onPrimaryContainer.copy(alpha = 0.16f))) {
-                    Box(Modifier.fillMaxWidth(fraction).fillMaxHeight().clip(CircleShape).background(colors.primary))
-                }
-            }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 StatChip(
                     when {
@@ -364,6 +359,11 @@ private fun StorageHero(state: DashboardUiState, onRetry: () -> Unit) {
                 )
                 if (state.storage.pinnedBytes > 0) StatChip("${Formatter.formatShortFileSize(context, state.storage.pinnedBytes)} pinned")
                 if (state.storage.cacheBytes > 0) StatChip("${Formatter.formatShortFileSize(context, state.storage.cacheBytes)} cache")
+            }
+            if (fraction != null) {
+                Box(Modifier.fillMaxWidth().height(4.dp).clip(CircleShape).background(colors.onPrimaryContainer.copy(alpha = 0.16f))) {
+                    Box(Modifier.fillMaxWidth(fraction).fillMaxHeight().clip(CircleShape).background(colors.primary))
+                }
             }
         }
     }

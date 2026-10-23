@@ -18,6 +18,7 @@ import androidx.work.ForegroundInfo
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
@@ -37,6 +38,9 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -250,6 +254,15 @@ class CameraBackupWorker @AssistedInject constructor(
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 1, TimeUnit.MINUTES)
                 .build()
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(PERIODIC_NAME, ExistingPeriodicWorkPolicy.UPDATE, request)
+        }
+
+        /** True while either the content-trigger or the periodic backup run is actually executing. */
+        fun observeRunning(context: Context): Flow<Boolean> {
+            val manager = WorkManager.getInstance(context)
+            return combine(
+                manager.getWorkInfosForUniqueWorkFlow(TRIGGER_NAME),
+                manager.getWorkInfosForUniqueWorkFlow(PERIODIC_NAME),
+            ) { trigger, periodic -> (trigger + periodic).any { it.state == WorkInfo.State.RUNNING } }.distinctUntilChanged()
         }
 
         fun cancel(context: Context) {

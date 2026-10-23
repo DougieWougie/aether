@@ -56,6 +56,7 @@ data class DashboardUiState(
     val backup: BackupSettings = BackupSettings(),
     val backedUpCount: Int = 0,
     val lastBackupAt: Long? = null,
+    val backupRunning: Boolean = false,
     val storage: StorageUsage = StorageUsage(),
     val avatar: ImageBitmap? = null,
 )
@@ -106,7 +107,7 @@ class DashboardViewModel @Inject constructor(
 
     val state: StateFlow<DashboardUiState> = combine(
         selected, tab, transferData, backupData,
-        combine(quotaRepository.snapshots, storage, message, avatar, ::Extras),
+        combine(quotaRepository.snapshots, storage, message, avatar, scheduler.observeBackupRunning(), ::Extras),
     ) { (accounts, account), currentTab, (active, recent, pinned), (count, last, backup), extras ->
         DashboardUiState(
             accounts = accounts,
@@ -120,6 +121,7 @@ class DashboardViewModel @Inject constructor(
             backup = backup,
             backedUpCount = count,
             lastBackupAt = last,
+            backupRunning = extras.backupRunning,
             storage = extras.usage,
             avatar = extras.avatar?.takeIf { it.first == account?.accountName }?.second,
         )
@@ -204,6 +206,7 @@ class DashboardViewModel @Inject constructor(
         val usage: StorageUsage,
         val message: String?,
         val avatar: Pair<String, ImageBitmap?>?,
+        val backupRunning: Boolean,
     )
 
     private companion object {

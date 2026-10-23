@@ -564,7 +564,7 @@ private fun CameraSection(state: DashboardUiState, onConfigure: () -> Unit) {
                     shape = if (backup.enabled) MaterialShapes.Sunny else MaterialShapes.Cookie9Sided,
                     size = 84.dp,
                     container = colors.tertiary,
-                    spinning = backup.enabled,
+                    spinning = backup.enabled && state.backupRunning,
                 ) {
                     Icon(Icons.Outlined.PhotoCamera, contentDescription = null, tint = colors.onTertiary, modifier = Modifier.size(34.dp))
                 }

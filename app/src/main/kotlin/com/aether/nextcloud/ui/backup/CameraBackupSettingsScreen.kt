@@ -125,7 +125,7 @@ fun CameraBackupSettingsScreen(
                             shape = if (settings.enabled) MaterialShapes.Sunny else MaterialShapes.Cookie9Sided,
                             size = 72.dp,
                             container = colors.tertiary,
-                            spinning = settings.enabled,
+                            spinning = settings.enabled && state.running,
                         ) {
                             Icon(Icons.Outlined.PhotoCamera, contentDescription = null, tint = colors.onTertiary, modifier = Modifier.size(30.dp))
                         }

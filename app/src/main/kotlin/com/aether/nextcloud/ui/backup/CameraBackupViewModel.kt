@@ -25,6 +25,7 @@ data class CameraBackupUiState(
     val settings: BackupSettings = BackupSettings(),
     val accounts: List<AetherCredentials> = emptyList(),
     val backedUpCount: Int = 0,
+    val running: Boolean = false,
 )
 
 @HiltViewModel
@@ -43,7 +44,7 @@ class CameraBackupViewModel @Inject constructor(
     }.flatMapLatest { (backup, accounts) ->
         val account = backup.accountName ?: accounts.firstOrNull()?.accountName
         val count = if (account == null) flowOf(0) else backedUp.observeCount(account)
-        count.map { CameraBackupUiState(backup, accounts, it) }
+        combine(count, scheduler.observeBackupRunning()) { n, running -> CameraBackupUiState(backup, accounts, n, running) }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CameraBackupUiState())
 
     /** Call only once media permission is granted. Defaults the destination account to the first signed-in one. */

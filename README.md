@@ -38,7 +38,7 @@ plugs into the platform and keeps its own UI small.
 - Automatic camera backup of new photos and videos, with network and charging constraints.
 - Large uploads use Nextcloud's chunked upload v2.
 - Clear errors, such as a file that is locked on the server because it is open in a web editor.
-- A small companion app in Material 3 Expressive with your profile picture, a storage ring, transfers, offline pins
+- A small companion app in Material 3 Expressive with your profile picture, a storage ring, transfers, pinned files
   and camera backup settings.
 
 ## How it works

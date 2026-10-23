@@ -160,7 +160,7 @@ fun DashboardScreen(
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         when (tab) {
                             DashboardTab.Transfers -> TransfersSection(state.activeTransfers, state.recentTransfers)
-                            DashboardTab.Offline -> OfflineSection(
+                            DashboardTab.Pinned -> PinnedSection(
                                 pinned = state.pinned,
                                 rootDocumentUri = state.selected?.let { DocumentsContract.buildDocumentUri(AetherConstants.AUTHORITY, DocumentId.root(it.accountName).toString()) },
                                 onPick = viewModel::pin,
@@ -183,7 +183,7 @@ fun DashboardScreen(
 private fun DashboardNavigationBar(selected: DashboardTab, onSelect: (DashboardTab) -> Unit) {
     val tabs = listOf(
         Triple(DashboardTab.Transfers, "Transfers", Icons.Outlined.Sync),
-        Triple(DashboardTab.Offline, "Offline", Icons.Outlined.PushPin),
+        Triple(DashboardTab.Pinned, "Pinned", Icons.Outlined.PushPin),
         Triple(DashboardTab.Camera, "Camera", Icons.Outlined.PhotoCamera),
     )
     ShortNavigationBar {
@@ -369,7 +369,7 @@ private fun StorageHero(state: DashboardUiState, onRetry: () -> Unit) {
                         else -> "Up to date"
                     },
                 )
-                if (state.storage.pinnedBytes > 0) StatChip("${Formatter.formatShortFileSize(context, state.storage.pinnedBytes)} offline")
+                if (state.storage.pinnedBytes > 0) StatChip("${Formatter.formatShortFileSize(context, state.storage.pinnedBytes)} pinned")
                 if (state.storage.cacheBytes > 0) StatChip("${Formatter.formatShortFileSize(context, state.storage.cacheBytes)} cache")
             }
         }
@@ -393,7 +393,7 @@ private fun SectionTitle(text: String) {
 @Composable
 private fun TransfersSection(active: List<TransferEntity>, recent: List<TransferEntity>) {
     if (active.isEmpty() && recent.isEmpty()) {
-        EmptyState(MaterialShapes.Clover4Leaf, Icons.Outlined.Sync, "No transfers", "Uploads from other apps and offline downloads show up here.")
+        EmptyState(MaterialShapes.Clover4Leaf, Icons.Outlined.Sync, "No transfers", "Uploads from other apps and pinned files show up here.")
         return
     }
     if (active.isNotEmpty()) {
@@ -481,7 +481,7 @@ private class PickAetherDocuments : ActivityResultContract<Uri?, List<Uri>>() {
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalLayoutApi::class)
 @Composable
-private fun OfflineSection(
+private fun PinnedSection(
     pinned: List<DocumentEntity>,
     rootDocumentUri: Uri?,
     onPick: (List<Uri>) -> Unit,

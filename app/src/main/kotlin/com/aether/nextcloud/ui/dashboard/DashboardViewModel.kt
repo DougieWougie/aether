@@ -40,7 +40,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-enum class DashboardTab { Transfers, Offline, Camera }
+enum class DashboardTab { Transfers, Pinned, Camera }
 
 data class StorageUsage(val cacheBytes: Long = 0, val pinnedBytes: Long = 0)
 
@@ -77,7 +77,7 @@ class DashboardViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val selectedName = MutableStateFlow(savedState.get<String>(KEY_ACCOUNT))
-    private val tab = MutableStateFlow(savedState.get<String>(KEY_TAB)?.let(DashboardTab::valueOf) ?: DashboardTab.Transfers)
+    private val tab = MutableStateFlow(savedState.get<String>(KEY_TAB)?.let { name -> DashboardTab.entries.firstOrNull { it.name == name } } ?: DashboardTab.Transfers)
     private val storage = MutableStateFlow(StorageUsage())
 
     private val selected = combine(accountRepository.observeAccounts(), selectedName) { accounts, name ->

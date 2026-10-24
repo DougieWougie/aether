@@ -25,7 +25,8 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.SheetValue
+import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -66,11 +67,10 @@ fun AlbumSheet(
     onChange: (List<BackupAlbum>?) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberBottomSheetState(SheetValue.Hidden, setOf(SheetValue.Hidden, SheetValue.Expanded))) {
         Column(Modifier.navigationBarsPadding()) {
             Text(stringResource(R.string.albums_picker_title), style = MaterialTheme.typography.titleLargeEmphasized, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
             ListItem(
-                headlineContent = { Text(stringResource(R.string.albums_all)) },
                 supportingContent = { Text(stringResource(R.string.albums_all_hint)) },
                 trailingContent = {
                     Switch(
@@ -79,7 +79,7 @@ fun AlbumSheet(
                     )
                 },
                 colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-            )
+            ) { Text(stringResource(R.string.albums_all)) }
             when {
                 available == null -> Text(stringResource(R.string.albums_loading), modifier = Modifier.padding(24.dp))
                 available.isEmpty() -> Text(stringResource(R.string.albums_none), modifier = Modifier.padding(24.dp))
@@ -89,7 +89,6 @@ fun AlbumSheet(
                         val onlyOne = selected != null && selected.size == 1 && checked
                         val backedUp = uploads[album.id] ?: 0
                         ListItem(
-                            headlineContent = { Text(album.name) },
                             supportingContent = {
                                 Text(
                                     listOf(
@@ -110,7 +109,7 @@ fun AlbumSheet(
                                 )
                             },
                             colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-                        )
+                        ) { Text(album.name) }
                     }
                 }
             }

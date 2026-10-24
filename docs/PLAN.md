@@ -44,7 +44,8 @@ Significant changes to authentication, sync, provider behaviour or UI design mus
 - [x] `provider/AetherDocumentsProvider.openDocumentThumbnail()`: replace `accountName.hashCode()` with the SHA-256
   based `DocumentDiskCache.fileName()` (or a per-account subdirectory). Done in 1.3: thumbnails live in a per-account
   subdirectory (`DocumentDiskCache.thumbnailFor`).
-- [ ] Cap the thumbnail cache size, or evict by age.
+- [x] Cap the thumbnail cache size, or evict by age. Least-recently-used, capped at 32 MB across accounts, separate
+  from the 512 MB file cache.
 
 **Done when:** two accounts with the same `fileId` never share a thumbnail file.
 

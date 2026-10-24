@@ -235,9 +235,13 @@ class AetherDocumentsProvider : DocumentsProvider() {
         val entity = documents.cached(id) ?: throw FileNotFoundException("Unknown document $documentId")
         val fileId = entity.fileId?.takeIf { entity.hasPreview } ?: throw FileNotFoundException("No preview for $documentId")
         val size = maxOf(sizeHint.x, sizeHint.y).coerceIn(MIN_THUMBNAIL, MAX_THUMBNAIL)
-        val thumbnail = deps.diskCache().thumbnailFor(credentials.accountName, fileId, size)
-        if (!thumbnail.isFile) {
+        val diskCache = deps.diskCache()
+        val thumbnail = diskCache.thumbnailFor(credentials.accountName, fileId, size)
+        if (thumbnail.isFile) {
+            diskCache.touch(thumbnail)
+        } else {
             blocking(signal) { deps.ocs().downloadPreview(credentials, fileId, thumbnail, size).orThrow() }
+            diskCache.trimThumbnails(protect = setOf(thumbnail))
         }
         return AssetFileDescriptor(pipes.openForRead(thumbnail), 0, AssetFileDescriptor.UNKNOWN_LENGTH)
     }

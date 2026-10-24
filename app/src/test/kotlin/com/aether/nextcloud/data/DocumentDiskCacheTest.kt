@@ -231,4 +231,68 @@ class DocumentDiskCacheTest {
         assertTrue(cache.isPinnedFile(File(tmp.root, "pinned/legacy")))
         assertFalse(cache.isPinnedFile(cache.cacheFileFor("alice@h:/p.txt")))
     }
+
+    private fun thumbnailCache(maxBytes: Long) =
+        DocumentDiskCache(File(tmp.root, "cache"), File(tmp.root, "pinned"), File(tmp.root, "staging"), maxCacheBytes = 1_000, maxThumbnailBytes = maxBytes)
+
+    private fun thumbnail(cache: DocumentDiskCache, account: String, fileId: String, bytes: Int, age: Long): File =
+        write(cache.thumbnailFor(account, fileId, 256), bytes).apply { setLastModified(System.currentTimeMillis() - age) }
+
+    @Test
+    fun `thumbnails are trimmed oldest first across accounts until they fit`() {
+        val small = thumbnailCache(maxBytes = 100)
+        val oldest = thumbnail(small, "alice@h", "1", 40, 30_000)
+        val middle = thumbnail(small, "bob@h", "2", 40, 20_000)
+        val newest = thumbnail(small, "alice@h", "3", 40, 10_000)
+
+        val evicted = small.trimThumbnails()
+
+        assertEquals(listOf(oldest), evicted)
+        assertTrue(middle.exists() && newest.exists())
+    }
+
+    @Test
+    fun `a thumbnail that was just used survives trimming`() {
+        val small = thumbnailCache(maxBytes = 60)
+        val used = thumbnail(small, "alice@h", "1", 40, 30_000)
+        val other = thumbnail(small, "alice@h", "2", 40, 20_000)
+        small.touch(used)
+
+        small.trimThumbnails()
+
+        assertTrue(used.exists())
+        assertFalse(other.exists())
+    }
+
+    @Test
+    fun `the thumbnail being served is protected even when it alone exceeds the limit`() {
+        val small = thumbnailCache(maxBytes = 10)
+        val fresh = thumbnail(small, "alice@h", "1", 40, 0)
+        val old = thumbnail(small, "alice@h", "2", 5, 30_000)
+
+        small.trimThumbnails(protect = setOf(fresh))
+
+        assertTrue(fresh.exists())
+        assertFalse(old.exists())
+    }
+
+    @Test
+    fun `trimming thumbnails leaves file copies alone and vice versa`() {
+        val small = thumbnailCache(maxBytes = 10)
+        val copy = write(small.cacheFileFor("alice@h:/a.bin"), 500)
+        val thumb = thumbnail(small, "alice@h", "1", 40, 30_000)
+
+        small.trimThumbnails()
+        assertTrue(copy.exists())
+        assertFalse(thumb.exists())
+
+        val thumb2 = thumbnail(small, "alice@h", "2", 5, 0)
+        small.trimToSize()
+        assertTrue(thumb2.exists())
+    }
+
+    @Test
+    fun `trimming thumbnails with none stored does nothing`() {
+        assertEquals(emptyList<File>(), thumbnailCache(maxBytes = 10).trimThumbnails())
+    }
 }

@@ -22,6 +22,7 @@ class DocumentDiskCache(
     private val stagingDir: File,
     private val maxCacheBytes: Long = DEFAULT_MAX_CACHE_BYTES,
     private val thumbnailsDir: File = File(cacheDir.parentFile, "thumbnails"),
+    private val maxThumbnailBytes: Long = DEFAULT_MAX_THUMBNAIL_BYTES,
 ) {
     fun cacheFileFor(documentId: String): File = File(accountDir(cacheDir, accountOf(documentId)), fileName(documentId))
 
@@ -53,12 +54,17 @@ class DocumentDiskCache(
     }
 
     /** Deletes least-recently-used cache files until the cache fits in [maxCacheBytes]; returns the deleted files. */
-    fun trimToSize(protect: Set<File> = emptySet()): List<File> {
-        val files = cacheDir.walkTopDown().filter { it.isFile && !it.name.endsWith(PART_SUFFIX) }.toMutableList()
+    fun trimToSize(protect: Set<File> = emptySet()): List<File> = evictOldest(cacheDir, maxCacheBytes, protect)
+
+    /** Same for thumbnails, against [maxThumbnailBytes]; they are separate so previews never push out file copies. */
+    fun trimThumbnails(protect: Set<File> = emptySet()): List<File> = evictOldest(thumbnailsDir, maxThumbnailBytes, protect)
+
+    private fun evictOldest(dir: File, limit: Long, protect: Set<File>): List<File> {
+        val files = dir.walkTopDown().filter { it.isFile && !it.name.endsWith(PART_SUFFIX) }.toList()
         var total = files.sumOf { it.length() }
         val evicted = mutableListOf<File>()
         for (file in files.sortedBy { it.lastModified() }) {
-            if (total <= maxCacheBytes) break
+            if (total <= limit) break
             if (file in protect) continue
             total -= file.length()
             if (file.delete()) evicted += file
@@ -92,6 +98,7 @@ class DocumentDiskCache(
 
     companion object {
         const val DEFAULT_MAX_CACHE_BYTES = 512L * 1024 * 1024
+        const val DEFAULT_MAX_THUMBNAIL_BYTES = 32L * 1024 * 1024
         private const val PART_SUFFIX = ".part"
         private const val UNKNOWN_ACCOUNT = "-"
 

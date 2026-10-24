@@ -137,9 +137,14 @@ internal fun PinnedSection(
     SectionTitle(stringResource(R.string.pinned_section_title))
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         pinned.forEachIndexed { index, doc ->
-            Surface(shape = groupedShape(index, pinned.size), color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
+            val context = LocalContext.current
+            Surface(
+                onClick = { openPinned(context, doc) },
+                shape = groupedShape(index, pinned.size),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
                 Row(Modifier.padding(start = 16.dp, top = 12.dp, bottom = 12.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    val context = LocalContext.current
                     val preview by produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, doc.documentId, doc.etag) {
                         value = if (doc.isDirectory || !doc.hasPreview) null else withContext(Dispatchers.IO) {
                             runCatching {
@@ -186,3 +191,16 @@ internal fun PinnedSection(
 }
 
 private const val PREVIEW_PX = 192
+
+/** Opens a pinned file in whichever app handles its type, or a pinned folder in DocumentsUI. */
+private fun openPinned(context: android.content.Context, doc: DocumentEntity) {
+    val uri = DocumentsContract.buildDocumentUri(AetherConstants.AUTHORITY, doc.documentId)
+    val intent = Intent(Intent.ACTION_VIEW)
+        .setDataAndType(uri, if (doc.isDirectory) DocumentsContract.Document.MIME_TYPE_DIR else doc.mimeType)
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    try {
+        context.startActivity(intent)
+    } catch (_: android.content.ActivityNotFoundException) {
+        android.widget.Toast.makeText(context, R.string.pinned_no_app_to_open, android.widget.Toast.LENGTH_SHORT).show()
+    }
+}

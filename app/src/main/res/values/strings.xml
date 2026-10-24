@@ -154,6 +154,7 @@
     <string name="pinned_status_on_device">On this device · %1$s</string>
     <string name="pinned_status_update_waiting">Newer version on the server, update waiting</string>
     <string name="pinned_status_waiting">Waiting to download</string>
+    <string name="pinned_no_app_to_open">No app can open this file</string>
     <string name="pinned_status_folder_synced">Folder up to date · %1$s</string>
     <string name="pinned_status_folder_syncing">Folder syncing</string>
     <string name="pinned_unpinned">Unpinned %1$s</string>

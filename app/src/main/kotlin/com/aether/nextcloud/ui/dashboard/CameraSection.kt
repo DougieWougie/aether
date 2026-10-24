@@ -42,6 +42,10 @@ import com.aether.nextcloud.ui.components.MorphingShapeBadge
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
+import android.content.ActivityNotFoundException
+import android.content.Intent
 
 @Composable
 internal fun CameraChip(text: String) {
@@ -71,7 +75,10 @@ internal fun CameraSection(state: DashboardUiState) {
         modifier = Modifier.fillMaxWidth().animateContentSize(MaterialTheme.motionScheme.defaultSpatialSpec()),
     ) {
         Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = if (backup.enabled) Modifier.clip(MaterialTheme.shapes.large).clickable { openPhotos(context) } else Modifier,
+            ) {
                 Column(Modifier.weight(1f)) {
                     Text(if (backup.enabled) stringResource(R.string.camera_backing_up) else stringResource(R.string.camera_title), style = MaterialTheme.typography.labelLargeEmphasized)
                     if (backup.enabled) {
@@ -131,5 +138,15 @@ internal fun CameraSection(state: DashboardUiState) {
                 ) { Text(if (expanded) stringResource(R.string.action_done) else if (backup.enabled) stringResource(R.string.action_settings) else stringResource(R.string.action_set_up)) }
             }
         }
+    }
+}
+
+/** Opens the phone's default gallery app, so the photos being backed up are one tap away. */
+private fun openPhotos(context: android.content.Context) {
+    val intent = Intent.makeMainSelectorActivity(Intent.ACTION_MAIN, Intent.CATEGORY_APP_GALLERY).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    try {
+        context.startActivity(intent)
+    } catch (_: ActivityNotFoundException) {
+        android.widget.Toast.makeText(context, R.string.camera_no_gallery, android.widget.Toast.LENGTH_SHORT).show()
     }
 }

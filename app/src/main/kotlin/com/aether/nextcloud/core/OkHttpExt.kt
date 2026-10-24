@@ -32,6 +32,7 @@ fun Response.toError(): AetherError = when (code) {
     404 -> AetherError.NotFound
     412 -> AetherError.PreconditionFailed
     423 -> AetherError.Locked
+    507 -> AetherError.InsufficientStorage
     else -> AetherError.Http(code, message.ifBlank { null })
 }
 

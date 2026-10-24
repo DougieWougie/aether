@@ -15,6 +15,8 @@ sealed interface AetherError {
     data object PreconditionFailed : AetherError
     /** HTTP 423: the file is locked on the server, typically because it is open in an editor or held by Files Lock. */
     data object Locked : AetherError
+    /** HTTP 507: the account is out of quota, so retrying will not help until the user frees space. */
+    data object InsufficientStorage : AetherError
     data object Timeout : AetherError
     data class Malformed(val detail: String) : AetherError
     data class InvalidServer(val detail: String) : AetherError
@@ -39,6 +41,7 @@ fun AetherError.describe(): String = when (this) {
     AetherError.NotFound -> "Not found"
     AetherError.PreconditionFailed -> "The file changed on the server"
     AetherError.Locked -> "This file is locked on the server. Close it in any editor that has it open and try again."
+    AetherError.InsufficientStorage -> "Your Nextcloud storage is full. Free up space and try again."
     AetherError.Timeout -> "Timed out"
     is AetherError.Malformed -> "Unexpected server response: $detail"
     is AetherError.InvalidServer -> detail

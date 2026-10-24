@@ -320,7 +320,11 @@ class AetherDocumentsProvider : DocumentsProvider() {
         throw OperationCanceledException()
     }
 
-    /** Binder can only marshal a few exception types; everything else becomes [FileNotFoundException] with the cause as text. */
+    /**
+     * Binder can only marshal a few exception types. A missing file stays [FileNotFoundException]; failures that are not
+     * "not found" (locked file, full quota, server errors) become [IllegalStateException] so callers do not read them
+     * as a missing file. The message is the user-readable cause.
+     */
     private fun <T> AetherResult<T>.orThrow(accountName: String): T = when (this) {
         is AetherResult.Success -> value
         is AetherResult.Failure -> when (error) {
@@ -330,8 +334,7 @@ class AetherDocumentsProvider : DocumentsProvider() {
             }
             AetherError.NotFound -> throw FileNotFoundException("Not found")
             // DocumentsUI only shows a generic failure for provider errors; the message still lands in logcat and the document service.
-            AetherError.Locked -> throw FileNotFoundException(error.describe())
-            else -> throw FileNotFoundException(error.describe())
+            else -> throw IllegalStateException(error.describe())
         }
     }
 

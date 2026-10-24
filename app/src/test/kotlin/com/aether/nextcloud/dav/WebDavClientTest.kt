@@ -211,7 +211,7 @@ class WebDavClientTest {
 
         val result = dav.uploadChunkedV2(file, "/big2.bin")
 
-        assertEquals(507, ((result as AetherResult.Failure).error as AetherError.Http).code)
+        assertEquals(AetherResult.Failure(AetherError.InsufficientStorage), result)
         repeat(3) { server.takeRequest() }
         val cleanup = server.takeRequest()
         assertEquals("DELETE", cleanup.method)
@@ -293,6 +293,14 @@ class WebDavClientTest {
 
         assertEquals(AetherResult.Failure(AetherError.Locked), dav.delete(url("/locked.txt")))
         assertEquals(AetherResult.Failure(AetherError.Locked), dav.uploadFile(url("/locked.txt"), file, null))
+    }
+
+    @Test
+    fun `a full quota reports InsufficientStorage for upload`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(507))
+        val file = tmp.newFile("big.bin").apply { writeText("x") }
+
+        assertEquals(AetherResult.Failure(AetherError.InsufficientStorage), dav.uploadFile(url("/big.bin"), file, null))
     }
 
     @Test

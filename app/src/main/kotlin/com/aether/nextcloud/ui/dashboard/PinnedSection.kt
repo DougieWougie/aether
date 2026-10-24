@@ -48,6 +48,15 @@ import com.aether.nextcloud.data.local.entity.DocumentEntity
 import com.aether.nextcloud.ui.components.MorphingShapeBadge
 import com.aether.nextcloud.ui.components.groupedShape
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import android.util.Size
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import com.aether.nextcloud.AetherConstants
 
 /** Pin actions live in a FAB menu on the Pinned tab; "Files" stays reachable from it, as on the other tabs. */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
@@ -130,7 +139,17 @@ internal fun PinnedSection(
         pinned.forEachIndexed { index, doc ->
             Surface(shape = groupedShape(index, pinned.size), color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
                 Row(Modifier.padding(start = 16.dp, top = 12.dp, bottom = 12.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    MorphingShapeBadge(
+                    val context = LocalContext.current
+                    val preview by produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, doc.documentId, doc.etag) {
+                        value = if (doc.isDirectory || !doc.hasPreview) null else withContext(Dispatchers.IO) {
+                            runCatching {
+                                context.contentResolver.loadThumbnail(DocumentsContract.buildDocumentUri(AetherConstants.AUTHORITY, doc.documentId), Size(PREVIEW_PX, PREVIEW_PX), null).asImageBitmap()
+                            }.getOrNull()
+                        }
+                    }
+                    preview?.let {
+                        Image(it, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.size(48.dp).clip(RoundedCornerShape(14.dp)))
+                    } ?: MorphingShapeBadge(
                         shape = if (doc.isDirectory) MaterialShapes.Square else MaterialShapes.Cookie6Sided,
                         size = 48.dp,
                         container = MaterialTheme.colorScheme.secondaryContainer,
@@ -165,3 +184,5 @@ internal fun PinnedSection(
         }
     }
 }
+
+private const val PREVIEW_PX = 192

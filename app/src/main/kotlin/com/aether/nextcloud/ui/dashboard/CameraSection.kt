@@ -1,5 +1,7 @@
 package com.aether.nextcloud.ui.dashboard
 
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.res.pluralStringResource
 import com.aether.nextcloud.R
 import androidx.compose.ui.res.stringResource
@@ -52,6 +54,12 @@ internal fun CameraChip(text: String) {
 @Composable
 internal fun CameraSection(state: DashboardUiState) {
     var expanded by rememberSaveable { mutableStateOf(false) }
+    // Turning backup on is the end of setting it up, so fold the settings away and let the tile show the result.
+    var wasEnabled by remember { mutableStateOf(state.backup.enabled) }
+    LaunchedEffect(state.backup.enabled) {
+        if (state.backup.enabled && !wasEnabled) expanded = false
+        wasEnabled = state.backup.enabled
+    }
     val context = LocalContext.current
     val backup = state.backup
     val stats = state.backupStats
@@ -75,7 +83,11 @@ internal fun CameraSection(state: DashboardUiState) {
                             Text(unit, style = MaterialTheme.typography.headlineMediumEmphasized, modifier = Modifier.padding(bottom = 10.dp))
                         }
                         Text(
-                            if (stats.serverBytes != null) stringResource(R.string.camera_in_folder, backup.remoteFolder) else pluralStringResource(R.plurals.camera_items_on_phone, stats.totalCount, stats.totalCount),
+                            when {
+                                stats.serverBytes != null -> stringResource(R.string.camera_in_folder, backup.remoteFolder)
+                                stats.totalCount == 0 -> stringResource(R.string.camera_waiting)
+                                else -> pluralStringResource(R.plurals.camera_items_on_phone, stats.totalCount, stats.totalCount)
+                            },
                             style = MaterialTheme.typography.titleMedium,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -94,7 +106,8 @@ internal fun CameraSection(state: DashboardUiState) {
                     Icon(Icons.Outlined.PhotoCamera, contentDescription = null, tint = colors.onTertiary, modifier = Modifier.size(34.dp))
                 }
             }
-            if (backup.enabled) {
+            // The expanded settings show the album choice in full, so the summary chips would only repeat it.
+            if (backup.enabled && !expanded) {
                 val albums = backup.albums
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (albums == null) {

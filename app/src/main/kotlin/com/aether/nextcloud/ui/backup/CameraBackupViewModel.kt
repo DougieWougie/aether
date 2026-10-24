@@ -1,5 +1,8 @@
 package com.aether.nextcloud.ui.backup
 
+import com.aether.nextcloud.AetherConstants
+import android.provider.DocumentsContract
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.aether.nextcloud.auth.AccountRepository
@@ -97,6 +100,13 @@ class CameraBackupViewModel @Inject constructor(
     fun setAccount(accountName: String) = update { it.copy(accountName = accountName) }
 
     fun setFolder(folder: String) = update { it.copy(remoteFolder = DocumentId.normalizePath(folder.ifBlank { BackupSettings.DEFAULT_FOLDER })) }
+
+    /** Result of the system folder picker: only a folder inside Aether counts, and it also chooses the destination account. */
+    fun onFolderPicked(tree: Uri?) {
+        if (tree == null || tree.authority != AetherConstants.AUTHORITY) return
+        val folder = DocumentId.parseOrNull(DocumentsContract.getTreeDocumentId(tree)) ?: return
+        update { it.copy(accountName = folder.accountName, remoteFolder = folder.path) }
+    }
 
     fun setUnmeteredOnly(value: Boolean) = update { it.copy(unmeteredOnly = value) }
 

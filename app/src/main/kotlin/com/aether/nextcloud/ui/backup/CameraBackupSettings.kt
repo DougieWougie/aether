@@ -1,5 +1,11 @@
 package com.aether.nextcloud.ui.backup
 
+import com.aether.nextcloud.provider.DocumentId
+import com.aether.nextcloud.AetherConstants
+import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.outlined.FolderOpen
+import androidx.compose.material.icons.outlined.Check
+import android.provider.DocumentsContract
 import com.aether.nextcloud.ui.components.rememberNotificationPermissionRequest
 import com.aether.nextcloud.R
 import androidx.compose.ui.res.stringResource
@@ -108,6 +114,9 @@ fun CameraBackupSettings(modifier: Modifier = Modifier, viewModel: CameraBackupV
                             selected = account.accountName == settings.accountName,
                             onClick = { viewModel.setAccount(account.accountName) },
                             label = { Text(account.accountName) },
+                            leadingIcon = if (account.accountName == settings.accountName) {
+                                { Icon(Icons.Outlined.Check, contentDescription = null, modifier = Modifier.size(FilterChipDefaults.IconSize)) }
+                            } else null,
                         )
                     }
                 }
@@ -116,6 +125,8 @@ fun CameraBackupSettings(modifier: Modifier = Modifier, viewModel: CameraBackupV
 
         AlbumsCard(settings.albums, onClick = { viewModel.loadAlbums(); showAlbums = true })
 
+        val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { viewModel.onFolderPicked(it) }
+        val pickerAccount = settings.accountName ?: state.accounts.firstOrNull()?.accountName
         OutlinedTextField(
             value = folder,
             onValueChange = { folder = it },
@@ -123,6 +134,13 @@ fun CameraBackupSettings(modifier: Modifier = Modifier, viewModel: CameraBackupV
             label = { Text(stringResource(R.string.backup_destination)) },
             supportingText = { Text(stringResource(R.string.backup_destination_hint, folder)) },
             singleLine = true,
+            trailingIcon = pickerAccount?.let { account ->
+                {
+                    IconButton(onClick = { pickFolder.launch(DocumentsContract.buildDocumentUri(AetherConstants.AUTHORITY, DocumentId.root(account).toString())) }) {
+                        Icon(Icons.Outlined.FolderOpen, contentDescription = stringResource(R.string.backup_choose_folder))
+                    }
+                }
+            },
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = { viewModel.setFolder(folder) }),
         )
@@ -153,6 +171,6 @@ private fun OptionChip(label: String, icon: ImageVector, checked: Boolean, onCha
         selected = checked,
         onClick = { onChange(!checked) },
         label = { Text(label) },
-        leadingIcon = { Icon(icon, contentDescription = null, modifier = Modifier.size(FilterChipDefaults.IconSize)) },
+        leadingIcon = { Icon(if (checked) Icons.Outlined.Check else icon, contentDescription = null, modifier = Modifier.size(FilterChipDefaults.IconSize)) },
     )
 }

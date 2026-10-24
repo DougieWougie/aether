@@ -125,11 +125,12 @@ Significant changes to authentication, sync, provider behaviour or UI design mus
     upload is started from the share sheet.
   - **Fixed: the storage card dominated when it failed.** "Couldn't load / Not found" takes the top third of every tab and the
     message is terse. It is now a one-line banner with Retry.
-  - **Camera tile:** "All albums" appears twice (summary chip and Albums card); the settings stay expanded after
-    "Turn on backup" so "Done" is below the fold; the Files FAB overlaps the destination folder field; "0 items from
-    this phone" reads oddly before the first scan; the destination folder is free text with no folder picker.
-  - **Option chips** (Wi-Fi, Charging, Videos): selected and unselected differ only by tint and outline. Add a check
-    mark to selected chips.
+  - **Camera tile (mostly fixed):** "All albums" no longer repeats while settings are open; settings fold away when
+    backup is turned on, so "Done" is no longer below the fold; the pre-scan line reads "Waiting for new photos"; the
+    destination folder has a picker button (it opens the system picker on the account root, which asks Android for
+    folder access once: that prompt is the system's). Not changed: the Files FAB can overlap content while scrolling,
+    as floating buttons do; the list already leaves room below the last item.
+  - **Fixed: option chips** (Wi-Fi, Charging, Videos) and the account chips now show a check mark when selected.
   - **Pinned rows** show no state (downloaded? when?), and Unpin has no undo.
   - **Server field:** the helper text "HTTPS is used unless you say otherwise" is cryptic, and the example
     `cloud.example.com` only appears once the field is focused.

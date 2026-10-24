@@ -148,4 +148,6 @@
     <string name="tab_pinned">Pinned</string>
     <string name="tab_camera">Camera</string>
     <string name="tab_transfers">Transfers</string>
+    <string name="backup_choose_folder">Choose a folder</string>
+    <string name="camera_waiting">Waiting for new photos</string>
 </resources>

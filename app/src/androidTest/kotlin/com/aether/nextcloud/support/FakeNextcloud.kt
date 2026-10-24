@@ -32,6 +32,12 @@ class FakeNextcloud(val user: String = "alice") : AutoCloseable {
     /** When set, PUT answers 507. */
     @Volatile var quotaFull = false
 
+    /** When set, every request answers this status (401 for a revoked app password, 503 for an outage). */
+    @Volatile var forcedStatus: Int? = null
+
+    /** When set, GET answers 500 (a download that starts and fails). */
+    @Volatile var failDownloads = false
+
     /** Extra latency applied to every PUT, to make races observable. */
     @Volatile var putDelayMs = 0L
 
@@ -42,6 +48,7 @@ class FakeNextcloud(val user: String = "alice") : AutoCloseable {
         server.dispatcher = object : Dispatcher() {
             override fun dispatch(request: RecordedRequest): MockResponse {
                 requests += request
+                forcedStatus?.let { return MockResponse().setResponseCode(it) }
                 return runCatching { handle(request) }.getOrElse { MockResponse().setResponseCode(500).setBody(it.toString()) }
             }
         }
@@ -79,6 +86,16 @@ class FakeNextcloud(val user: String = "alice") : AutoCloseable {
         node.etag = nextEtag()
     }
 
+    fun delete(path: String) {
+        files.remove(path)
+        files.keys.filter { it.startsWith("$path/") }.forEach(files::remove)
+    }
+
+    /** Changes [path]'s ETag the way a real server does for a folder when anything below it changes. */
+    fun touchFolder(path: String) {
+        files.getValue(path).etag = nextEtag()
+    }
+
     fun requestsMatching(method: String, pathPrefix: String = "") =
         requests.filter { it.method == method && relative(it.path.orEmpty()).startsWith(pathPrefix) }
 
@@ -106,7 +123,7 @@ class FakeNextcloud(val user: String = "alice") : AutoCloseable {
 
     private fun files(request: RecordedRequest, path: String): MockResponse = when (request.method) {
         "PROPFIND" -> propfind(request, path)
-        "GET" -> files[path]?.takeUnless { it.dir }?.let {
+        "GET" -> if (failDownloads) MockResponse().setResponseCode(500) else files[path]?.takeUnless { it.dir }?.let {
             MockResponse().setBody(Buffer().write(it.bytes)).setHeader("ETag", "\"${it.etag}\"").setHeader("Content-Type", it.mime)
         } ?: MockResponse().setResponseCode(404)
         "PUT" -> put(request, path)

@@ -28,8 +28,15 @@ class DocumentDiskCache(
 
     fun pinnedFileFor(documentId: String): File = File(accountDir(pinnedDir, accountOf(documentId)), fileName(documentId))
 
-    fun thumbnailFor(accountName: String, fileId: String, size: Int): File =
-        File(accountDir(thumbnailsDir, accountName), "${fileId}_$size")
+    /** Keyed by [etag] as well, so a file changed on the server gets a new thumbnail instead of the old one. */
+    fun thumbnailFor(accountName: String, fileId: String, size: Int, etag: String?): File =
+        File(accountDir(thumbnailsDir, accountName), "${fileId}_${size}_${hash(etag.orEmpty()).take(12)}")
+
+    /** Deletes older thumbnails of the same file and size as [current], which was just stored for a newer ETag. */
+    fun removeOutdatedThumbnails(current: File) {
+        val prefix = current.name.substringBeforeLast('_') + "_"
+        current.parentFile?.listFiles { f -> f.isFile && f != current && f.name.startsWith(prefix) }?.forEach { it.delete() }
+    }
 
     fun newStagingFile(documentId: String): File {
         val dir = accountDir(stagingDir, accountOf(documentId)).apply { mkdirs() }

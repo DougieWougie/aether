@@ -4,12 +4,18 @@ import com.aether.nextcloud.auth.AetherCredentials
 import com.aether.nextcloud.core.AetherError
 import com.aether.nextcloud.core.AetherResult
 import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -102,6 +108,18 @@ class NextcloudOcsClientTest {
 
         assertEquals("PNGDATA", target.readText())
         assertTrue(server.takeRequest().path!!.contains("fileId=1050"))
+    }
+
+    @Test
+    fun `downloadPreview leaves no partial file when cancelled mid-download`() = runBlocking {
+        server.enqueue(MockResponse().setBody("x".repeat(200_000)).throttleBody(2_000, 50, java.util.concurrent.TimeUnit.MILLISECONDS))
+        val target = File(tmp.root, "thumbs/1050.png")
+
+        val download = launch(Dispatchers.IO) { ocs.downloadPreview(credentials, "1050", target) }
+        withTimeout(5_000) { while (!target.exists()) delay(10) }
+        download.cancelAndJoin()
+
+        assertFalse("a truncated thumbnail would be served as valid", target.exists())
     }
 
     @Test

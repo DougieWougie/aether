@@ -148,13 +148,36 @@ class DocumentDiskCacheTest {
 
     @Test
     fun `thumbnails are separated per account even for the same file id`() {
-        val a = cache.thumbnailFor("alice@h", "1050", 256)
-        val b = cache.thumbnailFor("bob@h", "1050", 256)
+        val a = cache.thumbnailFor("alice@h", "1050", 256, "etag")
+        val b = cache.thumbnailFor("bob@h", "1050", 256, "etag")
 
         assertNotEquals(a, b)
         assertNotEquals(a.parentFile, b.parentFile)
-        assertEquals("1050_256", a.name)
+        assertTrue(a.name.startsWith("1050_256_"))
         assertEquals(File(tmp.root, "thumbnails"), a.parentFile!!.parentFile)
+    }
+
+    @Test
+    fun `a changed etag gives a different thumbnail file`() {
+        val before = cache.thumbnailFor("alice@h", "1050", 256, "\"v1\"")
+        val after = cache.thumbnailFor("alice@h", "1050", 256, "\"v2\"")
+
+        assertNotEquals(before, after)
+        assertEquals(before, cache.thumbnailFor("alice@h", "1050", 256, "\"v1\""))
+    }
+
+    @Test
+    fun `outdated thumbnails of the same file and size are removed, others kept`() {
+        val old = write(cache.thumbnailFor("alice@h", "7", 256, "v1"))
+        val current = write(cache.thumbnailFor("alice@h", "7", 256, "v2"))
+        val otherSize = write(cache.thumbnailFor("alice@h", "7", 128, "v1"))
+        val otherFile = write(cache.thumbnailFor("alice@h", "77", 256, "v1"))
+        val otherAccount = write(cache.thumbnailFor("bob@h", "7", 256, "v1"))
+
+        cache.removeOutdatedThumbnails(current)
+
+        assertFalse(old.exists())
+        assertTrue(listOf(current, otherSize, otherFile, otherAccount).all { it.exists() })
     }
 
     private fun write(file: File, bytes: Int = 10): File = file.apply { parentFile!!.mkdirs(); writeBytes(ByteArray(bytes)) }
@@ -166,13 +189,13 @@ class DocumentDiskCacheTest {
             write(File(cache.cacheFileFor("alice@h:/b.txt").path + ".part")),
             write(cache.pinnedFileFor("alice@h:/p.txt")),
             cache.newStagingFile("alice@h:/s.txt").also { it.writeBytes(ByteArray(5)) },
-            write(cache.thumbnailFor("alice@h", "7", 128)),
+            write(cache.thumbnailFor("alice@h", "7", 128, "etag")),
         )
         val theirs = listOf(
             write(cache.cacheFileFor("bob@h:/a.txt")),
             write(cache.pinnedFileFor("bob@h:/p.txt")),
             cache.newStagingFile("bob@h:/s.txt").also { it.writeBytes(ByteArray(5)) },
-            write(cache.thumbnailFor("bob@h", "7", 128)),
+            write(cache.thumbnailFor("bob@h", "7", 128, "etag")),
         )
 
         cache.forgetAccount("alice@h")
@@ -236,7 +259,7 @@ class DocumentDiskCacheTest {
         DocumentDiskCache(File(tmp.root, "cache"), File(tmp.root, "pinned"), File(tmp.root, "staging"), maxCacheBytes = 1_000, maxThumbnailBytes = maxBytes)
 
     private fun thumbnail(cache: DocumentDiskCache, account: String, fileId: String, bytes: Int, age: Long): File =
-        write(cache.thumbnailFor(account, fileId, 256), bytes).apply { setLastModified(System.currentTimeMillis() - age) }
+        write(cache.thumbnailFor(account, fileId, 256, "etag"), bytes).apply { setLastModified(System.currentTimeMillis() - age) }
 
     @Test
     fun `thumbnails are trimmed oldest first across accounts until they fit`() {

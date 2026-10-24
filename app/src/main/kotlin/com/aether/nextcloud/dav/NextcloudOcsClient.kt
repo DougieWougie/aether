@@ -7,6 +7,9 @@ import com.aether.nextcloud.core.execute
 import com.aether.nextcloud.core.toError
 import java.io.File
 import java.io.IOException
+import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -109,11 +112,23 @@ class NextcloudOcsClient(
             if (!response.isSuccessful) return@execute AetherResult.Failure(response.toError())
             try {
                 target.parentFile?.mkdirs()
-                target.outputStream().use { out -> response.body.byteStream().copyTo(out) }
+                target.outputStream().use { out ->
+                    val buffer = ByteArray(COPY_BUFFER_BYTES)
+                    val body = response.body.byteStream()
+                    while (true) {
+                        currentCoroutineContext().ensureActive()
+                        val read = body.read(buffer)
+                        if (read < 0) break
+                        out.write(buffer, 0, read)
+                    }
+                }
                 AetherResult.Success(Unit)
             } catch (e: IOException) {
                 target.delete()
                 AetherResult.Failure(AetherError.Network(e))
+            } catch (e: CancellationException) {
+                target.delete()
+                throw e
             }
         }
     }
@@ -160,5 +175,6 @@ class NextcloudOcsClient(
     companion object {
         const val PREVIEW_SIZE = 256
         const val AVATAR_SIZE = 192
+        private const val COPY_BUFFER_BYTES = 8 * 1024
     }
 }

@@ -193,7 +193,12 @@ com.aether.nextcloud/
 
 # Run Android lint checks
 ./gradlew lintDebug
+
+# Run instrumented tests (needs a running emulator or device; `android emulator start <avd>`)
+./gradlew connectedDebugAndroidTest
 ```
+
+Instrumented tests (`app/src/androidTest`) run the real app graph against `support/FakeNextcloud`, an in-memory WebDAV server on loopback. Debug builds allow cleartext to `localhost`/`127.0.0.1` only (`app/src/debug`) so the tests can reach it; release builds do not.
 
 ---
 

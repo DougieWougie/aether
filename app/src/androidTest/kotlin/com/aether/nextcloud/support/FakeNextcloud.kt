@@ -15,7 +15,7 @@ import okio.Buffer
  * builds allow in cleartext (`app/src/debug`).
  */
 class FakeNextcloud(val user: String = "alice") : AutoCloseable {
-    class Node(val dir: Boolean, var bytes: ByteArray = ByteArray(0), var fileId: Long, var etag: String, var mtime: Long, var mime: String = "application/octet-stream")
+    class Node(val dir: Boolean, var bytes: ByteArray = ByteArray(0), var fileId: Long, var etag: String, var mtime: Long, var mime: String = "application/octet-stream", var checksum: String? = null)
 
     private val server = MockWebServer()
     private val files = ConcurrentHashMap<String, Node>()
@@ -52,9 +52,10 @@ class FakeNextcloud(val user: String = "alice") : AutoCloseable {
 
     fun putFile(path: String, text: String, mime: String = "text/plain") = putFile(path, text.toByteArray(), mime)
 
-    fun putFile(path: String, bytes: ByteArray, mime: String = "application/octet-stream") {
+    /** [checksum] is the `SHA1:<hex>` form Nextcloud reports in `oc:checksums`; null means the server has none. */
+    fun putFile(path: String, bytes: ByteArray, mime: String = "application/octet-stream", checksum: String? = null) {
         mkdirs(path.substringBeforeLast('/', "/"))
-        files[path] = Node(dir = false, bytes = bytes, fileId = nextId++, etag = nextEtag(), mtime = NOW, mime = mime)
+        files[path] = Node(dir = false, bytes = bytes, fileId = nextId++, etag = nextEtag(), mtime = NOW, mime = mime, checksum = checksum)
     }
 
     fun mkdirs(path: String) {
@@ -133,7 +134,7 @@ class FakeNextcloud(val user: String = "alice") : AutoCloseable {
         val existing = files[path]
         request.getHeader("If-Match")?.let { if (existing == null || "\"${existing.etag}\"" != it) return MockResponse().setResponseCode(412) }
         if (request.getHeader("If-None-Match") == "*" && existing != null) return MockResponse().setResponseCode(412)
-        val node = Node(dir = false, bytes = request.body.readByteArray(), fileId = existing?.fileId ?: nextId++, etag = nextEtag(), mtime = NOW, mime = request.getHeader("Content-Type") ?: "application/octet-stream")
+        val node = Node(dir = false, bytes = request.body.readByteArray(), fileId = existing?.fileId ?: nextId++, etag = nextEtag(), mtime = NOW, mime = request.getHeader("Content-Type") ?: "application/octet-stream", checksum = request.getHeader("OC-Checksum"))
         files[path] = node
         return MockResponse().setResponseCode(if (existing == null) 201 else 204).setHeader("OC-ETag", "\"${node.etag}\"").setHeader("OC-FileId", node.fileId.toString())
     }
@@ -199,6 +200,7 @@ class FakeNextcloud(val user: String = "alice") : AutoCloseable {
                 append("<d:getlastmodified>Mon, 01 Jan 2024 00:00:00 GMT</d:getlastmodified>")
                 append("<d:getetag>&quot;${n.etag}&quot;</d:getetag>")
                 append("<oc:fileid>${n.fileId}</oc:fileid><oc:permissions>${if (n.dir) "RGDNVCK" else "RGDNVW"}</oc:permissions>")
+                n.checksum?.let { append("<oc:checksums><oc:checksum>$it</oc:checksum></oc:checksums>") }
                 append("<oc:size>${if (n.dir) 0 else n.bytes.size}</oc:size><nc:has-preview>false</nc:has-preview><oc:favorite>0</oc:favorite>")
                 append("</d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>")
             }

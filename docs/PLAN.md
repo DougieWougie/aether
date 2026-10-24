@@ -115,12 +115,13 @@ Significant changes to authentication, sync, provider behaviour or UI design mus
 
 ## Phase 5: Test coverage
 
-- [ ] Add an `androidTest` source set (instrumented tests).
-- [ ] `AetherDocumentsProvider`: query roots, list children, open for read, open for write then upload, rename,
-  move, delete, against `MockWebServer`.
-- [ ] `UploadDocumentWorker`: `If-Match` conflict producing a conflict copy; chunked upload path.
-- [ ] `CameraBackupWorker`: album filter, since-timestamp, duplicate detection.
-- [ ] Add the instrumented tests to CI (emulator job), or document how to run them locally.
+- [x] Add an `androidTest` source set (instrumented tests).
+- [x] `AetherDocumentsProvider`: query roots, list children, open for read, open for write then upload, rename,
+  move, delete, against `MockWebServer`. Uses a small in-memory fake Nextcloud (`support/FakeNextcloud`) instead of
+  scripted responses, so background refreshes do not make tests order-dependent.
+- [x] `UploadDocumentWorker`: `If-Match` conflict producing a conflict copy; chunked upload path.
+- [x] `CameraBackupWorker`: album filter, since-timestamp, duplicate detection.
+- [x] Add the instrumented tests to CI (emulator job), or document how to run them locally.
 
 ---
 

@@ -108,8 +108,33 @@ Significant changes to authentication, sync, provider behaviour or UI design mus
   show the reason in their dashboard row. Listings already used `EXTRA_ERROR`.
 - [x] **Accessibility:** check content descriptions, TalkBack order, touch target sizes and font scaling. Done by code review (merged semantics, gauge and transfer icon descriptions).
   Font scaling and TalkBack order are not verified on a device; do that in the usability check.
-- [ ] **Usability check:** run the app and walk through first sign-in, first pin, first backup and sign-out as a new
+- [x] **Usability check:** run the app and walk through first sign-in, first pin, first backup and sign-out as a new
   user. Record friction found.
+
+  Walked through on an emulator (API 36) on 2026-10-24: first sign-in screen, first pin, camera backup setup,
+  sign-out and a 2.0 font scale on the login screen. The sign-in itself could not be completed (no real server, and the
+  fake one has no Login Flow v2), so the account was seeded against the fake Nextcloud from the instrumented tests.
+  Worked well: system pickers and permission prompts appear at the moment of intent; the pin flow ends on a clear
+  "Kept on this device" row; login scales to 2.0 without clipping. Friction found, most useful first:
+
+  - **Raw network error on the login screen.** An unreachable server shows `Failed to connect to /10.0.2.2:9`, the
+    exception text. Say what happened ("Couldn't reach that server. Check the address and your connection.").
+  - **Sign-out is one tap with no confirmation** and no hint that pinned files and queued uploads for the account are
+    removed. Add a confirmation dialog that says so.
+  - **Notification permission is asked for on first arrival at the dashboard**, with no context. Ask when the first
+    transfer or backup starts, or explain first.
+  - **The storage card dominates when it fails.** "Couldn't load / Not found" takes the top third of every tab and the
+    message is terse. Collapse it to a one-line banner with Retry.
+  - **Camera tile:** "All albums" appears twice (summary chip and Albums card); the settings stay expanded after
+    "Turn on backup" so "Done" is below the fold; the Files FAB overlaps the destination folder field; "0 items from
+    this phone" reads oddly before the first scan; the destination folder is free text with no folder picker.
+  - **Option chips** (Wi-Fi, Charging, Videos): selected and unselected differ only by tint and outline. Add a check
+    mark to selected chips.
+  - **Pinned rows** show no state (downloaded? when?), and Unpin has no undo.
+  - **Server field:** the helper text "HTTPS is used unless you say otherwise" is cryptic, and the example
+    `cloud.example.com` only appears once the field is focused.
+  - The system file picker opened by "Pin files" carries no hint about what the selection is for.
+  - TalkBack order was not checked; it needs a screen reader session.
 
 ---
 
@@ -127,4 +152,4 @@ Significant changes to authentication, sync, provider behaviour or UI design mus
 
 ## Status
 
-Phases 1 to 5 are done except the Phase 4 usability walkthrough, which needs a person using the app on a device.
+Phases 1 to 5 are done. The usability walkthrough produced a list of friction points (under Phase 4); none are fixed yet.

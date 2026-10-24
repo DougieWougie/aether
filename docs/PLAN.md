@@ -117,9 +117,9 @@ Significant changes to authentication, sync, provider behaviour or UI design mus
   Worked well: system pickers and permission prompts appear at the moment of intent; the pin flow ends on a clear
   "Kept on this device" row; login scales to 2.0 without clipping. Friction found, most useful first:
 
-  - **Raw network error on the login screen.** An unreachable server shows `Failed to connect to /10.0.2.2:9`, the
+  - **Fixed: raw network error on the login screen.** An unreachable server shows `Failed to connect to /10.0.2.2:9`, the
     exception text. Say what happened ("Couldn't reach that server. Check the address and your connection.").
-  - **Sign-out is one tap with no confirmation** and no hint that pinned files and queued uploads for the account are
+  - **Fixed: sign-out was one tap with no confirmation** and no hint that pinned files and queued uploads for the account are
     removed. Add a confirmation dialog that says so.
   - **Notification permission is asked for on first arrival at the dashboard**, with no context. Ask when the first
     transfer or backup starts, or explain first.

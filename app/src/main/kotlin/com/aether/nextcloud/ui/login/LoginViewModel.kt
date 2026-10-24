@@ -123,7 +123,7 @@ class LoginViewModel @Inject constructor(
 
     private fun fail(error: AetherError) {
         clearSession()
-        val message = if (error == AetherError.Timeout) context.getString(R.string.login_timed_out) else error.describe()
+        val message = error.loginMessageRes()?.let(context::getString) ?: error.describe()
         _state.update { it.copy(phase = LoginPhase.Failed(message)) }
     }
 

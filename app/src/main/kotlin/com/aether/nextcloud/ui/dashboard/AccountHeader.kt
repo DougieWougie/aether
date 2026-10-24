@@ -1,5 +1,7 @@
 package com.aether.nextcloud.ui.dashboard
 
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.AlertDialog
 import com.aether.nextcloud.R
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -88,6 +90,16 @@ internal fun AccountMenu(
     onDirectShareChange: (Boolean) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
+    var confirmSignOut by remember { mutableStateOf<String?>(null) }
+    confirmSignOut?.let { name ->
+        AlertDialog(
+            onDismissRequest = { confirmSignOut = null },
+            title = { Text(stringResource(R.string.sign_out_title, name)) },
+            text = { Text(stringResource(R.string.sign_out_body)) },
+            confirmButton = { TextButton(onClick = { confirmSignOut = null; onSignOut(name) }) { Text(stringResource(R.string.sign_out_confirm)) } },
+            dismissButton = { TextButton(onClick = { confirmSignOut = null }) { Text(stringResource(R.string.action_cancel)) } },
+        )
+    }
     Box {
         IconButton(onClick = { expanded = true }) { Icon(Icons.Outlined.MoreVert, contentDescription = stringResource(R.string.accounts_description)) }
         DropdownMenu(expanded, onDismissRequest = { expanded = false }) {
@@ -110,7 +122,7 @@ internal fun AccountMenu(
                 DropdownMenuItem(
                     text = { Text(stringResource(R.string.account_sign_out, account.accountName)) },
                     leadingIcon = { Icon(Icons.AutoMirrored.Outlined.Logout, contentDescription = null) },
-                    onClick = { expanded = false; onSignOut(account.accountName) },
+                    onClick = { expanded = false; confirmSignOut = account.accountName },
                 )
             }
         }

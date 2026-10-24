@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
+    jacoco
 }
 
 android {
@@ -20,6 +21,10 @@ android {
     }
 
     buildTypes {
+        debug {
+            enableUnitTestCoverage = true
+            enableAndroidTestCoverage = true
+        }
         release {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
@@ -35,6 +40,9 @@ android {
         compose = true
         buildConfig = true
     }
+
+    // Exported Room schemas, so the migration test can open the database as an older version created it.
+    sourceSets.getByName("androidTest").assets.srcDir("$projectDir/schemas")
 
     testOptions {
         // android.util.* and friends return defaults instead of throwing in plain JVM tests.
@@ -86,6 +94,7 @@ dependencies {
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
+    androidTestImplementation(libs.androidx.room.testing)
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.work.testing)
@@ -95,4 +104,31 @@ dependencies {
 
 ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
+}
+
+jacoco {
+    toolVersion = "0.8.13"
+}
+
+// One report from both test suites. Run the tests first: ./gradlew testDebugUnitTest connectedDebugAndroidTest coverageReport
+tasks.register<JacocoReport>("coverageReport") {
+    group = "verification"
+    description = "Merges JVM and instrumented test coverage into build/reports/coverage/combined."
+
+    val generated = listOf(
+        "**/R.class", "**/R$*.class", "**/BuildConfig.*", "**/Manifest*.*",
+        "**/*_Factory*", "**/Dagger*", "**/AetherApp_*", "**/di/AppModule_*", "**/*_GeneratedInjector*", "**/*_HiltModules*", "**/*_MembersInjector*", "**/*_Impl*", "**/Hilt_*", "**/dagger/**", "**/hilt_aggregated_deps/**",
+        "**/*ComposableSingletons*", "**/*\$\$inlined*", "**/*\$Lambda*",
+    )
+    classDirectories.setFrom(fileTree(layout.buildDirectory.dir("intermediates/classes/debug/transformDebugClassesWithAsm/dirs")) { exclude(generated) })
+    sourceDirectories.setFrom(layout.projectDirectory.dir("src/main/kotlin"))
+    executionData.setFrom(
+        fileTree(layout.buildDirectory) { include("outputs/unit_test_code_coverage/**/*.exec", "outputs/code_coverage/**/*.ec") },
+    )
+    reports {
+        html.required = true
+        xml.required = true
+        html.outputLocation = layout.buildDirectory.dir("reports/coverage/combined")
+        xml.outputLocation = layout.buildDirectory.file("reports/coverage/combined.xml")
+    }
 }

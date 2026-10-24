@@ -196,6 +196,9 @@ com.aether.nextcloud/
 
 # Run instrumented tests (needs a running emulator or device; `android emulator start <avd>`)
 ./gradlew connectedDebugAndroidTest
+
+# Combined JVM + instrumented coverage (run both test tasks first); HTML in app/build/reports/coverage/combined
+./gradlew coverageReport
 ```
 
 Instrumented tests (`app/src/androidTest`) run the real app graph against `support/FakeNextcloud`, an in-memory WebDAV server on loopback. Debug builds allow cleartext to `localhost`/`127.0.0.1` only (`app/src/debug`) so the tests can reach it; release builds do not.

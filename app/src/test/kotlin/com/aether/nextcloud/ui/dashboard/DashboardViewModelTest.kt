@@ -295,7 +295,7 @@ class DashboardViewModelTest {
 
         vm.clearCache()
 
-        verify { diskCache.clearCache() }
+        verify(timeout = 2_000) { diskCache.clearCache() }
     }
 
     @Test

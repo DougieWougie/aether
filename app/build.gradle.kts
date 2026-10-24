@@ -114,6 +114,8 @@ jacoco {
 tasks.register<JacocoReport>("coverageReport") {
     group = "verification"
     description = "Merges JVM and instrumented test coverage into build/reports/coverage/combined."
+    // Reads the test results and the instrumented classes, so it must come after them when run in the same invocation.
+    mustRunAfter("testDebugUnitTest", "connectedDebugAndroidTest", "transformDebugClassesWithAsm")
 
     val generated = listOf(
         "**/R.class", "**/R$*.class", "**/BuildConfig.*", "**/Manifest*.*",

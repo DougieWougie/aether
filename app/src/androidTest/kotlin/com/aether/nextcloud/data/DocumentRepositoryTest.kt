@@ -329,4 +329,34 @@ class DocumentRepositoryTest {
         assertNull(documents.cached(id("/a.txt")))
         assertFalse(file.exists())
     }
+
+    @Test
+    fun listingAFolderThatNoLongerExistsForgetsIt() {
+        env.nextcloud.putFile("/Docs/a.txt", "a")
+        list()
+        list("/Docs")
+        env.nextcloud.delete("/Docs")
+
+        val error = failure(runBlocking { documents.refreshChildren(credentials, id("/Docs")) })
+
+        assertEquals(AetherError.NotFound, error)
+        assertNull(documents.cached(id("/Docs")))
+        assertNull(documents.cached(id("/Docs/a.txt")))
+    }
+
+    @Test
+    fun creatingThingsFailsCleanlyWhenTheServerCannotCheckNames() {
+        env.nextcloud.forcedStatus = 500
+
+        assertTrue(failure(runBlocking { documents.createDirectory(credentials, root, "Photos") }) is AetherError.Http)
+        assertTrue(failure(runBlocking { documents.createEmptyFile(credentials, root, "a.txt", "text/plain") }) is AetherError.Http)
+    }
+
+    @Test
+    fun givesUpFindingAFreeNameAfterManyAttempts() {
+        env.nextcloud.putFile("/a.txt", "x")
+        (1..100).forEach { env.nextcloud.putFile("/a ($it).txt", "x") }
+
+        assertTrue(failure(runBlocking { documents.uniqueChild(credentials, root, "a.txt") }) is AetherError.Malformed)
+    }
 }

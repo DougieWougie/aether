@@ -15,7 +15,7 @@ import okio.Buffer
  * builds allow in cleartext (`app/src/debug`).
  */
 class FakeNextcloud(val user: String = "alice") : AutoCloseable {
-    class Node(val dir: Boolean, var bytes: ByteArray = ByteArray(0), var fileId: Long, var etag: String, var mtime: Long, var mime: String = "application/octet-stream", var checksum: String? = null)
+    class Node(val dir: Boolean, var bytes: ByteArray = ByteArray(0), var fileId: Long, var etag: String, var mtime: Long, var mime: String = "application/octet-stream", var checksum: String? = null, var preview: Boolean = false, var readOnly: Boolean = false)
 
     private val server = MockWebServer()
     private val files = ConcurrentHashMap<String, Node>()
@@ -38,6 +38,15 @@ class FakeNextcloud(val user: String = "alice") : AutoCloseable {
     /** When set, GET answers 500 (a download that starts and fails). */
     @Volatile var failDownloads = false
 
+    /** Per HTTP method, a status to answer instead of handling the request (for example `PROPFIND` to 500). */
+    val statusByMethod: MutableMap<String, Int> = ConcurrentHashMap()
+
+    /** When set, folder listings (PROPFIND with Depth 1) answer 500 while single-document lookups still work. */
+    @Volatile var failListings = false
+
+    /** Statuses for the next PUTs, consumed in order (for example 412 then 507); an empty queue means normal handling. */
+    val putScript: java.util.Queue<Int> = java.util.concurrent.ConcurrentLinkedQueue()
+
     /** What `/ocs/v2.php/cloud/user` reports; [quotaTotal] null means unlimited. */
     @Volatile var displayName = "Alice Example"
     @Volatile var quotaUsed = 25_000_000L
@@ -54,6 +63,7 @@ class FakeNextcloud(val user: String = "alice") : AutoCloseable {
             override fun dispatch(request: RecordedRequest): MockResponse {
                 requests += request
                 forcedStatus?.let { return MockResponse().setResponseCode(it) }
+                statusByMethod[request.method]?.let { return MockResponse().setResponseCode(it) }
                 return runCatching { handle(request) }.getOrElse { MockResponse().setResponseCode(500).setBody(it.toString()) }
             }
         }
@@ -69,6 +79,12 @@ class FakeNextcloud(val user: String = "alice") : AutoCloseable {
         mkdirs(path.substringBeforeLast('/', "/"))
         files[path] = Node(dir = false, bytes = bytes, fileId = nextId++, etag = nextEtag(), mtime = NOW, mime = mime, checksum = checksum)
     }
+
+    /** Marks [path] as having a server-side preview (`nc:has-preview`), served at `/index.php/core/preview`. */
+    fun withPreview(path: String) { files.getValue(path).preview = true }
+
+    /** Takes the write permission away from [path], as a share with read-only access does. */
+    fun makeReadOnly(path: String) { files.getValue(path).readOnly = true }
 
     fun mkdirs(path: String) {
         var current = ""
@@ -114,6 +130,10 @@ class FakeNextcloud(val user: String = "alice") : AutoCloseable {
         return when {
             path.startsWith("/remote.php/dav/uploads/$user/") -> uploads(request, path.removePrefix("/remote.php/dav/uploads/$user/"))
             path.startsWith("/remote.php/dav/files/$user") -> files(request, normalise(path.removePrefix("/remote.php/dav/files/$user")))
+            path == "/index.php/core/preview" -> {
+                val fileId = request.requestUrl?.queryParameter("fileId")
+                if (files.values.any { it.fileId.toString() == fileId && it.preview }) MockResponse().setHeader("Content-Type", "image/png").setBody("PREVIEW-$fileId") else MockResponse().setResponseCode(404)
+            }
             path == "/ocs/v2.php/cloud/user" -> MockResponse().setHeader("Content-Type", "application/json").setBody(
                 """{"ocs":{"meta":{"status":"ok"},"data":{"id":"$user","display-name":"$displayName","quota":{"used":$quotaUsed,"free":${quotaTotal?.let { it - quotaUsed } ?: -3},"total":${quotaTotal ?: 0},"quota":${quotaTotal ?: "\"none\""}}}}}""",
             )
@@ -131,7 +151,7 @@ class FakeNextcloud(val user: String = "alice") : AutoCloseable {
     }
 
     private fun files(request: RecordedRequest, path: String): MockResponse = when (request.method) {
-        "PROPFIND" -> propfind(request, path)
+        "PROPFIND" -> if (failListings && request.getHeader("Depth") == "1") MockResponse().setResponseCode(500) else propfind(request, path)
         "GET" -> if (failDownloads) MockResponse().setResponseCode(500) else files[path]?.takeUnless { it.dir }?.let {
             MockResponse().setBody(Buffer().write(it.bytes)).setHeader("ETag", "\"${it.etag}\"").setHeader("Content-Type", it.mime)
         } ?: MockResponse().setResponseCode(404)
@@ -154,6 +174,7 @@ class FakeNextcloud(val user: String = "alice") : AutoCloseable {
 
     private fun put(request: RecordedRequest, path: String): MockResponse {
         if (putDelayMs > 0) Thread.sleep(putDelayMs)
+        putScript.poll()?.let { return MockResponse().setResponseCode(it) }
         if (quotaFull) return MockResponse().setResponseCode(507)
         if (path in locked) return MockResponse().setResponseCode(423)
         if (parentMissing(path)) return MockResponse().setResponseCode(409)
@@ -225,9 +246,9 @@ class FakeNextcloud(val user: String = "alice") : AutoCloseable {
                 if (!n.dir) append("<d:getcontentlength>${n.bytes.size}</d:getcontentlength><d:getcontenttype>${n.mime}</d:getcontenttype>")
                 append("<d:getlastmodified>Mon, 01 Jan 2024 00:00:00 GMT</d:getlastmodified>")
                 append("<d:getetag>&quot;${n.etag}&quot;</d:getetag>")
-                append("<oc:fileid>${n.fileId}</oc:fileid><oc:permissions>${if (n.dir) "RGDNVCK" else "RGDNVW"}</oc:permissions>")
+                append("<oc:fileid>${n.fileId}</oc:fileid><oc:permissions>${if (n.dir) "RGDNVCK" else if (n.readOnly) "RGDNV" else "RGDNVW"}</oc:permissions>")
                 n.checksum?.let { append("<oc:checksums><oc:checksum>$it</oc:checksum></oc:checksums>") }
-                append("<oc:size>${if (n.dir) 0 else n.bytes.size}</oc:size><nc:has-preview>false</nc:has-preview><oc:favorite>0</oc:favorite>")
+                append("<oc:size>${if (n.dir) 0 else n.bytes.size}</oc:size><nc:has-preview>${n.preview}</nc:has-preview><oc:favorite>0</oc:favorite>")
                 append("</d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>")
             }
             append("</d:multistatus>")

@@ -199,6 +199,38 @@ class PinnedSyncWorkerTest {
     }
 
     @Test
+    fun aFolderThatCannotBeListedIsReportedAndRetriedWithoutBeingMarkedSynced() {
+        env.nextcloud.putFile("/Docs/a.txt", "a")
+        pin("/Docs")
+        env.nextcloud.failListings = true
+
+        assertEquals(ListenableWorker.Result.retry(), runWorker())
+
+        assertNull(pinnedBytes("/Docs/a.txt"))
+        env.nextcloud.failListings = false
+        assertEquals(ListenableWorker.Result.success(), runWorker())
+        assertEquals("a", pinnedBytes("/Docs/a.txt")?.decodeToString())
+    }
+
+    @Test
+    fun anExpeditedSyncRunsAsAForegroundJob() {
+        env.nextcloud.putFile("/notes.txt", "hello")
+        pin("/notes.txt")
+        val graph = env.graph
+        val factory = object : WorkerFactory() {
+            override fun createWorker(appContext: Context, workerClassName: String, workerParameters: WorkerParameters) =
+                PinnedSyncWorker(appContext, workerParameters, graph.accounts(), graph.documents(), graph.database(), graph.notifications(), graph.authIssues())
+        }
+
+        val result = runBlocking {
+            TestListenableWorkerBuilder<PinnedSyncWorker>(env.context).setWorkerFactory(factory).setInputData(androidx.work.workDataOf("foreground" to true)).build().doWork()
+        }
+
+        assertEquals(ListenableWorker.Result.success(), result)
+        assertEquals("hello", pinnedBytes("/notes.txt")?.decodeToString())
+    }
+
+    @Test
     fun accountsWithoutCredentialsAreSkipped() {
         env.nextcloud.putFile("/notes.txt", "hello")
         pin("/notes.txt")

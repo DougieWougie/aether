@@ -51,7 +51,8 @@ class TransferNotificationHelper @Inject constructor(
         return ForegroundInfo(notificationId(workId), notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
     }
 
-    fun notifyConflict(originalName: String, conflictName: String) {
+    /** Posted under the account name as its tag, so [cancelConflicts] can remove it when the account signs out. */
+    fun notifyConflict(accountName: String, originalName: String, conflictName: String) {
         ensureChannels()
         val notification: Notification = NotificationCompat.Builder(context, CHANNEL_CONFLICTS)
             .setSmallIcon(R.drawable.ic_stat_transfer)
@@ -61,7 +62,12 @@ class TransferNotificationHelper @Inject constructor(
             .setAutoCancel(true)
             .setContentIntent(openApp())
             .build()
-        manager.notify(("conflict:$conflictName").hashCode(), notification)
+        manager.notify(accountName, ("conflict:$conflictName").hashCode(), notification)
+    }
+
+    /** Removes the conflict alerts of [accountName]; they name its files. */
+    fun cancelConflicts(accountName: String) {
+        manager.activeNotifications.filter { it.tag == accountName }.forEach { manager.cancel(it.tag, it.id) }
     }
 
     private fun openApp(): PendingIntent = PendingIntent.getActivity(

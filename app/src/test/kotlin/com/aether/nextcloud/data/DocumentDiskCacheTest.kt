@@ -116,7 +116,7 @@ class DocumentDiskCacheTest {
         val one = cache.newStagingFile("a@h:/f.txt")
         val two = cache.newStagingFile("a@h:/f.txt")
         assertNotEquals(one, two)
-        assertEquals(File(tmp.root, "staging"), one.parentFile)
+        assertEquals(File(tmp.root, "staging/${DocumentDiskCache.accountKey("a@h")}"), one.parentFile)
         cache.clearCache()
         assertTrue(one.exists())
     }
@@ -125,5 +125,110 @@ class DocumentDiskCacheTest {
     fun `isPinnedFile distinguishes the two stores`() {
         assertTrue(cache.isPinnedFile(cache.pinnedFileFor("x")))
         assertFalse(cache.isPinnedFile(cache.cacheFileFor("x")))
+    }
+
+    @Test
+    fun `files are grouped per account and never share a directory`() {
+        val alice = cache.cacheFileFor("alice@h:/f.txt")
+        val bob = cache.cacheFileFor("bob@h:/f.txt")
+
+        assertEquals(File(tmp.root, "cache/${DocumentDiskCache.accountKey("alice@h")}"), alice.parentFile)
+        assertNotEquals(alice.parentFile, bob.parentFile)
+        assertEquals(File(tmp.root, "pinned/${DocumentDiskCache.accountKey("alice@h")}"), cache.pinnedFileFor("alice@h:/f.txt").parentFile)
+        assertFalse(alice.parentFile!!.name.contains("alice"))
+    }
+
+    @Test
+    fun `an account with a port in its name is still grouped by the whole name`() {
+        assertEquals(
+            File(tmp.root, "cache/${DocumentDiskCache.accountKey("alice@h:8443")}"),
+            cache.cacheFileFor("alice@h:8443:/f.txt").parentFile,
+        )
+    }
+
+    @Test
+    fun `thumbnails are separated per account even for the same file id`() {
+        val a = cache.thumbnailFor("alice@h", "1050", 256)
+        val b = cache.thumbnailFor("bob@h", "1050", 256)
+
+        assertNotEquals(a, b)
+        assertNotEquals(a.parentFile, b.parentFile)
+        assertEquals("1050_256", a.name)
+        assertEquals(File(tmp.root, "thumbnails"), a.parentFile!!.parentFile)
+    }
+
+    private fun write(file: File, bytes: Int = 10): File = file.apply { parentFile!!.mkdirs(); writeBytes(ByteArray(bytes)) }
+
+    @Test
+    fun `forgetAccount removes everything the account has on disk and nothing else`() {
+        val mine = listOf(
+            write(cache.cacheFileFor("alice@h:/a.txt")),
+            write(File(cache.cacheFileFor("alice@h:/b.txt").path + ".part")),
+            write(cache.pinnedFileFor("alice@h:/p.txt")),
+            cache.newStagingFile("alice@h:/s.txt").also { it.writeBytes(ByteArray(5)) },
+            write(cache.thumbnailFor("alice@h", "7", 128)),
+        )
+        val theirs = listOf(
+            write(cache.cacheFileFor("bob@h:/a.txt")),
+            write(cache.pinnedFileFor("bob@h:/p.txt")),
+            cache.newStagingFile("bob@h:/s.txt").also { it.writeBytes(ByteArray(5)) },
+            write(cache.thumbnailFor("bob@h", "7", 128)),
+        )
+
+        cache.forgetAccount("alice@h")
+
+        assertTrue(mine.none { it.exists() })
+        assertTrue(theirs.all { it.exists() })
+        assertFalse("account directories are removed too", File(tmp.root, "cache/${DocumentDiskCache.accountKey("alice@h")}").exists())
+    }
+
+    @Test
+    fun `forgetAccount also drops thumbnails from before the per-account layout`() {
+        val legacy = write(File(tmp.root, "thumbnails/12345_7_128"))
+
+        cache.forgetAccount("alice@h")
+
+        assertFalse(legacy.exists())
+    }
+
+    @Test
+    fun `forgetAccount is harmless when the account has no files`() {
+        cache.forgetAccount("nobody@h")
+        assertEquals(0, cache.cacheSizeBytes())
+    }
+
+    @Test
+    fun `sizes and trimming see files in account directories and old flat files alike`() {
+        val old = cached("legacy", 60, 30_000)
+        val fresh = write(cache.cacheFileFor("alice@h:/new.bin"), 60).apply { setLastModified(System.currentTimeMillis()) }
+        val pinned = write(cache.pinnedFileFor("alice@h:/p.bin"), 25)
+
+        assertEquals(120, cache.cacheSizeBytes())
+        assertEquals(25, cache.pinnedSizeBytes())
+
+        val evicted = cache.trimToSize()
+
+        assertEquals(listOf(old), evicted)
+        assertTrue(fresh.exists() && pinned.exists())
+    }
+
+    @Test
+    fun `clearCache empties account directories but keeps pinned and staged files`() {
+        val cachedFile = write(cache.cacheFileFor("alice@h:/a.txt"))
+        val pinned = write(cache.pinnedFileFor("alice@h:/p.txt"))
+        val staged = cache.newStagingFile("alice@h:/s.txt")
+
+        cache.clearCache()
+
+        assertFalse(cachedFile.exists())
+        assertTrue(pinned.exists() && staged.exists())
+        assertEquals(0, cache.cacheSizeBytes())
+    }
+
+    @Test
+    fun `isPinnedFile recognises pinned files in account directories and the old flat layout`() {
+        assertTrue(cache.isPinnedFile(cache.pinnedFileFor("alice@h:/p.txt")))
+        assertTrue(cache.isPinnedFile(File(tmp.root, "pinned/legacy")))
+        assertFalse(cache.isPinnedFile(cache.cacheFileFor("alice@h:/p.txt")))
     }
 }

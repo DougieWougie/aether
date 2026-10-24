@@ -36,7 +36,6 @@ import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
-import java.io.File
 import java.io.FileNotFoundException
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CancellationException
@@ -236,7 +235,7 @@ class AetherDocumentsProvider : DocumentsProvider() {
         val entity = documents.cached(id) ?: throw FileNotFoundException("Unknown document $documentId")
         val fileId = entity.fileId?.takeIf { entity.hasPreview } ?: throw FileNotFoundException("No preview for $documentId")
         val size = maxOf(sizeHint.x, sizeHint.y).coerceIn(MIN_THUMBNAIL, MAX_THUMBNAIL)
-        val thumbnail = File(context!!.cacheDir, "thumbnails/${credentials.accountName.hashCode()}_${fileId}_$size")
+        val thumbnail = deps.diskCache().thumbnailFor(credentials.accountName, fileId, size)
         if (!thumbnail.isFile) {
             blocking(signal) { deps.ocs().downloadPreview(credentials, fileId, thumbnail, size).orThrow() }
         }

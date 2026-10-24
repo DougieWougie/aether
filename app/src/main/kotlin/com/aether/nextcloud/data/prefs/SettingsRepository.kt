@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.aether.nextcloud.provider.DocumentId
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -36,6 +37,10 @@ data class BackupSettings(
     /** Albums to back up; null means every album, including ones created later. */
     val albums: List<BackupAlbum>? = null,
 ) {
+    /** These settings after [accountName] signed out: backup that targeted it is switched off rather than left pointing nowhere. */
+    fun withoutAccount(accountName: String): BackupSettings =
+        if (this.accountName == accountName) copy(enabled = false, accountName = null) else this
+
     companion object {
         const val DEFAULT_FOLDER = "/Photos/Camera Uploads"
     }
@@ -98,6 +103,21 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
         }
     }
 
+    /** Forgets everything remembered for [accountName]: backup that targeted it, and recent upload folders inside it. */
+    suspend fun forgetAccount(accountName: String): ForgottenAccount {
+        val backup = updateBackup { it.withoutAccount(accountName) }
+        var folders = emptyList<String>()
+        store.edit { p ->
+            val current = p[RECENT_FOLDERS]?.let { runCatching { Json.decodeFromString<List<String>>(it) }.getOrNull() } ?: emptyList()
+            folders = foldersWithout(current, accountName)
+            p[RECENT_FOLDERS] = Json.encodeToString(folders)
+        }
+        return ForgottenAccount(backup, folders)
+    }
+
+    /** What is left after [forgetAccount]: the backup settings to re-apply and the recent folders to republish. */
+    data class ForgottenAccount(val backup: BackupSettings, val recentFolders: List<String>)
+
     suspend fun updateSync(transform: (SyncSettings) -> SyncSettings): SyncSettings {
         val after = transform(sync.first())
         store.edit { it[PINNED_UNMETERED] = after.pinnedSyncUnmeteredOnly }
@@ -106,6 +126,11 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
 
     companion object {
         const val MAX_RECENT_FOLDERS = 4
+
+        /** [folders] (document ids) minus those inside [accountName]. */
+        fun foldersWithout(folders: List<String>, accountName: String): List<String> =
+            folders.filterNot { DocumentId.parseOrNull(it)?.accountName == accountName }
+
         private val RECENT_FOLDERS = stringPreferencesKey("recent_folders")
         private val BACKUP_ENABLED = booleanPreferencesKey("backup_enabled")
         private val BACKUP_ACCOUNT = stringPreferencesKey("backup_account")

@@ -32,17 +32,18 @@ Significant changes to authentication, sync, provider behaviour or UI design mus
 **Done when:** credentials can never be sent over plain HTTP via a redirect.
 
 ### 1.3 Clean up all account data on sign-out
-- [ ] `data/DocumentRepository.forgetAccount()` / `auth/AccountCleaner.kt`: also delete the account's entries in
+- [x] `data/DocumentRepository.forgetAccount()` / `auth/AccountCleaner.kt`: also delete the account's entries in
   `cacheDir/thumbnails` and any leftover files in the staging directory.
-- [ ] Decide what happens to a staged upload that has not yet been sent when its account is removed (delete and
-  record it as a failed transfer).
-- [ ] Test with `DocumentDiskCacheTest` style coverage.
+- [x] Decide what happens to a staged upload that has not yet been sent when its account is removed: its work is
+  cancelled and the staged file deleted. Its transfer row goes with the account's other rows, not shown as failed.
+- [x] Test with `DocumentDiskCacheTest` style coverage.
 
 **Done when:** after sign-out, no file belonging to that account remains in app storage.
 
 ### 1.4 Fix thumbnail filename collisions across accounts
-- [ ] `provider/AetherDocumentsProvider.openDocumentThumbnail()`: replace `accountName.hashCode()` with the SHA-256
-  based `DocumentDiskCache.fileName()` (or a per-account subdirectory).
+- [x] `provider/AetherDocumentsProvider.openDocumentThumbnail()`: replace `accountName.hashCode()` with the SHA-256
+  based `DocumentDiskCache.fileName()` (or a per-account subdirectory). Done in 1.3: thumbnails live in a per-account
+  subdirectory (`DocumentDiskCache.thumbnailFor`).
 - [ ] Cap the thumbnail cache size, or evict by age.
 
 **Done when:** two accounts with the same `fileId` never share a thumbnail file.

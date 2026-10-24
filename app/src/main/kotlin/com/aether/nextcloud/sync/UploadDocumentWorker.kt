@@ -143,7 +143,7 @@ class UploadDocumentWorker @AssistedInject constructor(
         val conflict = parent.child(ConflictNaming.conflictName(target.name, System.currentTimeMillis()))
         return when (val copy = upload(dav, credentials, conflict, source, mimeType, null, total, progress)) {
             is AetherResult.Success -> {
-                notifications.notifyConflict(target.name, conflict.name)
+                notifications.notifyConflict(credentials.accountName, target.name, conflict.name)
                 finish(credentials, conflict, source, copy.value, transferId, TransferState.CONFLICT, refreshOriginal = target)
             }
             is AetherResult.Failure -> failed(copy.error, source, transferId)
@@ -228,10 +228,18 @@ class UploadDocumentWorker @AssistedInject constructor(
             KEY_IF_MATCH_ETAG to request.ifMatchEtag,
         )
 
+        private fun accountTag(accountName: String) = "upload-account:$accountName"
+
+        /** Cancels every queued or running upload for [accountName]; the caller removes the staged files. */
+        fun cancelAll(context: Context, accountName: String) {
+            WorkManager.getInstance(context).cancelAllWorkByTag(accountTag(accountName))
+        }
+
         /** Expedited, network-constrained, serialized per remote path so consecutive saves upload in order. */
         fun enqueue(context: Context, request: UploadRequest): UUID {
             val work = OneTimeWorkRequestBuilder<UploadDocumentWorker>()
                 .setInputData(inputData(request))
+                .addTag(accountTag(request.accountName))
                 .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
                 .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)

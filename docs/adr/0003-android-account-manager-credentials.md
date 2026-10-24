@@ -28,3 +28,9 @@ When an account is removed from Android System Settings -> Accounts, `AccountMan
 
 - **Positive:** Deep adherence to Android's native account architecture; built-in support if multi-account is enabled in the future.
 - **Negative / Mitigation:** Requires boilerplate `AuthenticatorService` and `res/xml/authenticator.xml`. When the user taps "Add Account" from Android System Settings, our `AbstractAccountAuthenticator.addAccount()` returns an `Intent` launching Aether's Login Flow v2 screen with `AccountAuthenticatorResponse`.
+
+## Implementation notes
+
+- **Signing out removes everything the account left on the device.** `AccountCleaner` runs for both the in-app "Sign out" and Settings → "Remove account". In order, it: cancels the account's queued and running uploads (tagged `upload-account:<name>`); makes a best-effort revocation of the app password; deletes its Room rows (documents, transfers, backup log); deletes its files on disk; switches off camera backup if it targeted the account; removes its recent upload folders and republishes the Direct Share shortcuts; and cancels conflict notifications posted under its name, since they name its files.
+- **Files are grouped per account.** `DocumentDiskCache` puts new cached copies, pinned copies, staged uploads and thumbnails under `<dir>/<hash of account name>/`. `forgetAccount` deletes those directories, which also catches partial downloads and staged uploads that Room does not track. Files from before this layout sit directly in the directories and are still found through their Room rows; legacy flat thumbnails are simply deleted, as they are regenerated on demand.
+- **Not covered:** other apps may hold persisted URI grants for the account's documents. Those URIs stop resolving once the account is gone, but Aether cannot revoke the grants.

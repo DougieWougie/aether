@@ -57,11 +57,18 @@ class TransferNotificationHelper @Inject constructor(
     /** Posted under the account name as its tag, so [cancelConflicts] can remove it when the account signs out. */
     fun notifyConflict(accountName: String, originalName: String, conflictName: String) {
         ensureChannels()
+        val public = NotificationCompat.Builder(context, CHANNEL_CONFLICTS)
+            .setSmallIcon(R.drawable.ic_stat_transfer)
+            .setContentTitle(context.getString(R.string.notification_conflict_title))
+            .setContentText(context.getString(R.string.notification_conflict_text_public))
+            .build()
         val notification: Notification = NotificationCompat.Builder(context, CHANNEL_CONFLICTS)
             .setSmallIcon(R.drawable.ic_stat_transfer)
             .setContentTitle(context.getString(R.string.notification_conflict_title))
             .setContentText(context.getString(R.string.notification_conflict_text, originalName, conflictName))
             .setStyle(NotificationCompat.BigTextStyle())
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setPublicVersion(public)
             .setAutoCancel(true)
             .setContentIntent(openApp())
             .build()

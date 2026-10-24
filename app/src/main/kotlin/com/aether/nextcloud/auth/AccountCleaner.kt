@@ -19,8 +19,9 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
@@ -55,7 +56,7 @@ class AccountCleaner @Inject constructor(
             withContext(Dispatchers.IO) { diskCache.forgetAccount(accountName) }
             val remembered = settings.forgetAccount(accountName)
             scheduler.applyBackup(remembered.backup)
-            DirectShareShortcuts.publish(context, remembered.recentFolders.mapNotNull(DocumentId::parseOrNull))
+            DirectShareShortcuts.sync(context, settings.directShareEnabled.first(), remembered.recentFolders.mapNotNull(DocumentId::parseOrNull))
             notifications.cancelConflicts(accountName)
             notifications.cancelSignInRequired(accountName)
             database.transferDao().deleteAccount(accountName)

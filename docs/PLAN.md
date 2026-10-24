@@ -61,11 +61,11 @@ Significant changes to authentication, sync, provider behaviour or UI design mus
 
 ## Phase 2: Privacy polish
 
-- [ ] **Conflict notification:** set `setVisibility(VISIBILITY_PRIVATE)` and provide a public version without file
+- [x] **Conflict notification:** set `setVisibility(VISIBILITY_PRIVATE)` and provide a public version without file
   names (`sync/TransferNotificationHelper.kt`).
-- [ ] **Direct Share shortcuts:** add a setting to turn them off (default on, or off if you prefer privacy first), and
+- [x] **Direct Share shortcuts:** add a setting to turn them off (default on, or off if you prefer privacy first), and
   clear published shortcuts when the account is removed (`ui/share/DirectShareShortcuts.kt`).
-- [ ] **Roots list summary:** show only the host when a single account exists, the full account name when there are
+- [x] **Roots list summary:** show only the host when a single account exists, the full account name when there are
   several (`AetherDocumentsProvider.queryRoots()`).
 - [ ] **User-Agent:** decide whether to drop `Build.MODEL` (`di/AppModule.userAgent()`). Record the decision.
 - [ ] **ADR:** document that local data (Room, pinned files, staging) is stored unencrypted in private app storage

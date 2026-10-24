@@ -31,5 +31,14 @@ object DirectShareShortcuts {
         runCatching { ShortcutManagerCompat.setDynamicShortcuts(context, shortcuts) }
     }
 
+    /** Removes every published shortcut, so no folder name is left in the share sheet. */
+    fun clear(context: Context) {
+        runCatching { ShortcutManagerCompat.removeAllDynamicShortcuts(context) }
+    }
+
+    /** Publishes [folders] when [enabled], otherwise clears them. */
+    fun sync(context: Context, enabled: Boolean, folders: List<DocumentId>) =
+        if (enabled) publish(context, folders) else clear(context)
+
     fun DocumentId.label(): String = name.ifEmpty { "Nextcloud" }
 }

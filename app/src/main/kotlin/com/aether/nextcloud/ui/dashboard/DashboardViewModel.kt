@@ -1,5 +1,6 @@
 package com.aether.nextcloud.ui.dashboard
 
+import android.content.Context
 import android.net.Uri
 import android.provider.DocumentsContract
 import androidx.compose.ui.graphics.ImageBitmap
@@ -27,7 +28,9 @@ import com.aether.nextcloud.data.prefs.SettingsRepository
 import com.aether.nextcloud.dav.UserInfo
 import com.aether.nextcloud.provider.DocumentId
 import com.aether.nextcloud.sync.SyncScheduler
+import com.aether.nextcloud.ui.share.DirectShareShortcuts
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -65,11 +68,13 @@ data class DashboardUiState(
     val avatar: ImageBitmap? = null,
     /** Accounts the server rejected; the user has to sign in to them again. */
     val needsSignIn: List<AetherCredentials> = emptyList(),
+    val directShareEnabled: Boolean = true,
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class DashboardViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val savedState: SavedStateHandle,
     private val accountRepository: AccountRepository,
     private val accountCleaner: AccountCleaner,
@@ -137,6 +142,8 @@ class DashboardViewModel @Inject constructor(
         )
     }.combine(authIssues.accounts) { ui, issues ->
         ui.copy(needsSignIn = ui.accounts.filter { it.accountName in issues })
+    }.combine(settings.directShareEnabled) { ui, directShare ->
+        ui.copy(directShareEnabled = directShare)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DashboardUiState())
 
     init {
@@ -206,6 +213,14 @@ class DashboardViewModel @Inject constructor(
         viewModelScope.launch {
             withContext(Dispatchers.IO) { diskCache.clearCache() }
             refreshStorage()
+        }
+    }
+
+    fun setDirectShare(enabled: Boolean) {
+        viewModelScope.launch {
+            settings.setDirectShareEnabled(enabled)
+            val recent = settings.recentFolders.first().mapNotNull(DocumentId::parseOrNull)
+            DirectShareShortcuts.sync(context, enabled, recent)
         }
     }
 

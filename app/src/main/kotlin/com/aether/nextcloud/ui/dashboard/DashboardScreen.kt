@@ -86,6 +86,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.ToggleButton
@@ -198,6 +199,8 @@ fun DashboardScreen(
                     onSelect = viewModel::selectAccount,
                     onAddAccount = onAddAccount,
                     onSignOut = viewModel::signOut,
+                    directShareEnabled = state.directShareEnabled,
+                    onDirectShareChange = viewModel::setDirectShare,
                 )
             }
             items(state.needsSignIn, key = { it.accountName }) { account -> SignInBanner(account, onSignIn = { onSignInAgain(account) }) }
@@ -259,6 +262,8 @@ private fun Header(
     onSelect: (String) -> Unit,
     onAddAccount: () -> Unit,
     onSignOut: (String) -> Unit,
+    directShareEnabled: Boolean,
+    onDirectShareChange: (Boolean) -> Unit,
 ) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
         MorphingShapeBadge(MaterialShapes.Cookie6Sided, size = 52.dp, container = MaterialTheme.colorScheme.tertiaryContainer) {
@@ -281,7 +286,7 @@ private fun Header(
             Text(account?.displayName ?: "Aether", style = MaterialTheme.typography.headlineSmallEmphasized, maxLines = 1, overflow = TextOverflow.Ellipsis)
             account?.let { Text(it.serverUrl.removePrefix("https://"), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) }
         }
-        AccountMenu(accounts, account, onSelect, onAddAccount, onSignOut)
+        AccountMenu(accounts, account, onSelect, onAddAccount, onSignOut, directShareEnabled, onDirectShareChange)
     }
 }
 
@@ -305,6 +310,8 @@ private fun AccountMenu(
     onSelect: (String) -> Unit,
     onAddAccount: () -> Unit,
     onSignOut: (String) -> Unit,
+    directShareEnabled: Boolean,
+    onDirectShareChange: (Boolean) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
     Box {
@@ -320,6 +327,11 @@ private fun AccountMenu(
                 }
             }
             DropdownMenuItem(text = { Text("Add account") }, onClick = { expanded = false; onAddAccount() })
+            DropdownMenuItem(
+                text = { Text("Show folders in share sheet") },
+                trailingIcon = { Switch(checked = directShareEnabled, onCheckedChange = null) },
+                onClick = { onDirectShareChange(!directShareEnabled) },
+            )
             selected?.let { account ->
                 DropdownMenuItem(
                     text = { Text("Sign out ${account.accountName}") },

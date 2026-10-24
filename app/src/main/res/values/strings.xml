@@ -13,6 +13,7 @@
     <string name="notification_conflict_title">Sync conflict</string>
     <string name="notification_conflict_text">%1$s changed on the server; your edit was saved as %2$s</string>
     <string name="notification_channel_account">Account</string>
+    <string name="notification_conflict_text_public">A file changed on the server; your edit was saved as a copy</string>
     <string name="notification_sign_in_title">Sign in again to keep syncing</string>
     <string name="notification_sign_in_text">%1$s no longer accepts this device. Open Aether to sign in again.</string>
     <string name="dashboard_sign_in_banner">%1$s needs you to sign in again</string>

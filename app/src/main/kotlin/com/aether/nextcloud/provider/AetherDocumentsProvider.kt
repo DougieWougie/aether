@@ -91,7 +91,8 @@ class AetherDocumentsProvider : DocumentsProvider() {
         val columns = projection ?: DEFAULT_ROOT_PROJECTION
         val cursor = MatrixCursor(columns)
         val title = context!!.getString(R.string.root_title)
-        for (credentials in accounts.allCredentials()) {
+        val all = accounts.allCredentials()
+        for (credentials in all) {
             val quota = quotas.cached(credentials.accountName)
             if (quotas.isStale(credentials.accountName)) refreshQuota(credentials)
             val capacity = quota?.totalBytes ?: quota?.freeBytes?.let { it + quota.usedBytes }
@@ -99,7 +100,7 @@ class AetherDocumentsProvider : DocumentsProvider() {
                 Root.COLUMN_ROOT_ID to credentials.accountName,
                 Root.COLUMN_DOCUMENT_ID to DocumentId.root(credentials.accountName).toString(),
                 Root.COLUMN_TITLE to title,
-                Root.COLUMN_SUMMARY to credentials.accountName,
+                Root.COLUMN_SUMMARY to rootSummary(credentials.accountName, all.size),
                 Root.COLUMN_ICON to R.mipmap.ic_launcher,
                 Root.COLUMN_FLAGS to (Root.FLAG_SUPPORTS_CREATE or Root.FLAG_SUPPORTS_IS_CHILD),
                 Root.COLUMN_MIME_TYPES to "*/*",
@@ -375,3 +376,7 @@ class AetherDocumentsProvider : DocumentsProvider() {
         const val MAX_THUMBNAIL = 512
     }
 }
+
+/** One account: the host alone (the user knows who they are). Several: the full account name tells them apart. */
+internal fun rootSummary(accountName: String, accountCount: Int): String =
+    if (accountCount > 1) accountName else accountName.substringAfterLast('@')

@@ -126,7 +126,7 @@ class ShareUploadViewModel @Inject constructor(
                 }
                 settings.rememberFolder(destination.toString())
                 val recent = settings.recentFolders.first().mapNotNull(DocumentId::parseOrNull)
-                DirectShareShortcuts.publish(context, recent)
+                DirectShareShortcuts.sync(context, settings.directShareEnabled.first(), recent)
                 _state.update { it.copy(phase = SharePhase.Queued(snapshot.items.size)) }
             } catch (e: IOException) {
                 _state.update { it.copy(phase = SharePhase.Failed(e.message ?: "Couldn't read the shared file")) }

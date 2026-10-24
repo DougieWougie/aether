@@ -92,6 +92,13 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
         return after
     }
 
+    /** Whether recent upload folders are offered as Direct Share targets. On by default; off removes them from the share sheet. */
+    val directShareEnabled: Flow<Boolean> = store.data.map { p -> p[DIRECT_SHARE] ?: true }
+
+    suspend fun setDirectShareEnabled(enabled: Boolean) {
+        store.edit { it[DIRECT_SHARE] = enabled }
+    }
+
     /** Document ids of the folders most recently used as upload destinations, newest first. */
     val recentFolders: Flow<List<String>> = store.data.map { p ->
         p[RECENT_FOLDERS]?.let { runCatching { Json.decodeFromString<List<String>>(it) }.getOrNull() } ?: emptyList()
@@ -152,6 +159,7 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
             folders.filterNot { DocumentId.parseOrNull(it)?.accountName == accountName }
 
         private val AUTH_ISSUES = stringSetPreferencesKey("auth_issues")
+        private val DIRECT_SHARE = booleanPreferencesKey("direct_share_enabled")
         private val RECENT_FOLDERS = stringPreferencesKey("recent_folders")
         private val BACKUP_ENABLED = booleanPreferencesKey("backup_enabled")
         private val BACKUP_ACCOUNT = stringPreferencesKey("backup_account")

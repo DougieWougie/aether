@@ -57,6 +57,7 @@ junit4 = { module = "junit:junit", version.ref = "junit4" }
 mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
 kxml2 = { module = "net.sf.kxml:kxml2", version.ref = "kxml2" }
 xmlpull = { module = "xmlpull:xmlpull", version.ref = "xmlpull" }
+androidx-test-espresso-intents = { module = "androidx.test.espresso:espresso-intents", version = "3.7.0" }
 androidx-test-runner = { module = "androidx.test:runner", version.ref = "androidxTestRunner" }
 androidx-test-ext-junit = { module = "androidx.test.ext:junit", version.ref = "androidxTestExt" }
 androidx-work-testing = { module = "androidx.work:work-testing", version.ref = "work" }

@@ -1,6 +1,9 @@
 package com.aether.nextcloud.ui.screens
 
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -99,5 +102,19 @@ class AccountMenuTest {
         openMenu()
         compose.onNodeWithText(str(R.string.account_add)).performClick()
         assertEquals(1, added)
+    }
+
+    @Test
+    fun anAvatarReplacesTheInitial() {
+        val avatar = android.graphics.Bitmap.createBitmap(32, 32, android.graphics.Bitmap.Config.ARGB_8888).asImageBitmap()
+        compose.show {
+            Header(
+                account = alice, avatar = avatar, accounts = listOf(alice), onSelect = {}, onAddAccount = {}, onSignOut = {},
+                directShareEnabled = true, onDirectShareChange = {},
+            )
+        }
+
+        compose.onNodeWithText("Alice").assertIsDisplayed()
+        compose.onAllNodesWithText("A").assertCountEquals(0)
     }
 }

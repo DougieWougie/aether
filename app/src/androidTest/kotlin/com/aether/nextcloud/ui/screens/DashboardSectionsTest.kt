@@ -52,6 +52,15 @@ class DashboardSectionsTest {
     }
 
     @Test
+    fun aFailedRefreshOverAKnownQuotaKeepsTheNumbersAndHidesTheGaugeDescription() {
+        val state = DashboardUiState(quota = UserInfo("Alice", 10_000_000, 90_000_000, 100_000_000), quotaError = "offline")
+        compose.show { StorageHero(state, onRetry = {}) }
+
+        compose.onNodeWithText(str(R.string.storage_title)).assertIsDisplayed()
+        compose.onAllNodesWithText(str(R.string.storage_load_failed)).assertCountEquals(0)
+    }
+
+    @Test
     fun whileTheQuotaIsLoadingTheCardSaysSo() {
         compose.show { StorageHero(DashboardUiState(), onRetry = {}) }
 
@@ -127,6 +136,13 @@ class DashboardSectionsTest {
     }
 
     @Test
+    fun aPinnedAccountRootIsShownAsASlash() {
+        compose.show { PinnedSection(listOf(file("/", dir = true).copy(name = "")), onUnpin = {}) }
+
+        compose.onAllNodesWithText("/").assertCountEquals(2)
+    }
+
+    @Test
     fun unpinReportsWhichItemWasTapped() {
         val unpinned = mutableListOf<DocumentEntity>()
         val items = listOf(file("/one.txt"), file("/two.txt"))
@@ -174,6 +190,29 @@ class DashboardSectionsTest {
         compose.show { TransfersSection(emptyList(), listOf(transfer("/Docs/report (Conflict 1).txt", TransferState.CONFLICT))) }
 
         compose.onNodeWithText(str(R.string.transfer_show_folder)).assertIsDisplayed()
+    }
+
+    @Test
+    fun showingTheFolderOpensTheSystemFilesAppInsideIt() {
+        androidx.test.espresso.intent.Intents.init()
+        try {
+            androidx.test.espresso.intent.Intents.intending(androidx.test.espresso.intent.matcher.IntentMatchers.hasAction(android.content.Intent.ACTION_VIEW))
+                .respondWith(android.app.Instrumentation.ActivityResult(android.app.Activity.RESULT_CANCELED, null))
+            compose.show { TransfersSection(emptyList(), listOf(transfer("/Docs/report (Conflict 1).txt", TransferState.CONFLICT))) }
+
+            compose.onNodeWithText(str(R.string.transfer_show_folder)).performClick()
+
+            androidx.test.espresso.intent.Intents.intended(
+                org.hamcrest.Matchers.allOf(
+                    androidx.test.espresso.intent.matcher.IntentMatchers.hasAction(android.content.Intent.ACTION_VIEW),
+                    androidx.test.espresso.intent.matcher.IntentMatchers.hasData(
+                        android.provider.DocumentsContract.buildDocumentUri(com.aether.nextcloud.AetherConstants.AUTHORITY, "alice@cloud.example.com:/Docs"),
+                    ),
+                ),
+            )
+        } finally {
+            androidx.test.espresso.intent.Intents.release()
+        }
     }
 
     // endregion

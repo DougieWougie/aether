@@ -1,5 +1,6 @@
 package com.aether.nextcloud.ui.share
 
+import com.aether.nextcloud.ui.components.rememberNotificationPermissionRequest
 import androidx.compose.ui.res.pluralStringResource
 import com.aether.nextcloud.R
 import androidx.compose.ui.res.stringResource
@@ -92,6 +93,7 @@ private fun ShareSheet(viewModel: ShareUploadViewModel, onFinished: () -> Unit, 
     val state by viewModel.state.collectAsStateWithLifecycle()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
+    val askForNotifications = rememberNotificationPermissionRequest()
     val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { viewModel.onFolderPicked(it) }
 
     (state.phase as? SharePhase.Queued)?.let { queued ->
@@ -125,7 +127,7 @@ private fun ShareSheet(viewModel: ShareUploadViewModel, onFinished: () -> Unit, 
                             val account = state.account?.accountName ?: state.accounts.first().accountName
                             pickFolder.launch(DocumentsContract.buildDocumentUri(AetherConstants.AUTHORITY, DocumentId.root(account).toString()))
                         },
-                        onUpload = viewModel::upload,
+                        onUpload = { askForNotifications(); viewModel.upload() },
                         onCancel = onFinished,
                         onDismissError = viewModel::dismissError,
                     )

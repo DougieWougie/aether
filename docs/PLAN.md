@@ -121,10 +121,10 @@ Significant changes to authentication, sync, provider behaviour or UI design mus
     exception text. Say what happened ("Couldn't reach that server. Check the address and your connection.").
   - **Fixed: sign-out was one tap with no confirmation** and no hint that pinned files and queued uploads for the account are
     removed. Add a confirmation dialog that says so.
-  - **Notification permission is asked for on first arrival at the dashboard**, with no context. Ask when the first
-    transfer or backup starts, or explain first.
-  - **The storage card dominates when it fails.** "Couldn't load / Not found" takes the top third of every tab and the
-    message is terse. Collapse it to a one-line banner with Retry.
+  - **Fixed: notification permission was asked for on first arrival at the dashboard**, with no context. It is now asked after the first pin, when camera backup is turned on and when an
+    upload is started from the share sheet.
+  - **Fixed: the storage card dominated when it failed.** "Couldn't load / Not found" takes the top third of every tab and the
+    message is terse. It is now a one-line banner with Retry.
   - **Camera tile:** "All albums" appears twice (summary chip and Albums card); the settings stay expanded after
     "Turn on backup" so "Done" is below the fold; the Files FAB overlaps the destination folder field; "0 items from
     this phone" reads oddly before the first scan; the destination folder is free text with no folder picker.

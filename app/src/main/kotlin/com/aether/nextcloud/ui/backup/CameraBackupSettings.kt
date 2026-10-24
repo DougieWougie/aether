@@ -1,5 +1,6 @@
 package com.aether.nextcloud.ui.backup
 
+import com.aether.nextcloud.ui.components.rememberNotificationPermissionRequest
 import com.aether.nextcloud.R
 import androidx.compose.ui.res.stringResource
 import android.Manifest
@@ -71,11 +72,15 @@ fun CameraBackupSettings(modifier: Modifier = Modifier, viewModel: CameraBackupV
         )
     }
 
+    val askForNotifications = rememberNotificationPermissionRequest()
     val requestPermissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted ->
         // Partial photo access ("selected photos") still counts: backup then uploads what the user shared with Aether.
         val ok = granted.values.any { it }
         permissionDenied = !ok
-        if (ok) viewModel.setEnabled(true)
+        if (ok) {
+            viewModel.setEnabled(true)
+            askForNotifications()
+        }
     }
 
     Column(modifier, verticalArrangement = Arrangement.spacedBy(16.dp)) {

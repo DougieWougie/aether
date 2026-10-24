@@ -1,9 +1,8 @@
 package com.aether.nextcloud.ui.dashboard
 
-import android.Manifest
+import com.aether.nextcloud.ui.components.rememberNotificationPermissionRequest
 import android.content.ActivityNotFoundException
 import android.content.Intent
-import android.os.Build
 import android.provider.DocumentsContract
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.ui.semantics.contentDescription
@@ -69,15 +68,12 @@ fun DashboardScreen(
     val noFileManager = stringResource(R.string.error_no_file_manager)
     var notice by remember { mutableStateOf<String?>(null) }
 
-    val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
-    LaunchedEffect(Unit) {
-        if (Build.VERSION.SDK_INT >= 33) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-    }
+    val askForNotifications = rememberNotificationPermissionRequest()
 
     val listState = rememberLazyListState()
     val rootDocumentUri = state.selected?.let { DocumentsContract.buildDocumentUri(AetherConstants.AUTHORITY, DocumentId.root(it.accountName).toString()) }
-    val pickFiles = rememberLauncherForActivityResult(PickAetherDocuments()) { viewModel.pin(it) }
-    val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri -> if (uri != null) viewModel.pin(listOf(uri)) }
+    val pickFiles = rememberLauncherForActivityResult(PickAetherDocuments()) { viewModel.pin(it); if (it.isNotEmpty()) askForNotifications() }
+    val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri -> if (uri != null) { viewModel.pin(listOf(uri)); askForNotifications() } }
     var fabMenuExpanded by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(state.tab) { fabMenuExpanded = false }
     BackHandler(fabMenuExpanded) { fabMenuExpanded = false }
@@ -164,9 +160,9 @@ private fun SignInBanner(account: AetherCredentials, onSignIn: () -> Unit) {
 @Composable
 private fun DashboardNavigationBar(selected: DashboardTab, onSelect: (DashboardTab) -> Unit) {
     val tabs = listOf(
-        Triple(DashboardTab.Pinned, "Pinned", Icons.Outlined.PushPin),
-        Triple(DashboardTab.Camera, "Camera", Icons.Outlined.PhotoCamera),
-        Triple(DashboardTab.Transfers, "Transfers", Icons.Outlined.Sync),
+        Triple(DashboardTab.Pinned, stringResource(R.string.tab_pinned), Icons.Outlined.PushPin),
+        Triple(DashboardTab.Camera, stringResource(R.string.tab_camera), Icons.Outlined.PhotoCamera),
+        Triple(DashboardTab.Transfers, stringResource(R.string.tab_transfers), Icons.Outlined.Sync),
     )
     ShortNavigationBar {
         tabs.forEach { (tab, label, icon) ->

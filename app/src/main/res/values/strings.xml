@@ -28,7 +28,7 @@
     <string name="login_reopen">Reopen browser</string>
     <string name="action_cancel">Cancel</string>
     <string name="storage_title">Storage</string>
-    <string name="storage_load_failed">Couldn\'t load</string>
+    <string name="storage_load_failed">Couldn\'t load your storage</string>
     <string name="action_retry">Retry</string>
     <string name="storage_loading">Loading…</string>
     <string name="pin_menu_description">Pin menu</string>
@@ -145,4 +145,7 @@
     <string name="sign_out_title">Sign out %1$s?</string>
     <string name="sign_out_body">Pinned files, cached copies and uploads that haven\'t finished are removed from this phone, and camera backup to this account stops. Your files on the server are not touched.</string>
     <string name="sign_out_confirm">Sign out</string>
+    <string name="tab_pinned">Pinned</string>
+    <string name="tab_camera">Camera</string>
+    <string name="tab_transfers">Transfers</string>
 </resources>

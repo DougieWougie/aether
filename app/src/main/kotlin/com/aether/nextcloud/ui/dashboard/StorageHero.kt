@@ -52,6 +52,11 @@ internal fun StorageHero(state: DashboardUiState, onRetry: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     val fraction = if (quota != null && total != null && total > 0) (quota.usedBytes.toFloat() / total).coerceIn(0f, 1f) else null
 
+    if (quota == null && failed) {
+        StorageLoadError(state.quotaError.orEmpty(), onRetry)
+        return
+    }
+
     Surface(shape = HeroShape, color = colors.primaryContainer, contentColor = colors.onPrimaryContainer, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -68,11 +73,6 @@ internal fun StorageHero(state: DashboardUiState, onRetry: () -> Unit) {
                                 if (total != null) stringResource(R.string.storage_used_of, Formatter.formatShortFileSize(context, total)) else stringResource(R.string.storage_used_unlimited),
                                 style = MaterialTheme.typography.titleMedium,
                             )
-                        }
-                        failed -> {
-                            Text(stringResource(R.string.storage_load_failed), style = MaterialTheme.typography.headlineMediumEmphasized)
-                            Text(state.quotaError ?: "", style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            TextButton(onClick = onRetry) { Text(stringResource(R.string.action_retry)) }
                         }
                         else -> Text(stringResource(R.string.storage_loading), style = MaterialTheme.typography.headlineMediumEmphasized)
                     }
@@ -137,5 +137,20 @@ internal fun QuotaArcGauge(fraction: Float?, modifier: Modifier = Modifier) {
 internal fun StatChip(text: String) {
     Surface(shape = CircleShape, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.10f)) {
         Text(text, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
+    }
+}
+
+/** A failed quota lookup is a one-line notice with Retry, so it does not take the top of every tab. */
+@Composable
+private fun StorageLoadError(message: String, onRetry: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    Surface(shape = MaterialTheme.shapes.large, color = colors.errorContainer, contentColor = colors.onErrorContainer, modifier = Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(start = 20.dp, end = 8.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f).semantics(mergeDescendants = true) {}) {
+                Text(stringResource(R.string.storage_load_failed), style = MaterialTheme.typography.titleSmall)
+                if (message.isNotBlank()) Text(message, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+            TextButton(onClick = onRetry) { Text(stringResource(R.string.action_retry)) }
+        }
     }
 }

@@ -1,5 +1,6 @@
 package com.aether.nextcloud.ui.dashboard
 
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
 import android.text.format.Formatter
 import com.aether.nextcloud.R
@@ -88,13 +89,17 @@ internal fun PinnedFabMenu(
     }
 }
 
-/** `ACTION_OPEN_DOCUMENT` limited to one provider's root, returning every picked document. */
+/**
+ * `ACTION_OPEN_DOCUMENT` limited to one provider's root, returning every picked document. The picker's confirm button
+ * reads "Pin" (`EXTRA_PROMPT`), the only place the system picker lets an app say what the selection is for.
+ */
 internal class PickAetherDocuments : ActivityResultContract<Uri?, List<Uri>>() {
     override fun createIntent(context: android.content.Context, input: Uri?): Intent =
         Intent(Intent.ACTION_OPEN_DOCUMENT)
             .addCategory(Intent.CATEGORY_OPENABLE)
             .setType("*/*")
             .putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+            .putExtra(DocumentsContract.EXTRA_PROMPT, context.getString(R.string.pick_prompt_pin))
             .apply { input?.let { putExtra(DocumentsContract.EXTRA_INITIAL_URI, it) } }
 
     override fun parseResult(resultCode: Int, intent: Intent?): List<Uri> {
@@ -102,6 +107,12 @@ internal class PickAetherDocuments : ActivityResultContract<Uri?, List<Uri>>() {
         val clip = intent.clipData
         return if (clip != null) (0 until clip.itemCount).map { clip.getItemAt(it).uri } else listOfNotNull(intent.data)
     }
+}
+
+/** [ActivityResultContracts.OpenDocumentTree] whose confirm button reads "Pin". */
+internal class PickAetherFolder : ActivityResultContracts.OpenDocumentTree() {
+    override fun createIntent(context: android.content.Context, input: Uri?): Intent =
+        super.createIntent(context, input).putExtra(DocumentsContract.EXTRA_PROMPT, context.getString(R.string.pick_prompt_pin))
 }
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)

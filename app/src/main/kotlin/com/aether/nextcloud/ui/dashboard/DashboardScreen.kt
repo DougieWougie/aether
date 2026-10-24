@@ -14,7 +14,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.activity.compose.BackHandler
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -83,7 +82,7 @@ fun DashboardScreen(
     val listState = rememberLazyListState()
     val rootDocumentUri = state.selected?.let { DocumentsContract.buildDocumentUri(AetherConstants.AUTHORITY, DocumentId.root(it.accountName).toString()) }
     val pickFiles = rememberLauncherForActivityResult(PickAetherDocuments()) { viewModel.pin(it); if (it.isNotEmpty()) askForNotifications() }
-    val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri -> if (uri != null) { viewModel.pin(listOf(uri)); askForNotifications() } }
+    val pickFolder = rememberLauncherForActivityResult(PickAetherFolder()) { uri -> if (uri != null) { viewModel.pin(listOf(uri)); askForNotifications() } }
     var fabMenuExpanded by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(state.tab) { fabMenuExpanded = false }
     BackHandler(fabMenuExpanded) { fabMenuExpanded = false }

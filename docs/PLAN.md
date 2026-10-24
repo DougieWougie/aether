@@ -135,7 +135,7 @@ Significant changes to authentication, sync, provider behaviour or UI design mus
     "Folder up to date", "Folder syncing") and Unpin offers Undo in a snackbar, which pins again and re-downloads.
   - **Fixed: server field hint.** It now reads "For example cloud.example.com. Aether always connects over HTTPS."
     The old text implied http could be chosen; the app upgrades plain http to https and refuses http sign-ins.
-  - The system file picker opened by "Pin files" carries no hint about what the selection is for.
+  - **Fixed: the pickers opened by "Pin files" and "Pin folder"** now label their confirm button "Pin" (`EXTRA_PROMPT`). Not verified on a device: DocumentsUI decides whether to show it.
   - TalkBack order was not checked; it needs a screen reader session.
 
 ---

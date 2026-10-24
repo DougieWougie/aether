@@ -34,6 +34,7 @@
     <string name="pin_menu_description">Pin menu</string>
     <string name="pin_files">Pin files</string>
     <string name="pin_folder">Pin folder</string>
+    <string name="pick_prompt_pin">Pin</string>
     <string name="sync_now">Sync now</string>
     <string name="action_files">Files</string>
     <string name="action_unpin">Unpin</string>

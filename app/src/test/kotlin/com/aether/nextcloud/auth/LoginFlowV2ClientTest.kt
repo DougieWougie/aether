@@ -42,6 +42,7 @@ class LoginFlowV2ClientTest {
         val result = client.start(baseUrl())
 
         val session = (result as AetherResult.Success).value
+        assertEquals(baseUrl(), session.server)
         assertEquals("tok123", session.pollToken)
         assertEquals("${baseUrl()}/index.php/login/v2/poll", session.pollEndpoint)
         assertEquals("${baseUrl()}/index.php/login/v2/flow/abc", session.loginUrl)
@@ -76,7 +77,7 @@ class LoginFlowV2ClientTest {
     fun `poll returns pending on 404`() = runBlocking {
         server.enqueue(MockResponse().setResponseCode(404))
 
-        val result = client.poll("${baseUrl()}/index.php/login/v2/poll", "tok123")
+        val result = client.poll("${baseUrl()}/index.php/login/v2/poll", "tok123", baseUrl())
 
         assertEquals(AetherResult.Success(PollOutcome.Pending), result)
         val request = server.takeRequest()
@@ -88,7 +89,7 @@ class LoginFlowV2ClientTest {
     fun `poll returns credentials on 200`() = runBlocking {
         server.enqueue(MockResponse().setBody(authenticatedBody()))
 
-        val result = client.poll("${baseUrl()}/index.php/login/v2/poll", "tok123")
+        val result = client.poll("${baseUrl()}/index.php/login/v2/poll", "tok123", baseUrl())
 
         val outcome = (result as AetherResult.Success).value as PollOutcome.Authenticated
         assertEquals(LoginCredentials(baseUrl(), "alice", "s3cret"), outcome.credentials)
@@ -100,7 +101,7 @@ class LoginFlowV2ClientTest {
         server.enqueue(MockResponse().setResponseCode(404))
         server.enqueue(MockResponse().setBody(authenticatedBody()))
 
-        val result = client.awaitCredentials("${baseUrl()}/index.php/login/v2/poll", "tok123", intervalMs = 5)
+        val result = client.awaitCredentials("${baseUrl()}/index.php/login/v2/poll", "tok123", baseUrl(), intervalMs = 5)
 
         assertEquals("s3cret", (result as AetherResult.Success).value.appPassword)
         assertEquals(3, server.requestCount)
@@ -113,7 +114,7 @@ class LoginFlowV2ClientTest {
         server.enqueue(MockResponse().setSocketPolicy(okhttp3.mockwebserver.SocketPolicy.DISCONNECT_AT_START))
         server.enqueue(MockResponse().setBody(authenticatedBody()))
 
-        val result = client.awaitCredentials(url, "tok123", intervalMs = 5)
+        val result = client.awaitCredentials(url, "tok123", baseUrl(), intervalMs = 5)
 
         assertEquals("s3cret", (result as AetherResult.Success).value.appPassword)
     }
@@ -122,7 +123,7 @@ class LoginFlowV2ClientTest {
     fun `awaitCredentials stops on unexpected status`() = runBlocking {
         server.enqueue(MockResponse().setResponseCode(401))
 
-        val result = client.awaitCredentials("${baseUrl()}/index.php/login/v2/poll", "tok123", intervalMs = 5)
+        val result = client.awaitCredentials("${baseUrl()}/index.php/login/v2/poll", "tok123", baseUrl(), intervalMs = 5)
 
         assertEquals(AetherResult.Failure(AetherError.Unauthorized), result)
     }
@@ -131,7 +132,7 @@ class LoginFlowV2ClientTest {
     fun `awaitCredentials times out while the user never finishes`() = runBlocking {
         repeat(50) { server.enqueue(MockResponse().setResponseCode(404)) }
 
-        val result = client.awaitCredentials("${baseUrl()}/index.php/login/v2/poll", "t", intervalMs = 5, timeoutMs = 60)
+        val result = client.awaitCredentials("${baseUrl()}/index.php/login/v2/poll", "t", baseUrl(), intervalMs = 5, timeoutMs = 60)
 
         assertEquals(AetherResult.Failure(AetherError.Timeout), result)
     }
@@ -152,5 +153,77 @@ class LoginFlowV2ClientTest {
         assertTrue(LoginFlowV2Client.normalizeServerUrl("   ") is AetherResult.Failure)
         assertTrue(LoginFlowV2Client.normalizeServerUrl("https://exa mple.com") is AetherResult.Failure)
         assertTrue(LoginFlowV2Client.normalizeServerUrl("https://example.com?x=1") is AetherResult.Failure)
+    }
+
+    private fun pollBody(server: String) = """{"server":"$server","loginName":"alice","appPassword":"s3cret"}"""
+
+    private fun verify(expected: String, issued: String) = LoginFlowV2Client.verifyIssuedServer(expected, issued)
+
+    @Test
+    fun `an issued server on plain http is refused`() {
+        val result = verify("https://cloud.example.com", "http://cloud.example.com")
+
+        assertTrue((result as AetherResult.Failure).error is AetherError.InvalidServer)
+        assertTrue(verify("https://cloud.example.com", "HTTP://cloud.example.com") is AetherResult.Failure)
+    }
+
+    @Test
+    fun `an issued server on another host or port is refused`() {
+        assertTrue(verify("https://cloud.example.com", "https://evil.example.net") is AetherResult.Failure)
+        assertTrue(verify("https://cloud.example.com", "https://cloud.example.com.evil.net") is AetherResult.Failure)
+        assertTrue(verify("https://cloud.example.com", "https://cloud.example.com:8443") is AetherResult.Failure)
+        assertTrue(verify("https://cloud.example.com", "not a url") is AetherResult.Failure)
+    }
+
+    @Test
+    fun `the mismatch message names the reported address`() {
+        val error = (verify("https://cloud.example.com", "https://other.example.net:8443") as AetherResult.Failure).error
+
+        assertTrue((error as AetherError.InvalidServer).detail.contains("other.example.net:8443"))
+    }
+
+    @Test
+    fun `the same server in another spelling is accepted and normalized`() {
+        assertEquals(AetherResult.Success("https://cloud.example.com"), verify("https://cloud.example.com", "https://Cloud.Example.com/"))
+        assertEquals(AetherResult.Success("https://cloud.example.com"), verify("https://cloud.example.com", "https://cloud.example.com/index.php/"))
+        assertEquals(AetherResult.Success("https://cloud.example.com:8443/nc"), verify("https://cloud.example.com:8443/nc", "https://cloud.example.com:8443/nc"))
+    }
+
+    @Test
+    fun `poll refuses credentials issued for a different server`() = runBlocking {
+        server.enqueue(MockResponse().setBody(pollBody("https://evil.example.net")))
+
+        val result = client.poll("${baseUrl()}/index.php/login/v2/poll", "tok123", baseUrl())
+
+        assertTrue((result as AetherResult.Failure).error is AetherError.InvalidServer)
+    }
+
+    @Test
+    fun `poll refuses credentials for an http server when insecure is not allowed`() = runBlocking {
+        val strict = LoginFlowV2Client(OkHttpClient(), "Aether (Test; Android 36)")
+        server.enqueue(MockResponse().setBody(pollBody("http://${server.hostName}:${server.port}")))
+
+        val result = strict.poll("${baseUrl()}/index.php/login/v2/poll", "tok123", "https://${server.hostName}:${server.port}")
+
+        assertTrue((result as AetherResult.Failure).error is AetherError.InvalidServer)
+    }
+
+    @Test
+    fun `awaitCredentials stops at once when the issued server does not match`() = runBlocking {
+        server.enqueue(MockResponse().setBody(pollBody("https://evil.example.net")))
+
+        val result = client.awaitCredentials("${baseUrl()}/index.php/login/v2/poll", "tok123", baseUrl(), intervalMs = 5)
+
+        assertTrue((result as AetherResult.Failure).error is AetherError.InvalidServer)
+        assertEquals(1, server.requestCount)
+    }
+
+    @Test
+    fun `a session is secure only when both urls are https`() {
+        fun session(login: String, poll: String) = LoginSession("https://cloud.example.com", login, poll, "t")
+
+        assertTrue(session("https://cloud.example.com/flow", "https://cloud.example.com/poll").usesOnlyHttps())
+        assertTrue(!session("http://cloud.example.com/flow", "https://cloud.example.com/poll").usesOnlyHttps())
+        assertTrue(!session("https://cloud.example.com/flow", "http://cloud.example.com/poll").usesOnlyHttps())
     }
 }

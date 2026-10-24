@@ -76,7 +76,7 @@ class AccountRepository @Inject constructor(
 
     /** Stores (or refreshes) the account for a completed Login Flow v2 and tells DocumentsUI the roots changed. */
     fun addAccount(login: LoginCredentials): AetherResult<AetherCredentials> {
-        val server = when (val normalized = LoginFlowV2Client.normalizeServerUrl(login.server, allowInsecure = true)) {
+        val server = when (val normalized = LoginFlowV2Client.normalizeServerUrl(login.server)) {
             is AetherResult.Success -> normalized.value
             is AetherResult.Failure -> return normalized
         }

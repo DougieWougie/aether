@@ -33,3 +33,8 @@ We will exclusively use **Nextcloud Login Flow v2** combined with AndroidX Brows
 
 - **Positive:** Zero `WebView` dependency or security surface; full support for all Nextcloud 2FA and SSO providers.
 - **Negative / Mitigation:** Polling must survive process/activity lifecycle changes while the user switches to the Custom Tab or an authenticator app. We store `poll.endpoint` and `poll.token` in `SavedStateHandle` (or DataStore during pending auth) so polling resumes immediately when the user returns to Aether.
+
+## Implementation notes
+
+- **The credentials must belong to the server the user entered.** An app password is sent with every request to the server stored beside it, so a login that reports a different server would hand the password to the wrong host. `LoginFlowV2Client.poll` therefore checks the `server` in the final answer against the normalized address the login was started with (carried in `LoginSession.server` and `SavedStateHandle`): the host and port must match, and plain `http://` is refused. A mismatch ends the flow with a message naming the address the server reported, which also covers a server whose canonical address differs from the one typed; the user can enter that address and try again.
+- **HTTPS only.** `start()` also refuses a login URL or poll endpoint that is not `https://`. `AccountRepository.addAccount` no longer allows insecure URLs. `allowInsecure` remains only as a constructor option on `LoginFlowV2Client` so unit tests can talk to a plain-HTTP `MockWebServer`; the app never sets it.

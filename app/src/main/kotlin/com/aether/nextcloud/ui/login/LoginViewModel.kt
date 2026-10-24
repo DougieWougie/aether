@@ -56,9 +56,10 @@ class LoginViewModel @Inject constructor(
         val endpoint = savedState.get<String>(KEY_POLL_ENDPOINT)
         val token = savedState.get<String>(KEY_POLL_TOKEN)
         val loginUrl = savedState.get<String>(KEY_LOGIN_URL)
-        if (endpoint != null && token != null && loginUrl != null) {
+        val server = savedState.get<String>(KEY_ISSUING_SERVER)
+        if (endpoint != null && token != null && loginUrl != null && server != null) {
             _state.update { it.copy(phase = LoginPhase.WaitingForBrowser(loginUrl)) }
-            startPolling(endpoint, token)
+            startPolling(endpoint, token, server)
         }
     }
 
@@ -78,9 +79,10 @@ class LoginViewModel @Inject constructor(
                     savedState[KEY_POLL_ENDPOINT] = session.pollEndpoint
                     savedState[KEY_POLL_TOKEN] = session.pollToken
                     savedState[KEY_LOGIN_URL] = session.loginUrl
+                    savedState[KEY_ISSUING_SERVER] = session.server
                     _state.update { it.copy(phase = LoginPhase.WaitingForBrowser(session.loginUrl)) }
                     _openBrowser.send(session.loginUrl)
-                    startPolling(session.pollEndpoint, session.pollToken)
+                    startPolling(session.pollEndpoint, session.pollToken, session.server)
                 }
             }
         }
@@ -96,10 +98,10 @@ class LoginViewModel @Inject constructor(
         _state.update { it.copy(phase = LoginPhase.Idle) }
     }
 
-    private fun startPolling(endpoint: String, token: String) {
+    private fun startPolling(endpoint: String, token: String, server: String) {
         polling?.cancel()
         polling = viewModelScope.launch {
-            when (val result = loginClient.awaitCredentials(endpoint, token)) {
+            when (val result = loginClient.awaitCredentials(endpoint, token, server)) {
                 is AetherResult.Failure -> fail(result.error)
                 is AetherResult.Success -> when (val added = accounts.addAccount(result.value)) {
                     is AetherResult.Failure -> fail(added.error)
@@ -122,6 +124,7 @@ class LoginViewModel @Inject constructor(
         savedState.remove<String>(KEY_POLL_ENDPOINT)
         savedState.remove<String>(KEY_POLL_TOKEN)
         savedState.remove<String>(KEY_LOGIN_URL)
+        savedState.remove<String>(KEY_ISSUING_SERVER)
     }
 
     private companion object {
@@ -129,5 +132,7 @@ class LoginViewModel @Inject constructor(
         const val KEY_POLL_ENDPOINT = "poll_endpoint"
         const val KEY_POLL_TOKEN = "poll_token"
         const val KEY_LOGIN_URL = "login_url"
+        /** The normalized address the login was started against; the issued credentials must be for it. */
+        const val KEY_ISSUING_SERVER = "issuing_server"
     }
 }

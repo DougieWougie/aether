@@ -9,14 +9,23 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
+import com.aether.nextcloud.core.map
 import okhttp3.FormBody
+import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 
-/** What the caller needs to open the browser and later resume polling (survives process death via SavedStateHandle). */
-data class LoginSession(val loginUrl: String, val pollEndpoint: String, val pollToken: String)
+/**
+ * What the caller needs to open the browser and later resume polling (survives process death via SavedStateHandle).
+ * [server] is the normalized address the user entered; the credentials that come back must belong to it.
+ */
+data class LoginSession(val server: String, val loginUrl: String, val pollEndpoint: String, val pollToken: String)
+
+/** Both URLs the server handed out (the page to open and the endpoint that receives the token) are `https://`. */
+internal fun LoginSession.usesOnlyHttps(): Boolean =
+    loginUrl.startsWith("https://", ignoreCase = true) && pollEndpoint.startsWith("https://", ignoreCase = true)
 
 data class LoginCredentials(val server: String, val loginName: String, val appPassword: String)
 
@@ -55,13 +64,24 @@ class LoginFlowV2Client(
         return client.execute(request) { response ->
             if (response.code != 200) return@execute AetherResult.Failure(response.toError())
             parse<LoginInitResponse, LoginSession>(response.body.string()) {
-                LoginSession(loginUrl = it.login, pollEndpoint = it.poll.endpoint, pollToken = it.poll.token)
+                LoginSession(server = server, loginUrl = it.login, pollEndpoint = it.poll.endpoint, pollToken = it.poll.token)
+            }.let { parsed ->
+                val session = (parsed as? AetherResult.Success)?.value
+                if (session != null && !allowInsecure && !session.usesOnlyHttps()) {
+                    AetherResult.Failure(AetherError.InvalidServer(INSECURE_MESSAGE))
+                } else {
+                    parsed
+                }
             }
         }
     }
 
-    /** One poll: 404 means the user has not finished authenticating, 200 carries the app password. */
-    suspend fun poll(pollEndpoint: String, pollToken: String): AetherResult<PollOutcome> {
+    /**
+     * One poll: 404 means the user has not finished authenticating, 200 carries the app password. The server named in
+     * the answer must be [expectedServer], the address the user entered: an app password is sent with every request to
+     * the server it is stored for, so one issued for somewhere else must never be accepted.
+     */
+    suspend fun poll(pollEndpoint: String, pollToken: String, expectedServer: String): AetherResult<PollOutcome> {
         val request = Request.Builder()
             .url(pollEndpoint)
             .header("User-Agent", userAgent)
@@ -70,8 +90,11 @@ class LoginFlowV2Client(
         return client.execute(request) { response ->
             when (response.code) {
                 404 -> AetherResult.Success(PollOutcome.Pending)
-                200 -> parse<LoginPollResponse, PollOutcome>(response.body.string()) {
-                    PollOutcome.Authenticated(LoginCredentials(it.server, it.loginName, it.appPassword))
+                200 -> when (val parsed = parse<LoginPollResponse, LoginPollResponse>(response.body.string()) { it }) {
+                    is AetherResult.Failure -> parsed
+                    is AetherResult.Success -> verifyIssuedServer(expectedServer, parsed.value.server, allowInsecure).map {
+                        PollOutcome.Authenticated(LoginCredentials(it, parsed.value.loginName, parsed.value.appPassword))
+                    }
                 }
                 else -> AetherResult.Failure(response.toError())
             }
@@ -82,10 +105,11 @@ class LoginFlowV2Client(
     suspend fun awaitCredentials(
         pollEndpoint: String,
         pollToken: String,
+        expectedServer: String,
         intervalMs: Long = POLL_INTERVAL_MS,
         timeoutMs: Long = FLOW_TIMEOUT_MS,
     ): AetherResult<LoginCredentials> =
-        withTimeoutOrNull(timeoutMs) { pollUntilDone(pollEndpoint, pollToken, intervalMs) }
+        withTimeoutOrNull(timeoutMs) { pollUntilDone(pollEndpoint, pollToken, expectedServer, intervalMs) }
             ?: AetherResult.Failure(AetherError.Timeout)
 
     /**
@@ -95,11 +119,12 @@ class LoginFlowV2Client(
     private suspend fun pollUntilDone(
         pollEndpoint: String,
         pollToken: String,
+        expectedServer: String,
         intervalMs: Long,
     ): AetherResult<LoginCredentials> {
         var networkErrors = 0
         while (true) {
-            when (val outcome = poll(pollEndpoint, pollToken)) {
+            when (val outcome = poll(pollEndpoint, pollToken, expectedServer)) {
                 is AetherResult.Failure -> {
                     if (outcome.error !is AetherError.Network || ++networkErrors >= MAX_CONSECUTIVE_NETWORK_ERRORS) return outcome
                     delay(intervalMs)
@@ -126,6 +151,30 @@ class LoginFlowV2Client(
         const val MAX_CONSECUTIVE_NETWORK_ERRORS = 30
         /** Nextcloud invalidates a login flow token after 20 minutes. */
         const val FLOW_TIMEOUT_MS = 20 * 60 * 1_000L
+        private const val INSECURE_MESSAGE = "The server asked Aether to use an unencrypted connection, so sign-in was stopped."
+
+        /**
+         * Checks the `server` a finished login reports against [expectedServer] (what the user entered) and returns it
+         * normalized. Plain `http://` is refused unless [allowInsecure] (tests only), and the host and port must match.
+         */
+        fun verifyIssuedServer(expectedServer: String, issuedServer: String, allowInsecure: Boolean = false): AetherResult<String> {
+            if (!allowInsecure && issuedServer.trim().startsWith("http://", ignoreCase = true)) {
+                return AetherResult.Failure(AetherError.InvalidServer(INSECURE_MESSAGE))
+            }
+            val issued = when (val normalized = normalizeServerUrl(issuedServer, allowInsecure)) {
+                is AetherResult.Success -> normalized.value
+                is AetherResult.Failure -> return normalized
+            }
+            val expectedUrl = expectedServer.toHttpUrlOrNull()
+            val issuedUrl = issued.toHttpUrlOrNull()
+            if (expectedUrl == null || issuedUrl == null || expectedUrl.host != issuedUrl.host || expectedUrl.port != issuedUrl.port) {
+                val reported = issuedUrl?.let { "${it.host}${if (it.port != HttpUrl.defaultPort(it.scheme)) ":${it.port}" else ""}" } ?: "an unknown address"
+                return AetherResult.Failure(
+                    AetherError.InvalidServer("The server you entered reported a different address ($reported), so sign-in was stopped. Check the address and try again."),
+                )
+            }
+            return AetherResult.Success(issuedUrl.toString().trimEnd('/'))
+        }
 
         /**
          * Trims input, defaults to https, upgrades plain http unless [allowInsecure], and strips

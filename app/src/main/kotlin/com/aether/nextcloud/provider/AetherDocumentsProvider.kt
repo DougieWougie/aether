@@ -65,6 +65,9 @@ class AetherDocumentsProvider : DocumentsProvider() {
         fun ocs(): NextcloudOcsClient
         fun diskCache(): DocumentDiskCache
         fun authIssues(): AuthIssues
+        fun database(): com.aether.nextcloud.data.local.AetherDatabase
+        fun notifications(): com.aether.nextcloud.sync.TransferNotificationHelper
+        fun accountCleaner(): com.aether.nextcloud.auth.AccountCleaner
 
         @ApplicationScope
         fun scope(): CoroutineScope

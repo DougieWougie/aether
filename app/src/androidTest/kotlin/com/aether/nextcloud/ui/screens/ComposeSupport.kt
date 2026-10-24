@@ -55,6 +55,8 @@ fun androidx.compose.ui.test.junit4.ComposeTestRule.waitForText(text: String, ti
         onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
     } catch (_: IllegalStateException) {
         false
+    } catch (_: androidx.compose.ui.test.junit4.android.ComposeNotIdleException) {
+        false
     }
 }
 
@@ -63,6 +65,8 @@ fun androidx.compose.ui.test.junit4.ComposeTestRule.waitForTextGone(text: String
     try {
         onAllNodesWithText(text).fetchSemanticsNodes().isEmpty()
     } catch (_: IllegalStateException) {
+        false
+    } catch (_: androidx.compose.ui.test.junit4.android.ComposeNotIdleException) {
         false
     }
 }

@@ -77,6 +77,8 @@ jobs:
           arch: x86_64
           target: google_apis
           disk-size: 4096M
+          # The default AVD screen is too small for the lazy dashboard to compose the camera settings.
+          profile: pixel_6
           script: ./gradlew connectedDebugAndroidTest
 
       - name: Upload reports

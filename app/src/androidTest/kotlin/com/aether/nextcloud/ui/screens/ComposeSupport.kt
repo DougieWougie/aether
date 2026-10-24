@@ -2,6 +2,7 @@ package com.aether.nextcloud.ui.screens
 
 import android.content.Context
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.test.core.app.ApplicationProvider
 import com.aether.nextcloud.auth.AetherCredentials
 import com.aether.nextcloud.data.local.entity.DocumentEntity
@@ -44,3 +45,24 @@ fun transfer(
     accountName = "alice@cloud.example.com", remotePath = path, direction = direction, state = state,
     bytesTransferred = done, totalBytes = total, error = error, createdAt = System.currentTimeMillis(),
 )
+
+/**
+ * Waits until [text] is on screen. Before an activity has set its content there is no Compose hierarchy at all and
+ * querying throws, which on a slow emulator happens at the first wait; that just means "not yet".
+ */
+fun androidx.compose.ui.test.junit4.ComposeTestRule.waitForText(text: String, timeoutMs: Long = 10_000) = waitUntil(timeoutMs) {
+    try {
+        onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
+    } catch (_: IllegalStateException) {
+        false
+    }
+}
+
+/** Waits until [text] is gone from the screen. */
+fun androidx.compose.ui.test.junit4.ComposeTestRule.waitForTextGone(text: String, timeoutMs: Long = 10_000) = waitUntil(timeoutMs) {
+    try {
+        onAllNodesWithText(text).fetchSemanticsNodes().isEmpty()
+    } catch (_: IllegalStateException) {
+        false
+    }
+}

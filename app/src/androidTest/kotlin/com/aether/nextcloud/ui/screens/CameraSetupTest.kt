@@ -27,7 +27,7 @@ class CameraSetupTest {
 
     @After fun close() { scenario?.close() }
 
-    private fun waitForText(text: String, timeoutMs: Long = 10_000) = compose.waitUntil(timeoutMs) { compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty() }
+    private fun waitForText(text: String, timeoutMs: Long = 10_000) = compose.waitForText(text, timeoutMs)
 
     @Test
     fun settingUpOffersTheSwitchTheDestinationAndTheAlbumChoice() {

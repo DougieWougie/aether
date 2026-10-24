@@ -35,7 +35,7 @@ class ShareSheetTest {
         scenario = ActivityScenario.launch(intent)
     }
 
-    private fun waitForText(text: String, timeoutMs: Long = 10_000) = compose.waitUntil(timeoutMs) { compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty() }
+    private fun waitForText(text: String, timeoutMs: Long = 10_000) = compose.waitForText(text, timeoutMs)
 
     @Test
     fun theSheetNamesWhatIsSharedAndWhereItWillGo() {
@@ -54,8 +54,9 @@ class ShareSheetTest {
 
         compose.onNodeWithText(str(R.string.share_upload)).performClick()
 
-        awaitTrue("the text file to arrive", timeoutMs = 30_000) { env.nextcloud.text("/Idea.txt") == "remember this" }
+        // The confirmation only stays up for a moment before the sheet closes, so catch it first.
         waitForText(context.resources.getQuantityString(R.plurals.share_started, 1, 1))
+        awaitTrue("the text file to arrive", timeoutMs = 30_000) { env.nextcloud.text("/Idea.txt") == "remember this" }
     }
 
     @Test

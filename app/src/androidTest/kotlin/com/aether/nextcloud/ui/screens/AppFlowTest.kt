@@ -38,11 +38,7 @@ class AppFlowTest {
 
     private fun launch() { scenario = ActivityScenario.launch(MainActivity::class.java) }
 
-    private fun waitForText(text: String, timeoutMs: Long = 10_000) = compose.waitUntil(timeoutMs) {
-        compose.onAllNodesWithTextCompat(text).fetchSemanticsNodes().isNotEmpty()
-    }
-
-    private fun androidx.compose.ui.test.junit4.ComposeTestRule.onAllNodesWithTextCompat(text: String) = onAllNodesWithText(text)
+    private fun waitForText(text: String, timeoutMs: Long = 10_000) = compose.waitForText(text, timeoutMs)
 
     private fun signOutToLogin() {
         env.graph.accounts().removeAccount(env.accountName)
@@ -115,7 +111,7 @@ class AppFlowTest {
         env.nextcloud.forcedStatus = null
         compose.onNodeWithText(str(R.string.action_retry)).performClick()
 
-        compose.waitUntil(10_000) { compose.onAllNodesWithTextCompat(str(R.string.storage_load_failed)).fetchSemanticsNodes().isEmpty() }
+        compose.waitForTextGone(str(R.string.storage_load_failed))
     }
 
     @Test

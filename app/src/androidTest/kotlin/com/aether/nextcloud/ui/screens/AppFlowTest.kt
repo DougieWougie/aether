@@ -81,9 +81,9 @@ class AppFlowTest {
         env.nextcloud.displayName = "Alice Example"
         launch()
 
-        waitForText(env.nextcloud.user)
         waitForText(str(R.string.storage_used_of, android.text.format.Formatter.formatShortFileSize(context, 100_000_000)))
-        awaitTrue("the server's display name to be stored for next time") { env.graph.accounts().credentials(env.accountName)?.displayName == "Alice Example" }
+        awaitTrue("the server's display name to be stored") { env.graph.accounts().credentials(env.accountName)?.displayName == "Alice Example" }
+        waitForText("Alice Example")
         compose.onNodeWithText(str(R.string.tab_pinned)).assertIsDisplayed()
         compose.onNodeWithText(str(R.string.tab_camera)).assertIsDisplayed()
         compose.onNodeWithText(str(R.string.tab_transfers)).assertIsDisplayed()

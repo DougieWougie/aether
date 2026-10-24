@@ -18,6 +18,9 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
@@ -60,16 +63,22 @@ class AccountRepository @Inject constructor(
 ) {
     private val accountManager: AccountManager get() = AccountManager.get(context)
 
+    /** Android only reports accounts being added, removed or renamed, so changes to an account's stored details are announced here. */
+    private val detailsChanged = MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+
     fun accounts(): List<Account> = accountManager.getAccountsByType(AetherConstants.ACCOUNT_TYPE).toList()
 
     fun allCredentials(): List<AetherCredentials> = accounts().mapNotNull(::credentialsFor)
 
-    /** Emits the current accounts immediately and again whenever Android's account list changes. */
-    fun observeAccounts(): Flow<List<AetherCredentials>> = callbackFlow {
-        val listener = OnAccountsUpdateListener { trySend(Unit) }
-        accountManager.addOnAccountsUpdatedListener(listener, Handler(Looper.getMainLooper()), true)
-        awaitClose { accountManager.removeOnAccountsUpdatedListener(listener) }
-    }.conflate().map { allCredentials() }.flowOn(Dispatchers.IO)
+    /** Emits the current accounts immediately and again whenever the account list or an account's details change. */
+    fun observeAccounts(): Flow<List<AetherCredentials>> {
+        val accountList = callbackFlow {
+            val listener = OnAccountsUpdateListener { trySend(Unit) }
+            accountManager.addOnAccountsUpdatedListener(listener, Handler(Looper.getMainLooper()), true)
+            awaitClose { accountManager.removeOnAccountsUpdatedListener(listener) }
+        }
+        return merge(accountList, detailsChanged).conflate().map { allCredentials() }.flowOn(Dispatchers.IO)
+    }
 
     fun credentials(accountName: String): AetherCredentials? =
         accounts().firstOrNull { it.name == accountName }?.let(::credentialsFor)
@@ -103,7 +112,10 @@ class AccountRepository @Inject constructor(
 
     fun setDisplayName(accountName: String, displayName: String) {
         accounts().firstOrNull { it.name == accountName }
-            ?.let { accountManager.setUserData(it, KEY_USER_DISPLAY_NAME, displayName) }
+            ?.let {
+                accountManager.setUserData(it, KEY_USER_DISPLAY_NAME, displayName)
+                detailsChanged.tryEmit(Unit)
+            }
     }
 
     fun removeAccount(accountName: String) {

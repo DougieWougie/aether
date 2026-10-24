@@ -131,9 +131,10 @@ Significant changes to authentication, sync, provider behaviour or UI design mus
     folder access once: that prompt is the system's). Not changed: the Files FAB can overlap content while scrolling,
     as floating buttons do; the list already leaves room below the last item.
   - **Fixed: option chips** (Wi-Fi, Charging, Videos) and the account chips now show a check mark when selected.
-  - **Pinned rows** show no state (downloaded? when?), and Unpin has no undo.
-  - **Server field:** the helper text "HTTPS is used unless you say otherwise" is cryptic, and the example
-    `cloud.example.com` only appears once the field is focused.
+  - **Fixed: pinned rows** now show their state ("On this device · 5 B", "Update waiting", "Waiting to download",
+    "Folder up to date", "Folder syncing") and Unpin offers Undo in a snackbar, which pins again and re-downloads.
+  - **Fixed: server field hint.** It now reads "For example cloud.example.com. Aether always connects over HTTPS."
+    The old text implied http could be chosen; the app upgrades plain http to https and refuses http sign-ins.
   - The system file picker opened by "Pin files" carries no hint about what the selection is for.
   - TalkBack order was not checked; it needs a screen reader session.
 

@@ -1,5 +1,11 @@
 package com.aether.nextcloud.ui.dashboard
 
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarHost
 import com.aether.nextcloud.ui.components.rememberNotificationPermissionRequest
 import android.content.ActivityNotFoundException
 import android.content.Intent
@@ -69,6 +75,10 @@ fun DashboardScreen(
     var notice by remember { mutableStateOf<String?>(null) }
 
     val askForNotifications = rememberNotificationPermissionRequest()
+    val snackbars = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    val undoLabel = stringResource(R.string.action_undo)
+    val unpinnedFormat = stringResource(R.string.pinned_unpinned)
 
     val listState = rememberLazyListState()
     val rootDocumentUri = state.selected?.let { DocumentsContract.buildDocumentUri(AetherConstants.AUTHORITY, DocumentId.root(it.accountName).toString()) }
@@ -81,6 +91,7 @@ fun DashboardScreen(
 
     Scaffold(
         modifier = modifier,
+        snackbarHost = { SnackbarHost(snackbars) },
         bottomBar = { DashboardNavigationBar(selected = state.tab, onSelect = viewModel::selectTab) },
         floatingActionButton = {
             state.selected?.let { account ->
@@ -133,7 +144,16 @@ fun DashboardScreen(
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         when (tab) {
                             DashboardTab.Transfers -> TransfersSection(state.activeTransfers, state.recentTransfers)
-                            DashboardTab.Pinned -> PinnedSection(pinned = state.pinned, onUnpin = viewModel::unpin)
+                            DashboardTab.Pinned -> PinnedSection(
+                                pinned = state.pinned,
+                                onUnpin = { doc ->
+                                    viewModel.unpin(doc)
+                                    scope.launch {
+                                        snackbars.currentSnackbarData?.dismiss()
+                                        if (snackbars.showSnackbar(unpinnedFormat.format(doc.name), actionLabel = undoLabel, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) viewModel.repin(doc)
+                                    }
+                                },
+                            )
                             DashboardTab.Camera -> CameraSection(state)
                         }
                     }

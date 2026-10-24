@@ -21,7 +21,7 @@
     <string name="login_tagline">Your Nextcloud files, right inside Android.</string>
     <string name="login_server_label">Server address</string>
     <string name="login_server_placeholder">cloud.example.com</string>
-    <string name="login_server_hint">HTTPS is used unless you say otherwise</string>
+    <string name="login_server_hint">For example cloud.example.com. Aether always connects over HTTPS.</string>
     <string name="login_continue">Continue in browser</string>
     <string name="login_waiting_title">Waiting for you to sign in…</string>
     <string name="login_waiting_body">Finish signing in in your browser, then come back. Passkeys, 2FA and SSO all work.</string>
@@ -150,4 +150,11 @@
     <string name="tab_transfers">Transfers</string>
     <string name="backup_choose_folder">Choose a folder</string>
     <string name="camera_waiting">Waiting for new photos</string>
+    <string name="pinned_status_on_device">On this device · %1$s</string>
+    <string name="pinned_status_update_waiting">Newer version on the server, update waiting</string>
+    <string name="pinned_status_waiting">Waiting to download</string>
+    <string name="pinned_status_folder_synced">Folder up to date · %1$s</string>
+    <string name="pinned_status_folder_syncing">Folder syncing</string>
+    <string name="pinned_unpinned">Unpinned %1$s</string>
+    <string name="action_undo">Undo</string>
 </resources>

@@ -185,6 +185,15 @@ class DashboardViewModel @Inject constructor(
         }
     }
 
+    /** Undoes [unpin]: pins again and fetches whatever was freed. */
+    fun repin(document: DocumentEntity) {
+        viewModelScope.launch {
+            documents.setPinned(DocumentId.parse(document.documentId), true)
+            scheduler.syncPinsNow()
+            refreshStorage()
+        }
+    }
+
     fun syncPinsNow() = scheduler.syncPinsNow()
 
     /**

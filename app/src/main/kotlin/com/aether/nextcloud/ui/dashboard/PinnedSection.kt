@@ -1,5 +1,7 @@
 package com.aether.nextcloud.ui.dashboard
 
+import androidx.compose.ui.platform.LocalContext
+import android.text.format.Formatter
 import com.aether.nextcloud.R
 import androidx.compose.ui.res.stringResource
 import android.content.Intent
@@ -132,6 +134,19 @@ internal fun PinnedSection(
                     Column(Modifier.weight(1f)) {
                         Text(doc.name.ifEmpty { "/" }, style = MaterialTheme.typography.titleMediumEmphasized, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(doc.path, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        val size = Formatter.formatShortFileSize(LocalContext.current, doc.size)
+                        val status = pinnedStatus(doc)
+                        Text(
+                            when (status) {
+                                PinnedStatus.OnDevice -> stringResource(R.string.pinned_status_on_device, size)
+                                PinnedStatus.UpdateWaiting -> stringResource(R.string.pinned_status_update_waiting)
+                                PinnedStatus.Waiting -> stringResource(R.string.pinned_status_waiting)
+                                PinnedStatus.FolderSynced -> stringResource(R.string.pinned_status_folder_synced, size)
+                                PinnedStatus.FolderSyncing -> stringResource(R.string.pinned_status_folder_syncing)
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (status == PinnedStatus.OnDevice || status == PinnedStatus.FolderSynced) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                     TextButton(onClick = { onUnpin(doc) }) { Text(stringResource(R.string.action_unpin)) }
                 }

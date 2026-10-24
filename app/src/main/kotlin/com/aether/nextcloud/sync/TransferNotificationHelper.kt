@@ -29,6 +29,9 @@ class TransferNotificationHelper @Inject constructor(
             NotificationChannel(CHANNEL_TRANSFERS, context.getString(R.string.notification_channel_transfers), NotificationManager.IMPORTANCE_LOW),
         )
         manager.createNotificationChannel(
+            NotificationChannel(CHANNEL_ACCOUNT, context.getString(R.string.notification_channel_account), NotificationManager.IMPORTANCE_DEFAULT),
+        )
+        manager.createNotificationChannel(
             NotificationChannel(CHANNEL_CONFLICTS, context.getString(R.string.notification_channel_conflicts), NotificationManager.IMPORTANCE_DEFAULT),
         )
     }
@@ -65,9 +68,31 @@ class TransferNotificationHelper @Inject constructor(
         manager.notify(accountName, ("conflict:$conflictName").hashCode(), notification)
     }
 
+    /** Asks the user to sign in again. One per account (same tag and id), so repeated failures do not stack. */
+    fun notifySignInRequired(accountName: String) {
+        ensureChannels()
+        val public = NotificationCompat.Builder(context, CHANNEL_ACCOUNT)
+            .setSmallIcon(R.drawable.ic_stat_transfer)
+            .setContentTitle(context.getString(R.string.notification_sign_in_title))
+            .build()
+        val notification = NotificationCompat.Builder(context, CHANNEL_ACCOUNT)
+            .setSmallIcon(R.drawable.ic_stat_transfer)
+            .setContentTitle(context.getString(R.string.notification_sign_in_title))
+            .setContentText(context.getString(R.string.notification_sign_in_text, accountName))
+            .setStyle(NotificationCompat.BigTextStyle())
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setPublicVersion(public)
+            .setAutoCancel(true)
+            .setContentIntent(openApp())
+            .build()
+        manager.notify(accountName, SIGN_IN_ID, notification)
+    }
+
+    fun cancelSignInRequired(accountName: String) = manager.cancel(accountName, SIGN_IN_ID)
+
     /** Removes the conflict alerts of [accountName]; they name its files. */
     fun cancelConflicts(accountName: String) {
-        manager.activeNotifications.filter { it.tag == accountName }.forEach { manager.cancel(it.tag, it.id) }
+        manager.activeNotifications.filter { it.tag == accountName && it.id != SIGN_IN_ID }.forEach { manager.cancel(it.tag, it.id) }
     }
 
     private fun openApp(): PendingIntent = PendingIntent.getActivity(
@@ -77,6 +102,8 @@ class TransferNotificationHelper @Inject constructor(
     companion object {
         const val CHANNEL_TRANSFERS = "transfers"
         const val CHANNEL_CONFLICTS = "conflicts"
+        const val CHANNEL_ACCOUNT = "account"
+        private const val SIGN_IN_ID = 1
 
         fun percent(transferred: Long, total: Long): Int =
             if (total <= 0) 0 else (transferred * 100 / total).toInt().coerceIn(0, 100)

@@ -10,6 +10,7 @@ import com.aether.nextcloud.AetherConstants
 import com.aether.nextcloud.auth.AccountCleaner
 import com.aether.nextcloud.auth.AccountRepository
 import com.aether.nextcloud.auth.AetherCredentials
+import com.aether.nextcloud.auth.AuthIssues
 import com.aether.nextcloud.core.AetherResult
 import com.aether.nextcloud.core.describe
 import com.aether.nextcloud.data.AvatarRepository
@@ -62,6 +63,8 @@ data class DashboardUiState(
     val backupRunning: Boolean = false,
     val storage: StorageUsage = StorageUsage(),
     val avatar: ImageBitmap? = null,
+    /** Accounts the server rejected; the user has to sign in to them again. */
+    val needsSignIn: List<AetherCredentials> = emptyList(),
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -77,6 +80,7 @@ class DashboardViewModel @Inject constructor(
     private val settings: SettingsRepository,
     private val cameraStats: CameraBackupStatsRepository,
     private val scheduler: SyncScheduler,
+    authIssues: AuthIssues,
     database: AetherDatabase,
 ) : ViewModel() {
 
@@ -131,6 +135,8 @@ class DashboardViewModel @Inject constructor(
             storage = extras.usage,
             avatar = extras.avatar?.takeIf { it.first == account?.accountName }?.second,
         )
+    }.combine(authIssues.accounts) { ui, issues ->
+        ui.copy(needsSignIn = ui.accounts.filter { it.accountName in issues })
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DashboardUiState())
 
     init {

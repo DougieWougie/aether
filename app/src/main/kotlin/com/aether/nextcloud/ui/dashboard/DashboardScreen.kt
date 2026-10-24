@@ -61,6 +61,10 @@ import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material3.Button
+import com.aether.nextcloud.R
+import androidx.compose.ui.res.stringResource
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Card
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.ShortNavigationBar
@@ -129,6 +133,7 @@ import androidx.compose.material3.ToggleButtonDefaults
 @Composable
 fun DashboardScreen(
     onAddAccount: () -> Unit,
+    onSignInAgain: (AetherCredentials) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: DashboardViewModel = hiltViewModel(),
 ) {
@@ -195,6 +200,7 @@ fun DashboardScreen(
                     onSignOut = viewModel::signOut,
                 )
             }
+            items(state.needsSignIn, key = { it.accountName }) { account -> SignInBanner(account, onSignIn = { onSignInAgain(account) }) }
             item { StorageHero(state, onRetry = viewModel::refresh) }
             item {
                 AnimatedContent(state.tab, label = "dashboard-tab") { tab ->
@@ -208,6 +214,17 @@ fun DashboardScreen(
                 }
             }
             notice?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.error) } }
+        }
+    }
+}
+
+/** Shown while the server rejects an account's credentials; signing in again replaces the app password. */
+@Composable
+private fun SignInBanner(account: AetherCredentials, onSignIn: () -> Unit) {
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer)) {
+        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(stringResource(R.string.dashboard_sign_in_banner, account.accountName), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+            Button(onClick = onSignIn) { Text(stringResource(R.string.dashboard_sign_in_action)) }
         }
     }
 }

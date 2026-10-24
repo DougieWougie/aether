@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.aether.nextcloud.provider.DocumentId
@@ -103,11 +104,27 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
         }
     }
 
+    /** Accounts whose credentials the server rejected; cleared once the user signs in again (ADR-0003). */
+    val authIssues: Flow<Set<String>> = store.data.map { p -> p[AUTH_ISSUES] ?: emptySet() }
+
+    /** Records whether [accountName] needs to sign in again; true only if that changed the stored state. */
+    suspend fun setAuthIssue(accountName: String, needsSignIn: Boolean): Boolean {
+        var changed = false
+        store.edit { p ->
+            val current = p[AUTH_ISSUES] ?: emptySet()
+            val updated = withAuthIssue(current, accountName, needsSignIn)
+            changed = updated != current
+            if (changed) p[AUTH_ISSUES] = updated
+        }
+        return changed
+    }
+
     /** Forgets everything remembered for [accountName]: backup that targeted it, and recent upload folders inside it. */
     suspend fun forgetAccount(accountName: String): ForgottenAccount {
         val backup = updateBackup { it.withoutAccount(accountName) }
         var folders = emptyList<String>()
         store.edit { p ->
+            p[AUTH_ISSUES]?.let { p[AUTH_ISSUES] = withAuthIssue(it, accountName, false) }
             val current = p[RECENT_FOLDERS]?.let { runCatching { Json.decodeFromString<List<String>>(it) }.getOrNull() } ?: emptyList()
             folders = foldersWithout(current, accountName)
             p[RECENT_FOLDERS] = Json.encodeToString(folders)
@@ -127,10 +144,14 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
     companion object {
         const val MAX_RECENT_FOLDERS = 4
 
+        fun withAuthIssue(issues: Set<String>, accountName: String, needsSignIn: Boolean): Set<String> =
+            if (needsSignIn) issues + accountName else issues - accountName
+
         /** [folders] (document ids) minus those inside [accountName]. */
         fun foldersWithout(folders: List<String>, accountName: String): List<String> =
             folders.filterNot { DocumentId.parseOrNull(it)?.accountName == accountName }
 
+        private val AUTH_ISSUES = stringSetPreferencesKey("auth_issues")
         private val RECENT_FOLDERS = stringPreferencesKey("recent_folders")
         private val BACKUP_ENABLED = booleanPreferencesKey("backup_enabled")
         private val BACKUP_ACCOUNT = stringPreferencesKey("backup_account")

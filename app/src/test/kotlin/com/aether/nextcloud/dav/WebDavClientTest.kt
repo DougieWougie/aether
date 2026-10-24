@@ -62,6 +62,15 @@ class WebDavClientTest {
     }
 
     @Test
+    fun `a 403 is a permission problem, not a rejected login`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(403))
+
+        val error = (dav.propfind(url("/"), 0) as AetherResult.Failure).error
+
+        assertTrue("was $error", error is AetherError.Http && error.code == 403)
+    }
+
+    @Test
     fun `propfind maps errors`() = runBlocking {
         server.enqueue(MockResponse().setResponseCode(401))
         server.enqueue(MockResponse().setResponseCode(404))

@@ -17,6 +17,7 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.aether.nextcloud.AetherConstants
 import com.aether.nextcloud.auth.AccountRepository
+import com.aether.nextcloud.auth.AuthIssues
 import com.aether.nextcloud.auth.AetherCredentials
 import com.aether.nextcloud.core.AetherError
 import com.aether.nextcloud.core.AetherResult
@@ -63,6 +64,7 @@ class UploadDocumentWorker @AssistedInject constructor(
     private val documents: DocumentRepository,
     private val database: AetherDatabase,
     private val notifications: TransferNotificationHelper,
+    private val authIssues: AuthIssues,
 ) : CoroutineWorker(context, params) {
 
     private val transfers = database.transferDao()
@@ -178,7 +180,7 @@ class UploadDocumentWorker @AssistedInject constructor(
         }
         setTransferState(transferId, TransferState.FAILED, error.describe())
         // Keep the staged bytes only when the user can fix things (re-sign-in); otherwise they are unrecoverable clutter.
-        if (error != AetherError.Unauthorized) source.delete()
+        if (error == AetherError.Unauthorized) inputData.getString(KEY_ACCOUNT)?.let(authIssues::report) else source.delete()
         return Result.failure()
     }
 

@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.aether.nextcloud.auth.AccountRepository
+import com.aether.nextcloud.auth.AuthIssues
 import com.aether.nextcloud.auth.LoginFlowV2Client
 import com.aether.nextcloud.core.AetherError
 import com.aether.nextcloud.core.AetherResult
@@ -41,6 +42,7 @@ class LoginViewModel @Inject constructor(
     private val savedState: SavedStateHandle,
     private val loginClient: LoginFlowV2Client,
     private val accounts: AccountRepository,
+    private val authIssues: AuthIssues,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(LoginUiState(server = savedState[KEY_SERVER] ?: ""))
@@ -106,6 +108,7 @@ class LoginViewModel @Inject constructor(
                 is AetherResult.Success -> when (val added = accounts.addAccount(result.value)) {
                     is AetherResult.Failure -> fail(added.error)
                     is AetherResult.Success -> {
+                        authIssues.resolve(added.value.accountName)
                         clearSession()
                         _state.update { it.copy(phase = LoginPhase.SignedIn(added.value.accountName)) }
                     }

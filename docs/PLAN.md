@@ -50,10 +50,10 @@ Significant changes to authentication, sync, provider behaviour or UI design mus
 **Done when:** two accounts with the same `fileId` never share a thumbnail file.
 
 ### 1.5 Make auth failures visible
-- [ ] `sync/CameraBackupWorker.kt`: on `Unauthorized`, post a notification asking the user to sign in again and show
+- [x] `sync/CameraBackupWorker.kt`: on `Unauthorized`, post a notification asking the user to sign in again and show
   the state on the dashboard, instead of silently returning `Result.failure()`.
-- [ ] Apply the same to `PinnedSyncWorker` and `UploadDocumentWorker`.
-- [ ] Confirm the provider's `AuthenticationRequiredException` path opens `MainActivity` on the login screen.
+- [x] Apply the same to `PinnedSyncWorker` and `UploadDocumentWorker`.
+- [x] Confirm the provider's `AuthenticationRequiredException` path opens `MainActivity` on the login screen.
 
 **Done when:** a revoked app password produces a visible, actionable message within one sync cycle.
 

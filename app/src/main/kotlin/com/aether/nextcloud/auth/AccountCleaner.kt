@@ -57,6 +57,7 @@ class AccountCleaner @Inject constructor(
             scheduler.applyBackup(remembered.backup)
             DirectShareShortcuts.publish(context, remembered.recentFolders.mapNotNull(DocumentId::parseOrNull))
             notifications.cancelConflicts(accountName)
+            notifications.cancelSignInRequired(accountName)
             database.transferDao().deleteAccount(accountName)
             database.backedUpMediaDao().deleteAccount(accountName)
             quotas.forget(accountName)

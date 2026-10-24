@@ -24,6 +24,7 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.aether.nextcloud.R
 import com.aether.nextcloud.auth.AccountRepository
+import com.aether.nextcloud.auth.AuthIssues
 import com.aether.nextcloud.auth.AetherCredentials
 import com.aether.nextcloud.core.AetherError
 import com.aether.nextcloud.core.AetherResult
@@ -59,6 +60,7 @@ class CameraBackupWorker @AssistedInject constructor(
     private val database: AetherDatabase,
     private val settingsRepository: SettingsRepository,
     private val notifications: TransferNotificationHelper,
+    private val authIssues: AuthIssues,
 ) : CoroutineWorker(context, params) {
 
     private data class MediaItem(
@@ -105,7 +107,10 @@ class CameraBackupWorker @AssistedInject constructor(
                 is AetherResult.Failure -> when (val error = outcome.error) {
                     is AetherError.Network -> return Result.retry()
                     is AetherError.Http -> if (error.code >= 500) return Result.retry() // else: skip this item, keep going
-                    AetherError.Unauthorized -> return Result.failure()
+                    AetherError.Unauthorized -> {
+                        authIssues.report(credentials.accountName)
+                        return Result.failure()
+                    }
                     else -> Unit
                 }
             }

@@ -36,4 +36,14 @@ class SettingsRepositoryTest {
     fun `entries that are not document ids are kept rather than guessed at`() {
         assertEquals(listOf("garbage"), SettingsRepository.foldersWithout(listOf("garbage"), "alice@h"))
     }
+
+    @Test
+    fun `an auth issue is added once and cleared by name`() {
+        val flagged = SettingsRepository.withAuthIssue(emptySet(), "alice@h", true)
+
+        assertEquals(setOf("alice@h"), flagged)
+        assertEquals(flagged, SettingsRepository.withAuthIssue(flagged, "alice@h", true))
+        assertEquals(setOf("alice@h"), SettingsRepository.withAuthIssue(flagged + "bob@h", "bob@h", false))
+        assertEquals(emptySet<String>(), SettingsRepository.withAuthIssue(flagged, "alice@h", false))
+    }
 }

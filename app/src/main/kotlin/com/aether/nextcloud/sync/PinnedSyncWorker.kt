@@ -17,6 +17,7 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.aether.nextcloud.R
 import com.aether.nextcloud.auth.AccountRepository
+import com.aether.nextcloud.auth.AuthIssues
 import com.aether.nextcloud.auth.AetherCredentials
 import com.aether.nextcloud.core.AetherError
 import com.aether.nextcloud.core.AetherResult
@@ -48,6 +49,7 @@ class PinnedSyncWorker @AssistedInject constructor(
     private val documents: DocumentRepository,
     private val database: AetherDatabase,
     private val notifications: TransferNotificationHelper,
+    private val authIssues: AuthIssues,
 ) : CoroutineWorker(context, params) {
 
     private val transfers = database.transferDao()
@@ -79,7 +81,7 @@ class PinnedSyncWorker @AssistedInject constructor(
         val before = documents.cached(id)
         val node = when (val refreshed = documents.refreshDocument(credentials, id)) {
             is AetherResult.Success -> refreshed.value
-            is AetherResult.Failure -> return noteFailure(refreshed.error)
+            is AetherResult.Failure -> return noteFailure(credentials, refreshed.error)
         }
         if (!node.isDirectory) return syncFile(credentials, node)
 
@@ -88,7 +90,7 @@ class PinnedSyncWorker @AssistedInject constructor(
 
         val listed = when (val result = documents.refreshChildren(credentials, id)) {
             is AetherResult.Success -> result.value
-            is AetherResult.Failure -> return noteFailure(result.error)
+            is AetherResult.Failure -> return noteFailure(credentials, result.error)
         }
         documents.pinChildren(id)
         val failuresBefore = failures
@@ -129,7 +131,7 @@ class PinnedSyncWorker @AssistedInject constructor(
                 is AetherResult.Success -> setState(transferId, TransferState.COMPLETED, null)
                 is AetherResult.Failure -> {
                     setState(transferId, TransferState.FAILED, result.error.describe())
-                    noteFailure(result.error)
+                    noteFailure(credentials, result.error)
                 }
             }
         } catch (e: CancellationException) {
@@ -138,8 +140,9 @@ class PinnedSyncWorker @AssistedInject constructor(
         }
     }
 
-    private fun noteFailure(error: AetherError) {
+    private fun noteFailure(credentials: AetherCredentials, error: AetherError) {
         failures++
+        if (error == AetherError.Unauthorized) authIssues.report(credentials.accountName)
         if (error is AetherError.Network || (error is AetherError.Http && error.code >= 500)) retryNeeded = true
     }
 

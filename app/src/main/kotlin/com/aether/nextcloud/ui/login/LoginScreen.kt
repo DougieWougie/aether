@@ -50,11 +50,14 @@ import com.aether.nextcloud.R
 fun LoginScreen(
     onSignedIn: (accountName: String) -> Unit,
     modifier: Modifier = Modifier,
+    /** Set when signing in again to a known account. */
+    initialServer: String? = null,
     viewModel: LoginViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val toolbarColor = MaterialTheme.colorScheme.surface.toArgb()
+    LaunchedEffect(initialServer) { initialServer?.let(viewModel::onServerChanged) }
 
     // Authentication always happens in the user's browser (Custom Tabs), never in a WebView.
     LaunchedEffect(viewModel) {

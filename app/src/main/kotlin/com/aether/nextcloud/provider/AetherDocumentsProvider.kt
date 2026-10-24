@@ -19,6 +19,7 @@ import com.aether.nextcloud.AetherConstants
 import com.aether.nextcloud.MainActivity
 import com.aether.nextcloud.R
 import com.aether.nextcloud.auth.AccountRepository
+import com.aether.nextcloud.auth.AuthIssues
 import com.aether.nextcloud.auth.AetherCredentials
 import com.aether.nextcloud.core.AetherError
 import com.aether.nextcloud.core.AetherResult
@@ -63,6 +64,7 @@ class AetherDocumentsProvider : DocumentsProvider() {
         fun quotas(): QuotaRepository
         fun ocs(): NextcloudOcsClient
         fun diskCache(): DocumentDiskCache
+        fun authIssues(): AuthIssues
 
         @ApplicationScope
         fun scope(): CoroutineScope
@@ -115,7 +117,7 @@ class AetherDocumentsProvider : DocumentsProvider() {
         val credentials = credentialsFor(id)
         val entity = documents.cached(id)
             ?: if (id.isRoot) rootPlaceholder(id, credentials.accountName)
-            else blocking { documents.refreshDocument(credentials, id).orThrow() }
+            else blocking { documents.refreshDocument(credentials, id).orThrow(id.accountName) }
         return MatrixCursor(projection ?: DEFAULT_DOCUMENT_PROJECTION).also { it.addDocument(entity, projection ?: DEFAULT_DOCUMENT_PROJECTION) }
     }
 
@@ -165,7 +167,10 @@ class AetherDocumentsProvider : DocumentsProvider() {
         scope.launch {
             try {
                 when (val result = documents.refreshChildren(credentials, parent)) {
-                    is AetherResult.Failure -> listingErrors[key] = result.error.describe() to System.currentTimeMillis()
+                    is AetherResult.Failure -> {
+                        if (result.error == AetherError.Unauthorized) deps.authIssues().report(credentials.accountName)
+                        listingErrors[key] = result.error.describe() to System.currentTimeMillis()
+                    }
                     is AetherResult.Success -> listingErrors.remove(key)
                 }
             } finally {
@@ -196,7 +201,7 @@ class AetherDocumentsProvider : DocumentsProvider() {
         val id = parseId(documentId)
         val credentials = credentialsFor(id)
         return if (StreamingPipeHelper.isWriteMode(mode)) openForWrite(id, credentials, mode, signal)
-        else pipes.openForRead(blocking(signal) { documents.ensureLocalFile(credentials, id).orThrow() })
+        else pipes.openForRead(blocking(signal) { documents.ensureLocalFile(credentials, id).orThrow(id.accountName) })
     }
 
     private fun openForWrite(id: DocumentId, credentials: AetherCredentials, mode: String, signal: CancellationSignal?): ParcelFileDescriptor {
@@ -205,10 +210,10 @@ class AetherDocumentsProvider : DocumentsProvider() {
         val mimeType: String
         if (StreamingPipeHelper.needsExistingContent(mode)) {
             // Seed the staging file with the current bytes; this also refreshes the ETag we will send as If-Match.
-            val local = blocking(signal) { documents.ensureLocalFile(credentials, id).orThrow() }
+            val local = blocking(signal) { documents.ensureLocalFile(credentials, id).orThrow(id.accountName) }
             local.copyTo(staging, overwrite = true)
         }
-        val entity = documents.cached(id) ?: blocking(signal) { documents.refreshDocument(credentials, id).orThrow() }
+        val entity = documents.cached(id) ?: blocking(signal) { documents.refreshDocument(credentials, id).orThrow(id.accountName) }
         if ('W' !in entity.permissions.orEmpty()) {
             staging.delete()
             throw SecurityException("${entity.name} is read-only")
@@ -240,7 +245,7 @@ class AetherDocumentsProvider : DocumentsProvider() {
         if (thumbnail.isFile) {
             diskCache.touch(thumbnail)
         } else {
-            blocking(signal) { deps.ocs().downloadPreview(credentials, fileId, thumbnail, size).orThrow() }
+            blocking(signal) { deps.ocs().downloadPreview(credentials, fileId, thumbnail, size).orThrow(credentials.accountName) }
             diskCache.removeOutdatedThumbnails(thumbnail)
             diskCache.trimThumbnails(protect = setOf(thumbnail))
         }
@@ -255,8 +260,8 @@ class AetherDocumentsProvider : DocumentsProvider() {
         val parent = parseId(parentDocumentId)
         val credentials = credentialsFor(parent)
         val created = blocking {
-            if (mimeType == Document.MIME_TYPE_DIR) documents.createDirectory(credentials, parent, displayName).orThrow()
-            else documents.createEmptyFile(credentials, parent, displayName, mimeType).orThrow()
+            if (mimeType == Document.MIME_TYPE_DIR) documents.createDirectory(credentials, parent, displayName).orThrow(parent.accountName)
+            else documents.createEmptyFile(credentials, parent, displayName, mimeType).orThrow(parent.accountName)
         }
         notifyChildren(parent)
         return created.documentId
@@ -265,14 +270,14 @@ class AetherDocumentsProvider : DocumentsProvider() {
     override fun deleteDocument(documentId: String) {
         val id = parseId(documentId)
         if (id.isRoot) throw SecurityException("Cannot delete an account root")
-        blocking { documents.delete(credentialsFor(id), id).orThrow() }
+        blocking { documents.delete(credentialsFor(id), id).orThrow(id.accountName) }
         id.parent?.let(::notifyChildren)
     }
 
     override fun renameDocument(documentId: String, displayName: String): String? {
         val id = parseId(documentId)
         if (id.isRoot) throw SecurityException("Cannot rename an account root")
-        val renamed = blocking { documents.rename(credentialsFor(id), id, displayName).orThrow() }
+        val renamed = blocking { documents.rename(credentialsFor(id), id, displayName).orThrow(id.accountName) }
         id.parent?.let(::notifyChildren)
         return renamed.toString()
     }
@@ -281,7 +286,7 @@ class AetherDocumentsProvider : DocumentsProvider() {
         val source = parseId(sourceDocumentId)
         val target = parseId(targetParentDocumentId)
         if (source.accountName != target.accountName) throw FileNotFoundException("Cannot move between accounts")
-        val moved = blocking { documents.move(credentialsFor(source), source, target).orThrow() }
+        val moved = blocking { documents.move(credentialsFor(source), source, target).orThrow(source.accountName) }
         source.parent?.let(::notifyChildren)
         notifyChildren(target)
         return moved.toString()
@@ -315,10 +320,13 @@ class AetherDocumentsProvider : DocumentsProvider() {
     }
 
     /** Binder can only marshal a few exception types; everything else becomes [FileNotFoundException] with the cause as text. */
-    private fun <T> AetherResult<T>.orThrow(): T = when (this) {
+    private fun <T> AetherResult<T>.orThrow(accountName: String): T = when (this) {
         is AetherResult.Success -> value
         is AetherResult.Failure -> when (error) {
-            AetherError.Unauthorized -> throw authenticationRequired()
+            AetherError.Unauthorized -> {
+                deps.authIssues().report(accountName)
+                throw authenticationRequired()
+            }
             AetherError.NotFound -> throw FileNotFoundException("Not found")
             // DocumentsUI only shows a generic failure for provider errors; the message still lands in logcat and the document service.
             AetherError.Locked -> throw FileNotFoundException(error.describe())

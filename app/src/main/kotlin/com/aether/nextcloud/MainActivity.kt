@@ -77,20 +77,30 @@ private fun AetherNavigation(accounts: AccountRepository, onAccountAdded: (Strin
     // null = still reading the account list from Android
     val signedIn by accounts.observeAccounts().collectAsStateWithLifecycle(initialValue = null)
     var route by rememberSaveable { mutableStateOf(Route.Home) }
+    var reauthServer by rememberSaveable { mutableStateOf<String?>(null) }
 
-    BackHandler(enabled = route != Route.Home) { route = Route.Home }
+    BackHandler(enabled = route != Route.Home) {
+        route = Route.Home
+        reauthServer = null
+    }
 
     val current = signedIn
     when {
         current == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { LoadingIndicator() }
         current.isEmpty() || route == Route.AddAccount -> LoginScreen(
+            initialServer = reauthServer,
             onSignedIn = { name ->
                 route = Route.Home
+                reauthServer = null
                 onAccountAdded(name)
             },
         )
         else -> DashboardScreen(
             onAddAccount = { route = Route.AddAccount },
+            onSignInAgain = { account ->
+                reauthServer = account.serverUrl
+                route = Route.AddAccount
+            },
         )
     }
 }

@@ -125,18 +125,6 @@ Significant changes to authentication, sync, provider behaviour or UI design mus
 
 ---
 
-## Suggested order and sizing
+## Status
 
-| Order | Task | Size |
-|---|---|---|
-| 1 | 1.1 HTTPS and host check | S |
-| 2 | 1.2 Redirect policy | S |
-| 3 | 1.3 and 1.4 Cleanup and thumbnails | S |
-| 4 | 1.5 Auth failure visibility | M |
-| 5 | Phase 2 privacy polish | S to M |
-| 6 | 3.1 Share links | L |
-| 7 | Phase 4 UI maintainability | M |
-| 8 | Phase 5 instrumented tests | L |
-| 9 | 3.2 to 3.4 | S to M |
-
-Sizes: S = under half a day, M = about a day, L = several days.
+Phases 1 to 5 are done except the Phase 4 usability walkthrough, which needs a person using the app on a device.

@@ -139,6 +139,32 @@
         <item quantity="one">%1$d transfer in progress</item>
         <item quantity="other">%1$d transfers in progress</item>
     </plurals>
+    <plurals name="transfer_summary_uploads">
+        <item quantity="one">%1$d upload</item>
+        <item quantity="other">%1$d uploads</item>
+    </plurals>
+    <plurals name="transfer_summary_downloads">
+        <item quantity="one">%1$d download</item>
+        <item quantity="other">%1$d downloads</item>
+    </plurals>
+    <plurals name="transfer_summary_uploaded">
+        <item quantity="one">%1$d file uploaded</item>
+        <item quantity="other">%1$d files uploaded</item>
+    </plurals>
+    <plurals name="transfer_summary_downloaded">
+        <item quantity="one">%1$d file downloaded</item>
+        <item quantity="other">%1$d files downloaded</item>
+    </plurals>
+    <plurals name="transfer_summary_failed">
+        <item quantity="one">%1$d failed</item>
+        <item quantity="other">%1$d failed</item>
+    </plurals>
+    <plurals name="transfer_summary_conflicts">
+        <item quantity="one">%1$d saved as a conflict copy</item>
+        <item quantity="other">%1$d saved as conflict copies</item>
+    </plurals>
+    <string name="transfer_summary_nothing_finished">Nothing finished</string>
+    <string name="transfer_summary_last_activity">Last activity %1$s</string>
     <string name="transfer_upload">Upload</string>
     <string name="transfer_download">Download</string>
     <string name="transfer_failed">Failed</string>

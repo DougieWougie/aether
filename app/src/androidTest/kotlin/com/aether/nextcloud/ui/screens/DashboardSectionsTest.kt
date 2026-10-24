@@ -1,5 +1,6 @@
 package com.aether.nextcloud.ui.screens
 
+import androidx.compose.foundation.layout.Column
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasContentDescription
@@ -139,7 +140,7 @@ class DashboardSectionsTest {
     fun aPinnedAccountRootIsShownAsASlash() {
         compose.show { PinnedSection(listOf(file("/", dir = true).copy(name = "")), onUnpin = {}) }
 
-        compose.onAllNodesWithText("/").assertCountEquals(2)
+        compose.onAllNodesWithText("/", useUnmergedTree = true).assertCountEquals(2)
     }
 
     @Test
@@ -167,18 +168,28 @@ class DashboardSectionsTest {
     @Test
     fun activeAndRecentTransfersAreGroupedUnderTheirHeadings() {
         showAnimated {
-            TransfersSection(
-                active = listOf(transfer("/Docs/big.zip", TransferState.RUNNING, done = 1_000_000, total = 4_000_000)),
-                recent = listOf(
-                    transfer("/done.txt", TransferState.COMPLETED, TransferDirection.DOWNLOAD),
-                    transfer("/bad.txt", TransferState.FAILED, error = "Your Nextcloud storage is full. Free up space and try again."),
-                    transfer("/queued.txt", TransferState.QUEUED),
-                ),
-            )
+            Column {
+                TransfersSection(
+                    active = listOf(transfer("/Docs/big.zip", TransferState.RUNNING, done = 1_000_000, total = 4_000_000)),
+                    recent = listOf(
+                        transfer("/done.txt", TransferState.COMPLETED, TransferDirection.DOWNLOAD),
+                        transfer("/bad.txt", TransferState.FAILED, error = "Your Nextcloud storage is full. Free up space and try again."),
+                        transfer("/queued.txt", TransferState.QUEUED),
+                    ),
+                )
+            }
         }
 
         compose.onNodeWithText(str(R.string.transfers_in_progress)).assertIsDisplayed()
         compose.onNodeWithText("Recent").assertIsDisplayed()
+        // Each group starts as a summary; the per-file rows only appear once it is tapped open.
+        compose.onNodeWithText("big.zip").assertDoesNotExist()
+        compose.onNodeWithText(context.resources.getQuantityString(R.plurals.transfers_active, 1, 1)).performClick()
+        compose.mainClock.advanceTimeBy(1_000)
+        compose.onNodeWithText(context.resources.getQuantityString(R.plurals.transfer_summary_downloaded, 1, 1)).assertIsDisplayed()
+        compose.onNodeWithText(context.resources.getQuantityString(R.plurals.transfer_summary_failed, 1, 1)).assertIsDisplayed()
+        compose.onNodeWithText(context.resources.getQuantityString(R.plurals.transfer_summary_downloaded, 1, 1)).performClick()
+        compose.mainClock.advanceTimeBy(1_000)
         compose.onNodeWithText("big.zip").assertIsDisplayed()
         compose.onNodeWithText("Your Nextcloud storage is full. Free up space and try again.").assertIsDisplayed()
         compose.onNodeWithText(str(R.string.transfer_waiting_network)).assertIsDisplayed()
@@ -189,6 +200,7 @@ class DashboardSectionsTest {
     fun aConflictRowOffersToShowTheFolder() {
         compose.show { TransfersSection(emptyList(), listOf(transfer("/Docs/report (Conflict 1).txt", TransferState.CONFLICT))) }
 
+        compose.onNodeWithText(str(R.string.transfer_summary_nothing_finished)).performClick()
         compose.onNodeWithText(str(R.string.transfer_show_folder)).assertIsDisplayed()
     }
 
@@ -200,6 +212,7 @@ class DashboardSectionsTest {
                 .respondWith(android.app.Instrumentation.ActivityResult(android.app.Activity.RESULT_CANCELED, null))
             compose.show { TransfersSection(emptyList(), listOf(transfer("/Docs/report (Conflict 1).txt", TransferState.CONFLICT))) }
 
+            compose.onNodeWithText(str(R.string.transfer_summary_nothing_finished)).performClick()
             compose.onNodeWithText(str(R.string.transfer_show_folder)).performClick()
 
             androidx.test.espresso.intent.Intents.intended(

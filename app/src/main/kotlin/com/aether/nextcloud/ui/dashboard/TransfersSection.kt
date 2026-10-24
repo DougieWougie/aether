@@ -17,6 +17,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CloudDownload
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.animation.animateContentSize
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material3.MaterialShapes
@@ -63,16 +72,86 @@ internal fun TransfersSection(active: List<TransferEntity>, recent: List<Transfe
     }
     if (active.isNotEmpty()) {
         SectionTitle(stringResource(R.string.transfers_in_progress))
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            active.forEachIndexed { index, transfer -> TransferRow(transfer, groupedShape(index, active.size), highlighted = true) }
-        }
+        TransferGroup(active, highlighted = true, key = "active") { ActiveSummary(active) }
     }
     if (recent.isNotEmpty()) {
         SectionTitle("Recent")
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            recent.forEachIndexed { index, transfer -> TransferRow(transfer, groupedShape(index, recent.size), highlighted = false) }
+        TransferGroup(recent, highlighted = false, key = "recent") { RecentSummary(recent) }
+    }
+}
+
+/** A summary card that expands, on tap, into the per-file rows it stands for. */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun TransferGroup(transfers: List<TransferEntity>, highlighted: Boolean, key: String, summary: @Composable () -> Unit) {
+    var expanded by rememberSaveable(key) { mutableStateOf(false) }
+    val colors = MaterialTheme.colorScheme
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.animateContentSize(MaterialTheme.motionScheme.defaultSpatialSpec())) {
+        Surface(
+            onClick = { expanded = !expanded },
+            shape = if (expanded) groupedShape(0, transfers.size + 1) else groupedShape(0, 1),
+            color = if (highlighted) colors.secondaryContainer else colors.surfaceContainerHigh,
+            modifier = Modifier.fillMaxWidth().semantics { stateDescription = if (expanded) "Expanded" else "Collapsed" },
+        ) {
+            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) { summary() }
+                Icon(if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, contentDescription = null)
+            }
+        }
+        if (expanded) {
+            transfers.forEachIndexed { index, transfer -> TransferRow(transfer, groupedShape(index + 1, transfers.size + 1), highlighted) }
         }
     }
+}
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun ActiveSummary(active: List<TransferEntity>) {
+    val context = LocalContext.current
+    Text(pluralStringResource(R.plurals.transfers_active, active.size, active.size), style = MaterialTheme.typography.titleMediumEmphasized)
+    // Only transfers whose size is known count towards the bar, so one unsized upload doesn't stall it at 0.
+    val sized = active.filter { it.totalBytes > 0 }
+    if (sized.isNotEmpty()) {
+        val done = sized.sumOf { it.bytesTransferred.coerceAtMost(it.totalBytes) }
+        val total = sized.sumOf { it.totalBytes }
+        LinearWavyProgressIndicator(progress = { (done.toFloat() / total).coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp))
+        Text(stringResource(R.string.transfer_progress, Formatter.formatShortFileSize(context, done), Formatter.formatShortFileSize(context, total)), style = MaterialTheme.typography.bodySmall)
+    }
+    DirectionCounts(active)
+    if (active.none { it.state == TransferState.RUNNING }) {
+        Text(active.firstNotNullOfOrNull { it.error } ?: stringResource(R.string.transfer_waiting_network), style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+@Composable
+private fun RecentSummary(recent: List<TransferEntity>) {
+    val colors = MaterialTheme.colorScheme
+    val finished = recent.filter { it.state == TransferState.COMPLETED }
+    val failed = recent.count { it.state == TransferState.FAILED }
+    val conflicts = recent.count { it.state == TransferState.CONFLICT }
+    Text(
+        listOfNotNull(
+            finished.count { it.direction == TransferDirection.UPLOAD }.takeIf { it > 0 }?.let { pluralStringResource(R.plurals.transfer_summary_uploaded, it, it) },
+            finished.count { it.direction == TransferDirection.DOWNLOAD }.takeIf { it > 0 }?.let { pluralStringResource(R.plurals.transfer_summary_downloaded, it, it) },
+        ).joinToString(" · ").ifEmpty { stringResource(R.string.transfer_summary_nothing_finished) },
+        style = MaterialTheme.typography.titleMediumEmphasized,
+    )
+    if (failed > 0) Text(pluralStringResource(R.plurals.transfer_summary_failed, failed, failed), style = MaterialTheme.typography.bodyMedium, color = colors.error)
+    if (conflicts > 0) Text(pluralStringResource(R.plurals.transfer_summary_conflicts, conflicts, conflicts), style = MaterialTheme.typography.bodyMedium, color = colors.error)
+    Text(stringResource(R.string.transfer_summary_last_activity, relative(recent.maxOf { it.updatedAt })), style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
+}
+
+@Composable
+private fun DirectionCounts(transfers: List<TransferEntity>) {
+    val uploads = transfers.count { it.direction == TransferDirection.UPLOAD }
+    val downloads = transfers.size - uploads
+    Text(
+        listOfNotNull(
+            uploads.takeIf { it > 0 }?.let { pluralStringResource(R.plurals.transfer_summary_uploads, it, it) },
+            downloads.takeIf { it > 0 }?.let { pluralStringResource(R.plurals.transfer_summary_downloads, it, it) },
+        ).joinToString(" · "),
+        style = MaterialTheme.typography.bodyMedium,
+    )
 }
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)

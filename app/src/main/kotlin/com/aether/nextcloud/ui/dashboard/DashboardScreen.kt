@@ -66,6 +66,7 @@ fun DashboardScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val noFileManager = stringResource(R.string.error_no_file_manager)
     var notice by remember { mutableStateOf<String?>(null) }
 
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
@@ -87,7 +88,7 @@ fun DashboardScreen(
         bottomBar = { DashboardNavigationBar(selected = state.tab, onSelect = viewModel::selectTab) },
         floatingActionButton = {
             state.selected?.let { account ->
-                val openFiles = { if (!openInSystemFiles(context, account)) notice = "No file manager found that can open Aether." }
+                val openFiles = { if (!openInSystemFiles(context, account)) notice = noFileManager }
                 if (state.tab == DashboardTab.Pinned) {
                     PinnedFabMenu(
                         expanded = fabMenuExpanded,
@@ -103,7 +104,7 @@ fun DashboardScreen(
                         onClick = openFiles,
                         expanded = fabExpanded,
                         icon = { Icon(Icons.Outlined.FolderOpen, contentDescription = null) },
-                        text = { Text("Files") },
+                        text = { Text(stringResource(R.string.action_files)) },
                         containerColor = MaterialTheme.colorScheme.tertiaryContainer,
                         contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
                     )

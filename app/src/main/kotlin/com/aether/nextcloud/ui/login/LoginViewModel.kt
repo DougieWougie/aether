@@ -9,7 +9,10 @@ import com.aether.nextcloud.auth.LoginFlowV2Client
 import com.aether.nextcloud.core.AetherError
 import com.aether.nextcloud.core.AetherResult
 import com.aether.nextcloud.core.describe
+import android.content.Context
+import com.aether.nextcloud.R
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
@@ -43,6 +46,7 @@ class LoginViewModel @Inject constructor(
     private val loginClient: LoginFlowV2Client,
     private val accounts: AccountRepository,
     private val authIssues: AuthIssues,
+    @ApplicationContext private val context: Context,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(LoginUiState(server = savedState[KEY_SERVER] ?: ""))
@@ -119,7 +123,7 @@ class LoginViewModel @Inject constructor(
 
     private fun fail(error: AetherError) {
         clearSession()
-        val message = if (error == AetherError.Timeout) "Sign-in timed out. Please try again." else error.describe()
+        val message = if (error == AetherError.Timeout) context.getString(R.string.login_timed_out) else error.describe()
         _state.update { it.copy(phase = LoginPhase.Failed(message)) }
     }
 

@@ -1,5 +1,8 @@
 package com.aether.nextcloud.ui.share
 
+import androidx.compose.ui.res.pluralStringResource
+import com.aether.nextcloud.R
+import androidx.compose.ui.res.stringResource
 import android.content.Intent
 import android.os.Bundle
 import android.provider.DocumentsContract
@@ -103,14 +106,14 @@ private fun ShareSheet(viewModel: ShareUploadViewModel, onFinished: () -> Unit, 
             when {
                 !state.ready -> Loading()
                 state.accounts.isEmpty() -> {
-                    Text("Sign in first", style = MaterialTheme.typography.titleLargeEmphasized)
-                    Text("Open Aether and connect your Nextcloud account, then share again.")
-                    Button(onClick = onOpenApp) { Text("Open Aether") }
+                    Text(stringResource(R.string.share_sign_in_title), style = MaterialTheme.typography.titleLargeEmphasized)
+                    Text(stringResource(R.string.share_sign_in_body))
+                    Button(onClick = onOpenApp) { Text(stringResource(R.string.share_open_app)) }
                 }
                 state.items.isEmpty() -> {
-                    Text("Nothing to upload", style = MaterialTheme.typography.titleLargeEmphasized)
-                    Text("The sharing app didn't send any files.")
-                    TextButton(onClick = onFinished) { Text("Close") }
+                    Text(stringResource(R.string.share_empty_title), style = MaterialTheme.typography.titleLargeEmphasized)
+                    Text(stringResource(R.string.share_empty_body))
+                    TextButton(onClick = onFinished) { Text(stringResource(R.string.action_close)) }
                 }
                 else -> AnimatedContent(state.phase is SharePhase.Queued, label = "share-phase") { queued ->
                     if (queued) QueuedContent((state.phase as? SharePhase.Queued)?.count ?: state.items.size)
@@ -161,9 +164,9 @@ private fun Chooser(
                 Icon(Icons.Outlined.CloudUpload, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(28.dp))
             }
             Column {
-                Text("Save to Nextcloud", style = MaterialTheme.typography.headlineSmallEmphasized)
+                Text(stringResource(R.string.share_target_label), style = MaterialTheme.typography.headlineSmallEmphasized)
                 Text(
-                    if (state.items.size == 1) state.items.first().name else "${state.items.size} files",
+                    if (state.items.size == 1) state.items.first().name else pluralStringResource(R.plurals.share_files, state.items.size, state.items.size),
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -184,7 +187,7 @@ private fun Chooser(
             }
         }
 
-        Text("Destination", style = MaterialTheme.typography.labelLargeEmphasized)
+        Text(stringResource(R.string.share_destination), style = MaterialTheme.typography.labelLargeEmphasized)
         val destination = state.destination
         val choices = (listOfNotNull(destination) + state.recentFolders.filter { it.accountName == state.account?.accountName })
             .distinct()
@@ -201,13 +204,13 @@ private fun Chooser(
             AssistChip(
                 onClick = onBrowse,
                 leadingIcon = { Icon(Icons.Outlined.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                label = { Text("Choose folder…") },
+                label = { Text(stringResource(R.string.share_choose_folder)) },
                 enabled = preparing == null,
             )
         }
         destination?.let {
             Text(
-                if (it.path == "/") "Saving to the top level of your Nextcloud" else "Saving to ${it.path}",
+                if (it.path == "/") stringResource(R.string.share_saving_top) else stringResource(R.string.share_saving_to, it.path),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -223,7 +226,7 @@ private fun Chooser(
 
         Spacer(Modifier.height(4.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onCancel, enabled = preparing == null) { Text("Cancel") }
+            TextButton(onClick = onCancel, enabled = preparing == null) { Text(stringResource(R.string.action_cancel)) }
             Spacer(Modifier.size(8.dp))
             Button(
                 onClick = onUpload,
@@ -235,9 +238,9 @@ private fun Chooser(
                 if (preparing != null) {
                     LoadingIndicator(Modifier.size(24.dp))
                     Spacer(Modifier.size(8.dp))
-                    Text("${preparing.done + 1} of ${preparing.total}")
+                    Text(stringResource(R.string.share_preparing, preparing.done + 1, preparing.total))
                 } else {
-                    Text("Upload")
+                    Text(stringResource(R.string.share_upload))
                 }
             }
         }
@@ -255,7 +258,7 @@ private fun QueuedContent(count: Int) {
         MorphingShapeBadge(MaterialShapes.Cookie12Sided, size = 112.dp, container = MaterialTheme.colorScheme.primary, modifier = Modifier.scale(scale.value)) {
             Icon(Icons.Outlined.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(52.dp))
         }
-        Text(if (count == 1) "Upload started" else "$count uploads started", style = MaterialTheme.typography.titleLargeEmphasized)
-        Text("Progress shows in your notifications.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(pluralStringResource(R.plurals.share_started, count, count), style = MaterialTheme.typography.titleLargeEmphasized)
+        Text(stringResource(R.string.share_progress_hint), color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

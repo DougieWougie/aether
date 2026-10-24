@@ -1,5 +1,7 @@
 package com.aether.nextcloud.ui.dashboard
 
+import com.aether.nextcloud.R
+import androidx.compose.ui.res.stringResource
 import android.text.format.Formatter
 import kotlin.math.roundToInt
 import androidx.compose.animation.core.animateFloatAsState
@@ -50,7 +52,7 @@ internal fun StorageHero(state: DashboardUiState, onRetry: () -> Unit) {
         Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("Storage", style = MaterialTheme.typography.labelLargeEmphasized)
+                    Text(stringResource(R.string.storage_title), style = MaterialTheme.typography.labelLargeEmphasized)
                     when {
                         quota != null -> {
                             val (value, unit) = splitSize(Formatter.formatShortFileSize(context, quota.usedBytes))
@@ -59,16 +61,16 @@ internal fun StorageHero(state: DashboardUiState, onRetry: () -> Unit) {
                                 Text(unit, style = MaterialTheme.typography.headlineMediumEmphasized, modifier = Modifier.padding(bottom = 10.dp))
                             }
                             Text(
-                                if (total != null) "used of ${Formatter.formatShortFileSize(context, total)}" else "used · unlimited quota",
+                                if (total != null) stringResource(R.string.storage_used_of, Formatter.formatShortFileSize(context, total)) else stringResource(R.string.storage_used_unlimited),
                                 style = MaterialTheme.typography.titleMedium,
                             )
                         }
                         failed -> {
-                            Text("Couldn't load", style = MaterialTheme.typography.headlineMediumEmphasized)
+                            Text(stringResource(R.string.storage_load_failed), style = MaterialTheme.typography.headlineMediumEmphasized)
                             Text(state.quotaError ?: "", style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            TextButton(onClick = onRetry) { Text("Retry") }
+                            TextButton(onClick = onRetry) { Text(stringResource(R.string.action_retry)) }
                         }
-                        else -> Text("Loading…", style = MaterialTheme.typography.headlineMediumEmphasized)
+                        else -> Text(stringResource(R.string.storage_loading), style = MaterialTheme.typography.headlineMediumEmphasized)
                     }
                 }
                 Box(Modifier.size(116.dp), contentAlignment = Alignment.Center) {

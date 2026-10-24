@@ -1,5 +1,7 @@
 package com.aether.nextcloud.ui.dashboard
 
+import com.aether.nextcloud.R
+import androidx.compose.ui.res.stringResource
 import android.content.Intent
 import android.provider.DocumentsContract
 import androidx.compose.ui.semantics.stateDescription
@@ -57,6 +59,8 @@ internal fun PinnedFabMenu(
     onOpenFiles: () -> Unit,
 ) {
     fun item(action: () -> Unit): () -> Unit = { onExpandedChange(false); action() }
+    val menuDescription = stringResource(R.string.pin_menu_description)
+    val stateText = stringResource(if (expanded) R.string.state_expanded else R.string.state_collapsed)
     FloatingActionButtonMenu(
         expanded = expanded,
         button = {
@@ -64,8 +68,8 @@ internal fun PinnedFabMenu(
                 checked = expanded,
                 onCheckedChange = onExpandedChange,
                 modifier = Modifier.semantics {
-                    stateDescription = if (expanded) "Expanded" else "Collapsed"
-                    contentDescription = "Pin menu"
+                    stateDescription = stateText
+                    contentDescription = menuDescription
                 },
             ) {
                 val icon by remember { derivedStateOf { if (checkedProgress > 0.5f) Icons.Outlined.Close else Icons.Outlined.PushPin } }
@@ -73,12 +77,12 @@ internal fun PinnedFabMenu(
             }
         },
     ) {
-        FloatingActionButtonMenuItem(onClick = item(onPinFiles), text = { Text("Pin files") }, icon = { Icon(Icons.Outlined.PushPin, contentDescription = null) })
-        FloatingActionButtonMenuItem(onClick = item(onPinFolder), text = { Text("Pin folder") }, icon = { Icon(Icons.Outlined.CreateNewFolder, contentDescription = null) })
+        FloatingActionButtonMenuItem(onClick = item(onPinFiles), text = { Text(stringResource(R.string.pin_files)) }, icon = { Icon(Icons.Outlined.PushPin, contentDescription = null) })
+        FloatingActionButtonMenuItem(onClick = item(onPinFolder), text = { Text(stringResource(R.string.pin_folder)) }, icon = { Icon(Icons.Outlined.CreateNewFolder, contentDescription = null) })
         if (canSync) {
-            FloatingActionButtonMenuItem(onClick = item(onSyncNow), text = { Text("Sync now") }, icon = { Icon(Icons.Outlined.Sync, contentDescription = null) })
+            FloatingActionButtonMenuItem(onClick = item(onSyncNow), text = { Text(stringResource(R.string.sync_now)) }, icon = { Icon(Icons.Outlined.Sync, contentDescription = null) })
         }
-        FloatingActionButtonMenuItem(onClick = item(onOpenFiles), text = { Text("Files") }, icon = { Icon(Icons.Outlined.FolderOpen, contentDescription = null) })
+        FloatingActionButtonMenuItem(onClick = item(onOpenFiles), text = { Text(stringResource(R.string.action_files)) }, icon = { Icon(Icons.Outlined.FolderOpen, contentDescription = null) })
     }
 }
 
@@ -105,10 +109,10 @@ internal fun PinnedSection(
     onUnpin: (DocumentEntity) -> Unit,
 ) {
     if (pinned.isEmpty()) {
-        EmptyState(MaterialShapes.Cookie9Sided, Icons.Outlined.PushPin, "Nothing pinned yet", "Pinned files and folders are kept on this device and stay up to date.")
+        EmptyState(MaterialShapes.Cookie9Sided, Icons.Outlined.PushPin, stringResource(R.string.pinned_empty_title), stringResource(R.string.pinned_empty_body))
         return
     }
-    SectionTitle("Kept on this device")
+    SectionTitle(stringResource(R.string.pinned_section_title))
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         pinned.forEachIndexed { index, doc ->
             Surface(shape = groupedShape(index, pinned.size), color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
@@ -129,7 +133,7 @@ internal fun PinnedSection(
                         Text(doc.name.ifEmpty { "/" }, style = MaterialTheme.typography.titleMediumEmphasized, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(doc.path, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
-                    TextButton(onClick = { onUnpin(doc) }) { Text("Unpin") }
+                    TextButton(onClick = { onUnpin(doc) }) { Text(stringResource(R.string.action_unpin)) }
                 }
             }
         }

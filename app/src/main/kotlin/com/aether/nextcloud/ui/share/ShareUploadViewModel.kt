@@ -1,5 +1,6 @@
 package com.aether.nextcloud.ui.share
 
+import com.aether.nextcloud.R
 import android.content.Context
 import android.content.Intent
 import android.content.ContentResolver
@@ -105,7 +106,7 @@ class ShareUploadViewModel @Inject constructor(
     /** Result of the system folder picker; only Aether folders are accepted. */
     fun onFolderPicked(tree: Uri?) {
         if (tree == null || tree.authority != AetherConstants.AUTHORITY) {
-            if (tree != null) _state.update { it.copy(phase = SharePhase.Failed("Pick a folder inside Aether")) }
+            if (tree != null) _state.update { it.copy(phase = SharePhase.Failed(context.getString(R.string.share_pick_aether_folder))) }
             return
         }
         DocumentId.parseOrNull(DocumentsContract.getTreeDocumentId(tree))?.let(::selectFolder)
@@ -129,7 +130,7 @@ class ShareUploadViewModel @Inject constructor(
                 DirectShareShortcuts.sync(context, settings.directShareEnabled.first(), recent)
                 _state.update { it.copy(phase = SharePhase.Queued(snapshot.items.size)) }
             } catch (e: IOException) {
-                _state.update { it.copy(phase = SharePhase.Failed(e.message ?: "Couldn't read the shared file")) }
+                _state.update { it.copy(phase = SharePhase.Failed(e.message ?: context.getString(R.string.share_read_failed))) }
             }
         }
     }

@@ -1,5 +1,7 @@
 package com.aether.nextcloud.ui.dashboard
 
+import com.aether.nextcloud.R
+import androidx.compose.ui.res.stringResource
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.provider.DocumentsContract
@@ -55,11 +57,11 @@ internal fun openFolderInSystemFiles(context: android.content.Context, folder: D
 @Composable
 internal fun TransfersSection(active: List<TransferEntity>, recent: List<TransferEntity>) {
     if (active.isEmpty() && recent.isEmpty()) {
-        EmptyState(MaterialShapes.Clover4Leaf, Icons.Outlined.Sync, "No transfers", "Uploads from other apps and pinned files show up here.")
+        EmptyState(MaterialShapes.Clover4Leaf, Icons.Outlined.Sync, stringResource(R.string.transfers_empty_title), stringResource(R.string.transfers_empty_body))
         return
     }
     if (active.isNotEmpty()) {
-        SectionTitle("In progress")
+        SectionTitle(stringResource(R.string.transfers_in_progress))
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             active.forEachIndexed { index, transfer -> TransferRow(transfer, groupedShape(index, active.size), highlighted = true) }
         }
@@ -109,19 +111,19 @@ internal fun TransferRow(transfer: TransferEntity, shape: androidx.compose.ui.gr
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                             )
                             Text(
-                                "${Formatter.formatShortFileSize(context, transfer.bytesTransferred)} of ${Formatter.formatShortFileSize(context, transfer.totalBytes)}",
+                                stringResource(R.string.transfer_progress, Formatter.formatShortFileSize(context, transfer.bytesTransferred), Formatter.formatShortFileSize(context, transfer.totalBytes)),
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         } else {
-                            Text(if (transfer.state == TransferState.QUEUED) transfer.error ?: "Waiting for network" else "Starting…", style = MaterialTheme.typography.bodyMedium)
+                            Text(if (transfer.state == TransferState.QUEUED) transfer.error ?: stringResource(R.string.transfer_waiting_network) else stringResource(R.string.transfer_starting), style = MaterialTheme.typography.bodyMedium)
                         }
                     }
-                    TransferState.COMPLETED -> Text("Done " + relative(transfer.updatedAt), style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
+                    TransferState.COMPLETED -> Text(stringResource(R.string.transfer_done, relative(transfer.updatedAt)), style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
                     TransferState.CONFLICT -> {
-                        Text("Saved as a conflict copy · " + relative(transfer.updatedAt), style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
+                        Text(stringResource(R.string.transfer_conflict_copy, relative(transfer.updatedAt)), style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
                         val folder = DocumentId(transfer.accountName, DocumentId.normalizePath(transfer.remotePath)).parent
                         if (folder != null) {
-                            TextButton(onClick = { openFolderInSystemFiles(context, folder) }, contentPadding = PaddingValues(0.dp)) { Text("Show folder in Files") }
+                            TextButton(onClick = { openFolderInSystemFiles(context, folder) }, contentPadding = PaddingValues(0.dp)) { Text(stringResource(R.string.transfer_show_folder)) }
                         }
                     }
                     TransferState.FAILED -> Text(transfer.error ?: "Failed", style = MaterialTheme.typography.bodyMedium, color = colors.error)

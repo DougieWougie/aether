@@ -1,5 +1,7 @@
 package com.aether.nextcloud.ui.backup
 
+import com.aether.nextcloud.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -38,16 +40,16 @@ fun AlbumsCard(albums: List<BackupAlbum>?, onClick: () -> Unit, modifier: Modifi
     val colors = MaterialTheme.colorScheme
     Surface(onClick = onClick, shape = HeroShape, color = colors.onTertiaryContainer.copy(alpha = 0.08f), contentColor = colors.onTertiaryContainer, modifier = modifier.fillMaxWidth()) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Albums", style = MaterialTheme.typography.labelLargeEmphasized)
+            Text(stringResource(R.string.albums_title), style = MaterialTheme.typography.labelLargeEmphasized)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (albums == null) {
-                    AssistChip(onClick = onClick, label = { Text("All albums") }, leadingIcon = { Icon(Icons.Outlined.PhotoLibrary, contentDescription = null) })
+                    AssistChip(onClick = onClick, label = { Text(stringResource(R.string.albums_all)) }, leadingIcon = { Icon(Icons.Outlined.PhotoLibrary, contentDescription = null) })
                 } else {
                     albums.forEach { AssistChip(onClick = onClick, label = { Text(it.name) }) }
                 }
             }
             Text(
-                if (albums == null) "Every album on this phone, including ones created later." else "Only these albums are backed up. Photos already in an album you add are not uploaded.",
+                if (albums == null) stringResource(R.string.albums_all_summary) else stringResource(R.string.albums_some_summary),
                 style = MaterialTheme.typography.bodySmall,
             )
         }
@@ -66,10 +68,10 @@ fun AlbumSheet(
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(Modifier.navigationBarsPadding()) {
-            Text("Albums to back up", style = MaterialTheme.typography.titleLargeEmphasized, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
+            Text(stringResource(R.string.albums_picker_title), style = MaterialTheme.typography.titleLargeEmphasized, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
             ListItem(
-                headlineContent = { Text("All albums") },
-                supportingContent = { Text("Includes albums created later") },
+                headlineContent = { Text(stringResource(R.string.albums_all)) },
+                supportingContent = { Text(stringResource(R.string.albums_all_hint)) },
                 trailingContent = {
                     Switch(
                         checked = selected == null,
@@ -79,8 +81,8 @@ fun AlbumSheet(
                 colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
             )
             when {
-                available == null -> Text("Loading albums…", modifier = Modifier.padding(24.dp))
-                available.isEmpty() -> Text("No photos or videos found. Allow access to photos first.", modifier = Modifier.padding(24.dp))
+                available == null -> Text(stringResource(R.string.albums_loading), modifier = Modifier.padding(24.dp))
+                available.isEmpty() -> Text(stringResource(R.string.albums_none), modifier = Modifier.padding(24.dp))
                 else -> LazyColumn {
                     items(available, key = { it.id }) { album ->
                         val checked = selected == null || selected.any { it.id == album.id }
@@ -90,11 +92,11 @@ fun AlbumSheet(
                             headlineContent = { Text(album.name) },
                             supportingContent = {
                                 Text(
-                                    buildString {
-                                        append("${album.count} on phone")
-                                        if (backedUp > 0) append(" · $backedUp backed up")
-                                        if (onlyOne) append(" · keep at least one album")
-                                    },
+                                    listOf(
+                                        stringResource(R.string.album_on_phone, album.count),
+                                        if (backedUp > 0) stringResource(R.string.album_backed_up, backedUp) else null,
+                                        if (onlyOne) stringResource(R.string.album_keep_one) else null,
+                                    ).filterNotNull().joinToString(" · "),
                                 )
                             },
                             trailingContent = {

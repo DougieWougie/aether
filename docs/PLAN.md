@@ -94,9 +94,9 @@ Significant changes to authentication, sync, provider behaviour or UI design mus
 
 ## Phase 4: UI quality and maintainability
 
-- [ ] **Strings:** move all hardcoded user-facing text in `ui/` into `res/values/strings.xml` (login, dashboard, FAB
-  menu, dialogs).
-- [ ] **Split `ui/dashboard/DashboardScreen.kt`** (682 lines) into focused files: quota card, transfers, pinned list,
+- [x] **Strings:** move all hardcoded user-facing text in `ui/` into `res/values/strings.xml` (login, dashboard, FAB
+  menu, dialogs). `AetherError.describe()` in `core/` still returns English; see the provider errors task.
+- [x] **Split `ui/dashboard/DashboardScreen.kt`** (now 191 lines) into focused files: quota card, transfers, pinned list,
   camera tile, account menu.
 - [ ] **Discoverability:** review where "Sign out" and "Pin" live. Consider surfacing sign-out in a settings area and
   explaining pinning with an empty state.

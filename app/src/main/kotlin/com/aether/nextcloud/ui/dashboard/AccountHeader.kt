@@ -1,5 +1,7 @@
 package com.aether.nextcloud.ui.dashboard
 
+import com.aether.nextcloud.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
@@ -87,7 +89,7 @@ internal fun AccountMenu(
 ) {
     var expanded by remember { mutableStateOf(false) }
     Box {
-        IconButton(onClick = { expanded = true }) { Icon(Icons.Outlined.MoreVert, contentDescription = "Accounts") }
+        IconButton(onClick = { expanded = true }) { Icon(Icons.Outlined.MoreVert, contentDescription = stringResource(R.string.accounts_description)) }
         DropdownMenu(expanded, onDismissRequest = { expanded = false }) {
             if (accounts.size > 1) {
                 accounts.forEach { account ->
@@ -98,15 +100,15 @@ internal fun AccountMenu(
                     )
                 }
             }
-            DropdownMenuItem(text = { Text("Add account") }, onClick = { expanded = false; onAddAccount() })
+            DropdownMenuItem(text = { Text(stringResource(R.string.account_add)) }, onClick = { expanded = false; onAddAccount() })
             DropdownMenuItem(
-                text = { Text("Show folders in share sheet") },
+                text = { Text(stringResource(R.string.account_direct_share)) },
                 trailingIcon = { Switch(checked = directShareEnabled, onCheckedChange = null) },
                 onClick = { onDirectShareChange(!directShareEnabled) },
             )
             selected?.let { account ->
                 DropdownMenuItem(
-                    text = { Text("Sign out ${account.accountName}") },
+                    text = { Text(stringResource(R.string.account_sign_out, account.accountName)) },
                     leadingIcon = { Icon(Icons.AutoMirrored.Outlined.Logout, contentDescription = null) },
                     onClick = { expanded = false; onSignOut(account.accountName) },
                 )

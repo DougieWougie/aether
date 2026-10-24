@@ -1,5 +1,8 @@
 package com.aether.nextcloud.ui.dashboard
 
+import androidx.compose.ui.res.pluralStringResource
+import com.aether.nextcloud.R
+import androidx.compose.ui.res.stringResource
 import android.text.format.Formatter
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -62,7 +65,7 @@ internal fun CameraSection(state: DashboardUiState) {
         Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text(if (backup.enabled) "Backing up" else "Camera backup", style = MaterialTheme.typography.labelLargeEmphasized)
+                    Text(if (backup.enabled) stringResource(R.string.camera_backing_up) else stringResource(R.string.camera_title), style = MaterialTheme.typography.labelLargeEmphasized)
                     if (backup.enabled) {
                         // The server's folder size also counts photos other devices put there; fall back to this phone's total until it arrives.
                         val shown = stats.serverBytes ?: stats.localBytes
@@ -72,14 +75,14 @@ internal fun CameraSection(state: DashboardUiState) {
                             Text(unit, style = MaterialTheme.typography.headlineMediumEmphasized, modifier = Modifier.padding(bottom = 10.dp))
                         }
                         Text(
-                            if (stats.serverBytes != null) "in ${backup.remoteFolder}" else "${stats.totalCount} ${if (stats.totalCount == 1) "item" else "items"} from this phone",
+                            if (stats.serverBytes != null) stringResource(R.string.camera_in_folder, backup.remoteFolder) else pluralStringResource(R.plurals.camera_items_on_phone, stats.totalCount, stats.totalCount),
                             style = MaterialTheme.typography.titleMedium,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
                     } else {
-                        Text("Off", style = MaterialTheme.typography.displayMediumEmphasized)
-                        Text("Upload new photos and videos automatically.", style = MaterialTheme.typography.titleMedium)
+                        Text(stringResource(R.string.camera_off), style = MaterialTheme.typography.displayMediumEmphasized)
+                        Text(stringResource(R.string.camera_off_body), style = MaterialTheme.typography.titleMedium)
                     }
                 }
                 MorphingShapeBadge(
@@ -95,7 +98,7 @@ internal fun CameraSection(state: DashboardUiState) {
                 val albums = backup.albums
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (albums == null) {
-                        CameraChip("All albums")
+                        CameraChip(stringResource(R.string.albums_all))
                     } else {
                         albums.take(3).forEach { CameraChip(it.name) }
                         if (albums.size > 3) CameraChip("+${albums.size - 3}")
@@ -105,14 +108,14 @@ internal fun CameraSection(state: DashboardUiState) {
             if (backup.enabled && stats.totalCount > 0) {
                 MediaSplit(stats)
             }
-            state.lastBackupAt?.takeIf { backup.enabled }?.let { Text("Last backup " + relative(it), style = MaterialTheme.typography.bodyMedium) }
+            state.lastBackupAt?.takeIf { backup.enabled }?.let { Text(stringResource(R.string.camera_last_backup, relative(it)), style = MaterialTheme.typography.bodyMedium) }
             AnimatedVisibility(expanded) { CameraBackupSettings() }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 Button(
                     onClick = { expanded = !expanded },
                     shapes = ButtonDefaults.shapes(),
                     colors = ButtonDefaults.buttonColors(containerColor = colors.tertiary, contentColor = colors.onTertiary),
-                ) { Text(if (expanded) "Done" else if (backup.enabled) "Settings" else "Set up") }
+                ) { Text(if (expanded) stringResource(R.string.action_done) else if (backup.enabled) stringResource(R.string.action_settings) else stringResource(R.string.action_set_up)) }
             }
         }
     }

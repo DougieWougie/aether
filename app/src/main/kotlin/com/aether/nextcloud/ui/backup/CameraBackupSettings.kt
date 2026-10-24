@@ -1,5 +1,7 @@
 package com.aether.nextcloud.ui.backup
 
+import com.aether.nextcloud.R
+import androidx.compose.ui.res.stringResource
 import android.Manifest
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -78,23 +80,23 @@ fun CameraBackupSettings(modifier: Modifier = Modifier, viewModel: CameraBackupV
 
     Column(modifier, verticalArrangement = Arrangement.spacedBy(16.dp)) {
         if (permissionDenied) {
-            Text("Allow access to photos and videos to turn this on.", style = MaterialTheme.typography.bodyMedium, color = colors.error)
+            Text(stringResource(R.string.backup_permission_needed), style = MaterialTheme.typography.bodyMedium, color = colors.error)
         }
         if (settings.enabled) {
-            OutlinedButton(onClick = { viewModel.setEnabled(false) }, shapes = ButtonDefaults.shapes(), modifier = Modifier.fillMaxWidth()) { Text("Turn off backup") }
+            OutlinedButton(onClick = { viewModel.setEnabled(false) }, shapes = ButtonDefaults.shapes(), modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.backup_turn_off)) }
         } else {
             Button(
                 onClick = { requestPermissions.launch(mediaPermissions) },
                 shapes = ButtonDefaults.shapes(),
                 colors = ButtonDefaults.buttonColors(containerColor = colors.tertiary, contentColor = colors.onTertiary),
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text("Turn on backup") }
-            Text("Only new photos and videos taken after you turn this on are uploaded.", style = MaterialTheme.typography.bodySmall)
+            ) { Text(stringResource(R.string.backup_turn_on)) }
+            Text(stringResource(R.string.backup_new_only), style = MaterialTheme.typography.bodySmall)
         }
 
         if (state.accounts.size > 1) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Upload to", style = MaterialTheme.typography.labelLargeEmphasized)
+                Text(stringResource(R.string.backup_upload_to), style = MaterialTheme.typography.labelLargeEmphasized)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     state.accounts.forEach { account ->
                         FilterChip(
@@ -113,26 +115,26 @@ fun CameraBackupSettings(modifier: Modifier = Modifier, viewModel: CameraBackupV
             value = folder,
             onValueChange = { folder = it },
             modifier = Modifier.fillMaxWidth(),
-            label = { Text("Destination folder") },
-            supportingText = { Text("Files go into year/month subfolders, e.g. $folder/2026/10") },
+            label = { Text(stringResource(R.string.backup_destination)) },
+            supportingText = { Text(stringResource(R.string.backup_destination_hint, folder)) },
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = { viewModel.setFolder(folder) }),
         )
 
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Only back up when…", style = MaterialTheme.typography.labelLargeEmphasized)
+            Text(stringResource(R.string.backup_only_when), style = MaterialTheme.typography.labelLargeEmphasized)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OptionChip("Wi-Fi", Icons.Outlined.Wifi, settings.unmeteredOnly, viewModel::setUnmeteredOnly)
-                OptionChip("Charging", Icons.Outlined.BatteryChargingFull, settings.chargingOnly, viewModel::setChargingOnly)
-                OptionChip("Videos", Icons.Outlined.Videocam, settings.includeVideos, viewModel::setIncludeVideos)
+                OptionChip(stringResource(R.string.option_wifi), Icons.Outlined.Wifi, settings.unmeteredOnly, viewModel::setUnmeteredOnly)
+                OptionChip(stringResource(R.string.option_charging), Icons.Outlined.BatteryChargingFull, settings.chargingOnly, viewModel::setChargingOnly)
+                OptionChip(stringResource(R.string.option_videos), Icons.Outlined.Videocam, settings.includeVideos, viewModel::setIncludeVideos)
             }
             Text(
-                buildString {
-                    append(if (settings.unmeteredOnly) "Waits for Wi-Fi" else "Uses mobile data too")
-                    append(if (settings.chargingOnly) " · only while charging" else "")
-                    append(if (settings.includeVideos) " · videos included (large ones upload in chunks)" else " · photos only")
-                },
+                listOf(
+                    stringResource(if (settings.unmeteredOnly) R.string.backup_wifi_only else R.string.backup_mobile_too),
+                    if (settings.chargingOnly) stringResource(R.string.backup_charging_only) else null,
+                    stringResource(if (settings.includeVideos) R.string.backup_videos_included else R.string.backup_photos_only),
+                ).filterNotNull().joinToString(" · "),
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(start = 4.dp),
             )

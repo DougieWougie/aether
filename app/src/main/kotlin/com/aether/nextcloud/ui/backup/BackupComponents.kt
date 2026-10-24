@@ -1,5 +1,7 @@
 package com.aether.nextcloud.ui.backup
 
+import com.aether.nextcloud.R
+import androidx.compose.ui.res.pluralStringResource
 import android.text.format.Formatter
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -38,9 +40,9 @@ fun MediaSplit(stats: BackupStats, modifier: Modifier = Modifier) {
             if (videoShare > 0f) Box(Modifier.weight(videoShare).fillMaxHeight().background(videoColor))
             if (photoShare + videoShare < 1f) Box(Modifier.weight((1f - photoShare - videoShare).coerceAtLeast(0.0001f)))
         }
-        Legend(photoColor, "${stats.photoCount} ${if (stats.photoCount == 1) "photo" else "photos"} · ${Formatter.formatShortFileSize(context, stats.photoBytes)}")
+        Legend(photoColor, pluralStringResource(R.plurals.backup_photos_legend, stats.photoCount, stats.photoCount, Formatter.formatShortFileSize(context, stats.photoBytes)))
         if (stats.videoCount > 0) {
-            Legend(videoColor, "${stats.videoCount} ${if (stats.videoCount == 1) "video" else "videos"} · ${Formatter.formatShortFileSize(context, stats.videoBytes)}")
+            Legend(videoColor, pluralStringResource(R.plurals.backup_videos_legend, stats.videoCount, stats.videoCount, Formatter.formatShortFileSize(context, stats.videoBytes)))
         }
     }
 }

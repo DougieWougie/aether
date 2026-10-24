@@ -96,7 +96,7 @@ fun LoginScreen(
                     Spacer(Modifier.height(24.dp))
                     Text(stringResource(R.string.app_name), style = MaterialTheme.typography.displayMediumEmphasized)
                     Text(
-                        "Your Nextcloud files, right inside Android.",
+                        stringResource(R.string.login_tagline),
                         style = MaterialTheme.typography.titleMedium,
                         textAlign = TextAlign.Center,
                     )
@@ -140,11 +140,11 @@ private fun ServerForm(
             onValueChange = onServerChanged,
             modifier = Modifier.fillMaxWidth(),
             shape = MaterialTheme.shapes.extraLarge,
-            label = { Text("Server address") },
-            placeholder = { Text("cloud.example.com") },
+            label = { Text(stringResource(R.string.login_server_label)) },
+            placeholder = { Text(stringResource(R.string.login_server_placeholder)) },
             singleLine = true,
             isError = error != null,
-            supportingText = { Text(error ?: "HTTPS is used unless you say otherwise") },
+            supportingText = { Text(error ?: stringResource(R.string.login_server_hint)) },
             enabled = !starting,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
             keyboardActions = KeyboardActions(onGo = { onContinue() }),
@@ -157,7 +157,7 @@ private fun ServerForm(
             modifier = Modifier.fillMaxWidth().heightIn(min = ButtonDefaults.LargeContainerHeight),
             contentPadding = ButtonDefaults.contentPaddingFor(ButtonDefaults.LargeContainerHeight),
         ) {
-            if (starting) ContainedLoadingIndicator(Modifier.size(32.dp)) else Text("Continue in browser", style = MaterialTheme.typography.titleMediumEmphasized)
+            if (starting) ContainedLoadingIndicator(Modifier.size(32.dp)) else Text(stringResource(R.string.login_continue), style = MaterialTheme.typography.titleMediumEmphasized)
         }
     }
 }
@@ -167,14 +167,14 @@ private fun ServerForm(
 private fun WaitingForBrowser(onReopen: () -> Unit, onCancel: () -> Unit) {
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
         ContainedLoadingIndicator(Modifier.size(64.dp))
-        Text("Waiting for you to sign in…", style = MaterialTheme.typography.titleLargeEmphasized)
+        Text(stringResource(R.string.login_waiting_title), style = MaterialTheme.typography.titleLargeEmphasized)
         Text(
-            "Finish signing in in your browser, then come back. Passkeys, 2FA and SSO all work.",
+            stringResource(R.string.login_waiting_body),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )
-        Button(onClick = onReopen, shapes = ButtonDefaults.shapes()) { Text("Reopen browser") }
-        OutlinedButton(onClick = onCancel, shapes = ButtonDefaults.shapes()) { Text("Cancel") }
+        Button(onClick = onReopen, shapes = ButtonDefaults.shapes()) { Text(stringResource(R.string.login_reopen)) }
+        OutlinedButton(onClick = onCancel, shapes = ButtonDefaults.shapes()) { Text(stringResource(R.string.action_cancel)) }
     }
 }

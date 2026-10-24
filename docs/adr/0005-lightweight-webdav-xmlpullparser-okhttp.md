@@ -37,3 +37,7 @@ We will build a lean, coroutine-native WebDAV client directly on top of **`OkHtt
 
 - **Positive:** Tiny APK size, first-class Kotlin Coroutines cancellation support, easy unit testing with `MockWebServer`.
 - **Negative / Mitigation:** Requires writing a well-tested `WebDavXmlParser` class. Because `XmlPullParser` is part of the Android SDK stub in unit tests, we can either use `XmlPullParserFactory.newInstance()` with `kxml2` in pure JVM unit tests or run Robolectric tests against `MockWebServer`.
+
+## Implementation notes
+
+- **Redirects.** All requests share one client (`newAetherHttpClient`) with `followSslRedirects(false)`, so a server cannot move a request between `http` and `https`: such a redirect is returned as a failed response (`AetherError.Http(3xx)`) and the request is not repeated. Redirects within the same scheme are still followed, and OkHttp drops the `Authorization` header when the target is a different origin, so the app password is not sent to another host. Both behaviours are covered by `HttpClientTest`.

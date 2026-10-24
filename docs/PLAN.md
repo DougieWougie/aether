@@ -24,10 +24,10 @@ Significant changes to authentication, sync, provider behaviour or UI design mus
 **Done when:** a poll response with `http://` or a different host cannot create an account.
 
 ### 1.2 Restrict redirects on the shared OkHttp client
-- [ ] `di/AppModule.kt`: set `followSslRedirects(false)` on the client.
-- [ ] Decide how to handle cross-host redirects for requests carrying `Authorization` (OkHttp strips the header on
+- [x] `di/AppModule.kt`: set `followSslRedirects(false)` on the client.
+- [x] Decide how to handle cross-host redirects for requests carrying `Authorization` (OkHttp strips the header on
   cross-host redirects; confirm and add a test with `MockWebServer`).
-- [ ] Tests in `WebDavClientTest`: an HTTPS-to-HTTP redirect is not followed.
+- [x] Tests in `WebDavClientTest`: an HTTPS-to-HTTP redirect is not followed.
 
 **Done when:** credentials can never be sent over plain HTTP via a redirect.
 

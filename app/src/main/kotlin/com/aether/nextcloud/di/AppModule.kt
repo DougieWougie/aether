@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Build
 import androidx.room.Room
 import com.aether.nextcloud.auth.LoginFlowV2Client
+import com.aether.nextcloud.core.newAetherHttpClient
 import com.aether.nextcloud.data.cache.DocumentDiskCache
 import com.aether.nextcloud.data.local.AetherDatabase
 import com.aether.nextcloud.dav.NextcloudOcsClient
@@ -13,7 +14,6 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import java.io.File
-import java.util.concurrent.TimeUnit
 import javax.inject.Qualifier
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
@@ -45,11 +45,7 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun okHttpClient(): OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
-        .writeTimeout(60, TimeUnit.SECONDS)
-        .build()
+    fun okHttpClient(): OkHttpClient = newAetherHttpClient()
 
     @Provides
     @Singleton

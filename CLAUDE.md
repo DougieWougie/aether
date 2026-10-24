@@ -101,7 +101,13 @@ com.aether.nextcloud/
 │   │   ├── LoginScreen.kt              # Server input, Custom Tab launcher, morphing polling indicator
 │   │   └── LoginViewModel.kt
 │   ├── dashboard/
-│   │   ├── DashboardScreen.kt          # Quota card, active transfers, pinned items, Open in Files FAB
+│   │   ├── DashboardScreen.kt          # Scaffold, navigation bar, sign-in banner
+│   │   ├── AccountHeader.kt            # Header and account menu
+│   │   ├── StorageHero.kt              # Quota gauge and stat chips
+│   │   ├── TransfersSection.kt         # Active transfers and conflict rows
+│   │   ├── PinnedSection.kt            # Pinned items and the FAB menu
+│   │   ├── CameraSection.kt            # Camera backup tile
+│   │   ├── DashboardComponents.kt      # Shared section title, empty state, formatting
 │   │   └── DashboardViewModel.kt
 │   ├── share/
 │   │   ├── ShareUploadActivity.kt      # ACTION_SEND / ACTION_SEND_MULTIPLE modal sheet

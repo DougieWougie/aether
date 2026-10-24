@@ -1,5 +1,6 @@
 package com.aether.nextcloud.ui.dashboard
 
+import androidx.compose.ui.semantics.semantics
 import com.aether.nextcloud.R
 import androidx.compose.ui.res.stringResource
 import android.content.ActivityNotFoundException
@@ -83,7 +84,7 @@ internal fun TransferRow(transfer: TransferEntity, shape: androidx.compose.ui.gr
     val running = transfer.state == TransferState.RUNNING
     val upload = transfer.direction == TransferDirection.UPLOAD
     Surface(shape = shape, color = if (highlighted) colors.secondaryContainer else colors.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
-        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        Row(Modifier.padding(16.dp).semantics(mergeDescendants = true) {}, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             MorphingShapeBadge(
                 shape = when {
                     failed -> MaterialShapes.Pentagon
@@ -96,7 +97,7 @@ internal fun TransferRow(transfer: TransferEntity, shape: androidx.compose.ui.gr
             ) {
                 Icon(
                     if (upload) Icons.Outlined.CloudUpload else Icons.Outlined.CloudDownload,
-                    contentDescription = null,
+                    contentDescription = stringResource(if (upload) R.string.transfer_upload else R.string.transfer_download),
                     tint = if (failed) colors.onErrorContainer else colors.onTertiaryContainer,
                     modifier = Modifier.size(22.dp),
                 )
@@ -126,7 +127,7 @@ internal fun TransferRow(transfer: TransferEntity, shape: androidx.compose.ui.gr
                             TextButton(onClick = { openFolderInSystemFiles(context, folder) }, contentPadding = PaddingValues(0.dp)) { Text(stringResource(R.string.transfer_show_folder)) }
                         }
                     }
-                    TransferState.FAILED -> Text(transfer.error ?: "Failed", style = MaterialTheme.typography.bodyMedium, color = colors.error)
+                    TransferState.FAILED -> Text(transfer.error ?: stringResource(R.string.transfer_failed), style = MaterialTheme.typography.bodyMedium, color = colors.error)
                 }
             }
         }

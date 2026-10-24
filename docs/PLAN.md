@@ -98,12 +98,16 @@ Significant changes to authentication, sync, provider behaviour or UI design mus
   menu, dialogs). `AetherError.describe()` in `core/` still returns English; see the provider errors task.
 - [x] **Split `ui/dashboard/DashboardScreen.kt`** (now 191 lines) into focused files: quota card, transfers, pinned list,
   camera tile, account menu.
-- [ ] **Discoverability:** review where "Sign out" and "Pin" live. Consider surfacing sign-out in a settings area and
-  explaining pinning with an empty state.
-- [ ] **Provider errors:** `AetherDocumentsProvider.orThrow()` maps nearly everything to `FileNotFoundException`.
+- [x] **Discoverability:** review where "Sign out" and "Pin" live. Consider surfacing sign-out in a settings area and
+  explaining pinning with an empty state. Decision: sign-out stays in the account menu (no settings screen, ADR-0001);
+  the empty Pinned tab now points at the pin button. Recorded in ADR-0006.
+- [x] **Provider errors:** `AetherDocumentsProvider.orThrow()` maps nearly everything to `FileNotFoundException`.
   Use `EXTRA_ERROR` / `EXTRA_INFO` on listings where possible, and surface locked-file and quota errors in the
-  dashboard or a notification.
-- [ ] **Accessibility:** check content descriptions, TalkBack order, touch target sizes and font scaling.
+  dashboard or a notification. Done: 507 is its own `InsufficientStorage` error (not retried), the provider throws
+  `IllegalStateException` rather than `FileNotFoundException` for anything but not-found, and failed uploads already
+  show the reason in their dashboard row. Listings already used `EXTRA_ERROR`.
+- [x] **Accessibility:** check content descriptions, TalkBack order, touch target sizes and font scaling. Done by code review (merged semantics, gauge and transfer icon descriptions).
+  Font scaling and TalkBack order are not verified on a device; do that in the usability check.
 - [ ] **Usability check:** run the app and walk through first sign-in, first pin, first backup and sign-out as a new
   user. Record friction found.
 

@@ -49,3 +49,10 @@ The first pass used expressive components inside a stock layout. The redesign ma
 ## Implementation notes: Camera settings inside the tile (2026-10-23)
 
 The separate Camera backup screen and its route are gone. The Camera tab's tile (`tertiaryContainer`) expands in place, via `animateContentSize` with `motionScheme.defaultSpatialSpec()`, to reveal `CameraBackupSettings`: turn on or off, destination account, albums, destination folder and the Wi-Fi / charging / videos toggles. The tile's button reads "Set up" (backup off), "Settings" (on) and "Done" (expanded). When backup is off the expansion is the same, with "Turn on backup" first; the photo permission is requested when that button is pressed.
+
+## Implementation notes: text and accessibility conventions (2026-10-24)
+
+- **All user-facing text in `ui/` lives in `res/values/strings.xml`**, with `plurals` for counts. Composables read it with `stringResource` / `pluralStringResource`; code outside composition uses the `@ApplicationContext`. Lint rejects `LocalContext.current.getString` (it ignores configuration changes), so read the string in composition and capture it. `AetherError.describe()` in `core/` still returns English and surfaces in transfer rows and listing errors; localising it is a separate change.
+- **Cards read as one unit.** Storage and transfer rows merge their descendants for TalkBack. The quota gauge and status badge are decorative; they carry only a short description (percent used, or transfers in progress), because the text beside them already states the numbers.
+- **Icons that carry meaning** (upload or download in a transfer row, the pin menu) have a `contentDescription`; icons beside a text label do not.
+- **Sign-out stays in the account menu** and pinning stays in the Pinned tab's FAB menu. There is no settings screen, in line with ADR-0001's minimal companion app. The empty Pinned tab names the pin button so a new user can find it.

@@ -38,7 +38,7 @@
     <string name="action_files">Files</string>
     <string name="action_unpin">Unpin</string>
     <string name="pinned_empty_title">Nothing pinned yet</string>
-    <string name="pinned_empty_body">Pinned files and folders are kept on this device and stay up to date.</string>
+    <string name="pinned_empty_body">Tap the pin button to keep files and folders on this device. They stay up to date.</string>
     <string name="pinned_section_title">Kept on this device</string>
     <string name="transfers_empty_title">No transfers</string>
     <string name="transfers_empty_body">Uploads from other apps and pinned files show up here.</string>
@@ -130,4 +130,14 @@
         <item quantity="one">Upload started</item>
         <item quantity="other">%1$d uploads started</item>
     </plurals>
+    <string name="storage_percent_used">%1$d%% of storage used</string>
+    <string name="storage_pinned">%1$s pinned</string>
+    <string name="storage_cache">%1$s cache</string>
+    <plurals name="transfers_active">
+        <item quantity="one">%1$d transfer in progress</item>
+        <item quantity="other">%1$d transfers in progress</item>
+    </plurals>
+    <string name="transfer_upload">Upload</string>
+    <string name="transfer_download">Download</string>
+    <string name="transfer_failed">Failed</string>
 </resources>

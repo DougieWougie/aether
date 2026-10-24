@@ -1,5 +1,9 @@
 package com.aether.nextcloud.ui.dashboard
 
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.res.pluralStringResource
 import com.aether.nextcloud.R
 import androidx.compose.ui.res.stringResource
 import android.text.format.Formatter
@@ -51,7 +55,7 @@ internal fun StorageHero(state: DashboardUiState, onRetry: () -> Unit) {
     Surface(shape = HeroShape, color = colors.primaryContainer, contentColor = colors.onPrimaryContainer, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Column(Modifier.weight(1f).semantics(mergeDescendants = true) {}, verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(stringResource(R.string.storage_title), style = MaterialTheme.typography.labelLargeEmphasized)
                     when {
                         quota != null -> {
@@ -73,7 +77,14 @@ internal fun StorageHero(state: DashboardUiState, onRetry: () -> Unit) {
                         else -> Text(stringResource(R.string.storage_loading), style = MaterialTheme.typography.headlineMediumEmphasized)
                     }
                 }
-                Box(Modifier.size(116.dp), contentAlignment = Alignment.Center) {
+                // The text beside the gauge already says how much is used, so the gauge only adds the percentage or the transfer count.
+                val gaugeDescription = when {
+                    failed -> null
+                    syncing -> pluralStringResource(R.plurals.transfers_active, state.activeTransfers.size, state.activeTransfers.size)
+                    fraction != null -> stringResource(R.string.storage_percent_used, (fraction * 100).roundToInt())
+                    else -> null
+                }
+                Box(Modifier.size(116.dp).clearAndSetSemantics { gaugeDescription?.let { contentDescription = it } }, contentAlignment = Alignment.Center) {
                     QuotaArcGauge(fraction = fraction, modifier = Modifier.size(116.dp))
                     when {
                         failed -> MorphingShapeBadge(shape = MaterialShapes.Pentagon, size = 76.dp, container = colors.errorContainer) {
@@ -90,8 +101,8 @@ internal fun StorageHero(state: DashboardUiState, onRetry: () -> Unit) {
                 }
             }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (state.storage.pinnedBytes > 0) StatChip("${Formatter.formatShortFileSize(context, state.storage.pinnedBytes)} pinned")
-                if (state.storage.cacheBytes > 0) StatChip("${Formatter.formatShortFileSize(context, state.storage.cacheBytes)} cache")
+                if (state.storage.pinnedBytes > 0) StatChip(stringResource(R.string.storage_pinned, Formatter.formatShortFileSize(context, state.storage.pinnedBytes)))
+                if (state.storage.cacheBytes > 0) StatChip(stringResource(R.string.storage_cache, Formatter.formatShortFileSize(context, state.storage.cacheBytes)))
             }
         }
     }

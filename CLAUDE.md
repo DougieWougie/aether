@@ -117,7 +117,7 @@ com.aether.nextcloud/
 ## Key Protocol & Implementation Specifications
 
 ### 1. Nextcloud Login Flow v2 (`LoginFlowV2Client`)
-- **Initiation:** `POST https://<server>/index.php/login/v2` with header `User-Agent: Aether (<Device Model>; Android <SDK>)`.
+- **Initiation:** `POST https://<server>/index.php/login/v2` with header `User-Agent: Aether (Android <SDK>)`.
 - **Response (`200 OK`):**
   ```json
   {

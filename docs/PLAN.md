@@ -67,10 +67,10 @@ Significant changes to authentication, sync, provider behaviour or UI design mus
   clear published shortcuts when the account is removed (`ui/share/DirectShareShortcuts.kt`).
 - [x] **Roots list summary:** show only the host when a single account exists, the full account name when there are
   several (`AetherDocumentsProvider.queryRoots()`).
-- [ ] **User-Agent:** decide whether to drop `Build.MODEL` (`di/AppModule.userAgent()`). Record the decision.
-- [ ] **ADR:** document that local data (Room, pinned files, staging) is stored unencrypted in private app storage
+- [x] **User-Agent:** decide whether to drop `Build.MODEL` (`di/AppModule.userAgent()`). Record the decision.
+- [x] **ADR:** document that local data (Room, pinned files, staging) is stored unencrypted in private app storage
   and relies on file-based encryption. List what is stored (paths, album names, ETags).
-- [ ] **Optional:** an app lock (biometric) and `FLAG_SECURE` for the companion app. Decide and record in an ADR; do
+- [x] **Optional:** an app lock (biometric) and `FLAG_SECURE` for the companion app. Decide and record in an ADR; do
   not add it without a decision.
 
 ---

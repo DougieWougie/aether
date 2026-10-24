@@ -36,7 +36,7 @@ object AppModule {
 
     @Provides
     @UserAgent
-    fun userAgent(): String = "Aether (${Build.MODEL}; Android ${Build.VERSION.SDK_INT})"
+    fun userAgent(): String = "Aether (Android ${Build.VERSION.SDK_INT})"
 
     @Provides
     @Singleton

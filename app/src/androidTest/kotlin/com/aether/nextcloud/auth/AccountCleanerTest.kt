@@ -48,8 +48,8 @@ class AccountCleanerTest {
         awaitTrue("the app password to be revoked on the server") { env.nextcloud.requests.any { it.method == "DELETE" && it.path.orEmpty().contains("/ocs/v2.php/core/apppassword") } }
         awaitTrue("the cached document rows to go") { env.graph.documents().cached(DocumentId(env.accountName, "/a.txt")) == null }
         awaitTrue("the cached file to go") { !cached.exists() }
-        assertFalse("staged uploads are deleted", staged.exists())
-        assertFalse("thumbnails are deleted", thumbnail.exists())
+        awaitTrue("staged uploads to be deleted") { !staged.exists() }
+        awaitTrue("thumbnails to be deleted") { !thumbnail.exists() }
         assertNull(env.graph.accounts().credentials(env.accountName))
         awaitTrue("the transfer rows to go") { runBlocking { transfers.observeRecent(10).first() }.none { it.accountName == env.accountName } }
         awaitTrue("the backup log rows to go") { backedUp.find(env.accountName, 1, false) == null }

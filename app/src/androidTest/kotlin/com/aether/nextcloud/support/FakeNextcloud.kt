@@ -38,6 +38,11 @@ class FakeNextcloud(val user: String = "alice") : AutoCloseable {
     /** When set, GET answers 500 (a download that starts and fails). */
     @Volatile var failDownloads = false
 
+    /** What `/ocs/v2.php/cloud/user` reports; [quotaTotal] null means unlimited. */
+    @Volatile var displayName = "Alice Example"
+    @Volatile var quotaUsed = 25_000_000L
+    @Volatile var quotaTotal: Long? = 100_000_000L
+
     /** Extra latency applied to every PUT, to make races observable. */
     @Volatile var putDelayMs = 0L
 
@@ -109,6 +114,10 @@ class FakeNextcloud(val user: String = "alice") : AutoCloseable {
         return when {
             path.startsWith("/remote.php/dav/uploads/$user/") -> uploads(request, path.removePrefix("/remote.php/dav/uploads/$user/"))
             path.startsWith("/remote.php/dav/files/$user") -> files(request, normalise(path.removePrefix("/remote.php/dav/files/$user")))
+            path == "/ocs/v2.php/cloud/user" -> MockResponse().setHeader("Content-Type", "application/json").setBody(
+                """{"ocs":{"meta":{"status":"ok"},"data":{"id":"$user","display-name":"$displayName","quota":{"used":$quotaUsed,"free":${quotaTotal?.let { it - quotaUsed } ?: -3},"total":${quotaTotal ?: 0},"quota":${quotaTotal ?: "\"none\""}}}}}""",
+            )
+            path == "/ocs/v2.php/core/apppassword" && request.method == "DELETE" -> MockResponse().setResponseCode(200)
             path.startsWith("/ocs/") -> MockResponse().setResponseCode(404)
             else -> MockResponse().setResponseCode(404)
         }

@@ -55,6 +55,24 @@ class WebDavXmlParserTest {
     }
 
     @Test
+    fun `reads oc checksums and treats a missing property as none`() {
+        val xml = """<?xml version="1.0"?>
+            <d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns">
+              <d:response><d:href>/remote.php/dav/files/alice/a.jpg</d:href><d:propstat><d:prop>
+                <oc:checksums><oc:checksum>SHA1:ABC123 MD5:def456</oc:checksum></oc:checksums>
+              </d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+              <d:response><d:href>/remote.php/dav/files/alice/b.jpg</d:href><d:propstat><d:prop>
+                <d:getcontentlength>5</d:getcontentlength>
+              </d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+            </d:multistatus>""".trimIndent()
+
+        val (withSum, without) = parser.parse(xml.byteInputStream())
+
+        assertEquals(listOf("SHA1:ABC123", "MD5:def456"), withSum.checksums)
+        assertEquals(emptyList<String>(), without.checksums)
+    }
+
+    @Test
     fun `works with arbitrary namespace prefixes`() {
         val xml = """
             <multistatus xmlns="DAV:" xmlns:o="http://owncloud.org/ns">

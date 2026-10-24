@@ -10,6 +10,9 @@ interface UploadSource {
     /** Last-modified time in epoch millis, forwarded as `X-OC-Mtime` so the server keeps the original timestamp. */
     val lastModified: Long?
 
+    /** `SHA1:<hex>` of the content, sent as `OC-Checksum` so the server verifies the upload and keeps the hash for later comparisons. */
+    val checksum: String? get() = null
+
     /** Opens a fresh stream positioned at [offset]; the caller closes it. */
     fun open(offset: Long): InputStream
 }

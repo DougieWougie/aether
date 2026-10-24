@@ -105,6 +105,7 @@ class WebDavClient(
             if (ifMatchEtag != null) header("If-Match", "\"$ifMatchEtag\"")
             else if (createOnly) header("If-None-Match", "*")
             source.lastModified?.let { header("X-OC-Mtime", (it / 1000).toString()) }
+            source.checksum?.let { header("OC-Checksum", it) }
         }.build()
         return client.execute(request) { response -> uploadResult(response) }
     }
@@ -137,7 +138,7 @@ class WebDavClient(
         if (created is AetherResult.Failure) return created
 
         val result = putChunks(uploadDir, source, total, onProgress).let { chunks ->
-            if (chunks is AetherResult.Failure) chunks else assemble(uploadDir, destination, total, ifMatchEtag, source.lastModified, overwrite = !createOnly || ifMatchEtag != null)
+            if (chunks is AetherResult.Failure) chunks else assemble(uploadDir, destination, total, ifMatchEtag, source.lastModified, source.checksum, overwrite = !createOnly || ifMatchEtag != null)
         }
         if (result is AetherResult.Failure) {
             // Orphaned upload directories count against quota until the server's cleanup job removes them.
@@ -165,7 +166,7 @@ class WebDavClient(
         return AetherResult.Success(Unit)
     }
 
-    private suspend fun assemble(uploadDir: String, destination: String, total: Long, ifMatchEtag: String?, lastModified: Long?, overwrite: Boolean): AetherResult<UploadResult> {
+    private suspend fun assemble(uploadDir: String, destination: String, total: Long, ifMatchEtag: String?, lastModified: Long?, checksum: String?, overwrite: Boolean): AetherResult<UploadResult> {
         val request = request("$uploadDir/.file")
             .method("MOVE", null)
             .header("Destination", destination)
@@ -174,6 +175,7 @@ class WebDavClient(
             .apply {
                 if (ifMatchEtag != null) header("If-Match", "\"$ifMatchEtag\"")
                 lastModified?.let { header("X-OC-Mtime", (it / 1000).toString()) }
+                checksum?.let { header("OC-Checksum", it) }
             }
             .build()
         return client.execute(request) { response -> uploadResult(response) }
@@ -227,6 +229,7 @@ class WebDavClient(
                 <oc:size/>
                 <nc:has-preview/>
                 <oc:favorite/>
+                <oc:checksums/>
               </d:prop>
             </d:propfind>
         """.trimIndent()

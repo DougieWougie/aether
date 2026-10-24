@@ -129,6 +129,29 @@ class WebDavClientTest {
     }
 
     @Test
+    fun `uploads send the source checksum as oc-checksum, plain and chunked`() = runBlocking {
+        val file = tmp.newFile("s.bin").apply { writeBytes(ByteArray(10) { it.toByte() }) }
+        val source = object : UploadSource {
+            private val inner = FileUploadSource(file)
+            override val length get() = inner.length
+            override val lastModified get() = inner.lastModified
+            override val checksum = "SHA1:abc"
+            override fun open(offset: Long) = inner.open(offset)
+        }
+        server.enqueue(MockResponse().setResponseCode(201)) // PUT
+        repeat(5) { server.enqueue(MockResponse().setResponseCode(201)) } // MKCOL, 3 chunks, MOVE
+
+        dav.uploadFile(url("/s.bin"), source, null)
+        dav.uploadChunkedV2(source, "/s.bin")
+
+        assertEquals("SHA1:abc", server.takeRequest().getHeader("OC-Checksum"))
+        repeat(4) { assertNull(server.takeRequest().getHeader("OC-Checksum")) } // MKCOL and chunks
+        val move = server.takeRequest()
+        assertEquals("MOVE", move.method)
+        assertEquals("SHA1:abc", move.getHeader("OC-Checksum"))
+    }
+
+    @Test
     fun `uploadFile omits if-match for new files and maps 412`() = runBlocking {
         server.enqueue(MockResponse().setResponseCode(201))
         server.enqueue(MockResponse().setResponseCode(412))

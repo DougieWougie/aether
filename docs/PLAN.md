@@ -87,7 +87,7 @@ Significant changes to authentication, sync, provider behaviour or UI design mus
   Files).
 
 ### 3.3 Camera backup resilience
-- [ ] After a reinstall, the duplicate check relies on remote size matching. Consider storing a content hash or
+- [x] After a reinstall, the duplicate check relies on remote size matching. Consider storing a content hash or
   using the server ETag/checksum so re-uploads are avoided more reliably.
 
 ---

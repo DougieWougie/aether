@@ -2,6 +2,7 @@ package com.aether.nextcloud.sync
 
 import android.content.ContentResolver
 import android.net.Uri
+import com.aether.nextcloud.dav.Checksums
 import com.aether.nextcloud.dav.UploadSource
 import com.aether.nextcloud.dav.skipFully
 import java.io.FileInputStream
@@ -16,6 +17,7 @@ class ContentUriUploadSource(
     private val uri: Uri,
     override val length: Long,
     override val lastModified: Long?,
+    override val checksum: String? = null,
 ) : UploadSource {
     override fun open(offset: Long): InputStream {
         val descriptor = resolver.openFileDescriptor(uri, "r") ?: throw FileNotFoundException("Cannot open $uri")
@@ -42,4 +44,7 @@ class ContentUriUploadSource(
             throw e
         }
     }
+
+    /** Reads the whole item to hash it; run off the main thread. */
+    fun withChecksum(): ContentUriUploadSource = ContentUriUploadSource(resolver, uri, length, lastModified, open(0).use(Checksums::sha1))
 }

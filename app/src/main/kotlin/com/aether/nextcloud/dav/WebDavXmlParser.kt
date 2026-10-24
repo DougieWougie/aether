@@ -48,6 +48,7 @@ class WebDavXmlParser {
             size = props.size,
             hasPreview = props.hasPreview,
             isFavorite = props.isFavorite,
+            checksums = props.checksums,
         )
     }
 
@@ -84,6 +85,9 @@ class WebDavXmlParser {
                     "permissions" -> into.permissions = p.readText().trim().ifEmpty { null }
                     "size" -> into.size = p.readText().trim().toLongOrNull()
                     "favorite" -> into.isFavorite = p.readText().trim() == "1"
+                    "checksums" -> p.eachChild { child, _ ->
+                        if (child == "checksum") into.checksums += p.readText().trim().split(' ').filter { it.isNotEmpty() } else p.skip()
+                    }
                     else -> p.skip()
                 }
                 NC -> when (name) {
@@ -104,6 +108,7 @@ class WebDavXmlParser {
         var etag: String? = null
         var permissions: String? = null
         var size: Long? = null
+        var checksums: List<String> = emptyList()
         var hasPreview = false
         var isFavorite = false
 
@@ -118,6 +123,7 @@ class WebDavXmlParser {
             size = o.size ?: size
             hasPreview = hasPreview || o.hasPreview
             isFavorite = isFavorite || o.isFavorite
+            checksums = checksums.ifEmpty { o.checksums }
         }
     }
 

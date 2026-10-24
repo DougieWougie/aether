@@ -32,6 +32,7 @@ import com.aether.nextcloud.data.local.AetherDatabase
 import com.aether.nextcloud.data.local.entity.BackedUpMediaEntity
 import com.aether.nextcloud.data.prefs.BackupSettings
 import com.aether.nextcloud.data.prefs.SettingsRepository
+import com.aether.nextcloud.dav.Checksums
 import com.aether.nextcloud.dav.WebDavClient
 import com.aether.nextcloud.dav.WebDavClientFactory
 import com.aether.nextcloud.dav.relativeRemotePath
@@ -137,20 +138,28 @@ class CameraBackupWorker @AssistedInject constructor(
             }
         }
 
-        // Never overwrite: a same-named file of the same size is this item from an earlier install; a different one forces a new name.
+        // Never overwrite: a same-named file of the same content is this item from an earlier install; a different one forces a new name.
+        val plain = ContentUriUploadSource(applicationContext.contentResolver, item.uri, item.size, item.modifiedMillis)
+        var source = plain
         when (val existing = dav.propfind(credentials.fileUrl(remotePath), depth = 0)) {
             is AetherResult.Success -> {
                 val remote = existing.value.firstOrNull()
                 if (remote?.contentLength == item.size) {
-                    record(credentials, item, remotePath)
-                    return AetherResult.Success(Unit)
+                    // Same name and size. When the server holds a SHA-1 the content decides; without one the size has to do.
+                    val remoteSha1 = Checksums.sha1Of(remote.checksums)
+                    if (remoteSha1 != null) source = withContext(Dispatchers.IO) { plain.withChecksum() }
+                    if (remoteSha1 == null || remoteSha1 == source.checksum) {
+                        record(credentials, item, remotePath)
+                        return AetherResult.Success(Unit)
+                    }
                 }
                 remotePath = BackupPaths.remotePath(settings.remoteFolder, item.takenMillis, BackupPaths.withMediaId(item.name, item.id))
             }
             is AetherResult.Failure -> if (existing.error != AetherError.NotFound) return existing
         }
 
-        val source = ContentUriUploadSource(applicationContext.contentResolver, item.uri, item.size, item.modifiedMillis)
+        // Send a SHA-1 so the server verifies the upload and a later run (or a reinstall) can tell this file from another.
+        if (source.checksum == null) source = withContext(Dispatchers.IO) { plain.withChecksum() }
         val upload = if (item.size > WebDavClient.CHUNKED_THRESHOLD) {
             dav.uploadChunkedV2(source, remotePath)
         } else {

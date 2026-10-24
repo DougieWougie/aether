@@ -18,6 +18,8 @@ data class DavResource(
     val size: Long? = null,
     val hasPreview: Boolean = false,
     val isFavorite: Boolean = false,
+    /** `oc:checksums`, each as `ALGORITHM:hex` (for example `SHA1:da39...`); empty when the server holds none. */
+    val checksums: List<String> = emptyList(),
 ) {
     val canWrite: Boolean get() = permissions?.any { it == 'W' || it == 'C' || it == 'K' } ?: false
     val canDelete: Boolean get() = permissions?.contains('D') ?: false

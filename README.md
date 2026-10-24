@@ -41,6 +41,24 @@ plugs into the platform and keeps its own UI small.
 - A small companion app in Material 3 Expressive with your profile picture, a storage ring, transfers, pinned files
   and camera backup settings.
 
+## How syncing works
+
+Aether is **on-demand access plus selective offline pinning**, not a two-way synced folder.
+
+- Files are fetched when an app opens them and kept in a size-limited cache. Folder listings are cached briefly and
+  refreshed in the background.
+- Files and folders you pin are downloaded and kept current by comparing ETags, so they work offline.
+- Edits made through the system file manager are uploaded when the file is closed.
+- Camera backup is one-way: new photos and videos go to the server, and nothing comes back.
+
+Unpinned files are not on your phone until you open them. See [ADR-0004](docs/adr/0004-hybrid-sync-offline-pinning-workmanager.md).
+
+### Not planned
+
+- **A two-way synced folder** that mirrors your whole Nextcloud into local storage (the Dropbox desktop model).
+  Aether leaves file browsing to the system file manager and keeps local copies to what you pin, which keeps storage
+  use and background work small. If you need a full mirror, use the official Nextcloud app.
+
 ## How it works
 
 | Area | Approach |

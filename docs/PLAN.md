@@ -78,9 +78,9 @@ Significant changes to authentication, sync, provider behaviour or UI design mus
 ## Phase 3: Closing the Dropbox gap
 
 ### 3.1 Be honest about sync semantics
-- [ ] README: state clearly that Aether is on-demand access plus selective offline pinning, not a two-way synced
+- [x] README: state clearly that Aether is on-demand access plus selective offline pinning, not a two-way synced
   folder. Link ADR-0004.
-- [ ] Decide whether two-way folder sync is in scope. If not, add it to a "Not planned" section of the README.
+- [x] Decide whether two-way folder sync is in scope. If not, add it to a "Not planned" section of the README.
 
 ### 3.2 Conflict handling
 - [ ] Let the user open or compare a conflict copy from the dashboard row (at minimum, open the folder in system

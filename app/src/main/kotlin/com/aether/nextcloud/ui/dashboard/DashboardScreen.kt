@@ -303,6 +303,19 @@ private fun openInSystemFiles(context: android.content.Context, account: AetherC
     }
 }
 
+/** Opens DocumentsUI inside [folder], so the original and its conflict copy sit side by side. */
+private fun openFolderInSystemFiles(context: android.content.Context, folder: DocumentId): Boolean {
+    val intent = Intent(Intent.ACTION_VIEW)
+        .setDataAndType(DocumentsContract.buildDocumentUri(AetherConstants.AUTHORITY, folder.toString()), DocumentsContract.Document.MIME_TYPE_DIR)
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    return try {
+        context.startActivity(intent)
+        true
+    } catch (_: ActivityNotFoundException) {
+        false
+    }
+}
+
 @Composable
 private fun AccountMenu(
     accounts: List<AetherCredentials>,
@@ -559,7 +572,13 @@ private fun TransferRow(transfer: TransferEntity, shape: androidx.compose.ui.gra
                         }
                     }
                     TransferState.COMPLETED -> Text("Done " + relative(transfer.updatedAt), style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
-                    TransferState.CONFLICT -> Text("Saved as a conflict copy · " + relative(transfer.updatedAt), style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
+                    TransferState.CONFLICT -> {
+                        Text("Saved as a conflict copy · " + relative(transfer.updatedAt), style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
+                        val folder = DocumentId(transfer.accountName, DocumentId.normalizePath(transfer.remotePath)).parent
+                        if (folder != null) {
+                            TextButton(onClick = { openFolderInSystemFiles(context, folder) }, contentPadding = PaddingValues(0.dp)) { Text("Show folder in Files") }
+                        }
+                    }
                     TransferState.FAILED -> Text(transfer.error ?: "Failed", style = MaterialTheme.typography.bodyMedium, color = colors.error)
                 }
             }

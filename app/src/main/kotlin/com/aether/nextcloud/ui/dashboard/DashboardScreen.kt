@@ -14,12 +14,16 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.drop
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -79,7 +83,10 @@ fun DashboardScreen(
     val undoLabel = stringResource(R.string.action_undo)
     val unpinnedFormat = stringResource(R.string.pinned_unpinned)
 
-    val listState = rememberLazyListState()
+    val tabs = DashboardTab.entries
+    val pagerState = rememberPagerState(initialPage = tabs.indexOf(state.tab)) { tabs.size }
+    val listStates = tabs.map { rememberLazyListState() }
+    val listState = listStates[pagerState.currentPage]
     val rootDocumentUri = state.selected?.let { DocumentsContract.buildDocumentUri(AetherConstants.AUTHORITY, DocumentId.root(it.accountName).toString()) }
     val pickFiles = rememberLauncherForActivityResult(PickAetherDocuments()) { viewModel.pin(it); if (it.isNotEmpty()) askForNotifications() }
     val pickFolder = rememberLauncherForActivityResult(PickAetherFolder()) { uri -> if (uri != null) { viewModel.pin(listOf(uri)); askForNotifications() } }
@@ -87,6 +94,16 @@ fun DashboardScreen(
     LaunchedEffect(state.tab) { fabMenuExpanded = false }
     BackHandler(fabMenuExpanded) { fabMenuExpanded = false }
     val fabExpanded by remember { derivedStateOf { listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0 } }
+
+    // The view model owns the selected tab (nav bar taps, saved state); the pager follows it, and a settled swipe reports back.
+    // The first settled page is skipped: the view model's real tab may not have arrived yet.
+    LaunchedEffect(state.tab) {
+        val target = tabs.indexOf(state.tab)
+        if (pagerState.settledPage != target || pagerState.currentPage != target) pagerState.animateScrollToPage(target)
+    }
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.settledPage }.drop(1).collect { viewModel.selectTab(tabs[it]) }
+    }
 
     Scaffold(
         modifier = modifier,
@@ -118,28 +135,29 @@ fun DashboardScreen(
             }
         },
     ) { padding ->
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.imePadding(),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = padding.calculateTopPadding() + 8.dp, bottom = padding.calculateBottomPadding() + 88.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            item {
-                Header(
-                    account = state.selected,
-                    avatar = state.avatar,
-                    accounts = state.accounts,
-                    onSelect = viewModel::selectAccount,
-                    onAddAccount = onAddAccount,
-                    onSignOut = viewModel::signOut,
-                    directShareEnabled = state.directShareEnabled,
-                    onDirectShareChange = viewModel::setDirectShare,
-                )
-            }
-            items(state.needsSignIn, key = { it.accountName }) { account -> SignInBanner(account, onSignIn = { onSignInAgain(account) }) }
-            item { StorageHero(state, onRetry = viewModel::refresh) }
-            item {
-                AnimatedContent(state.tab, label = "dashboard-tab") { tab ->
+        HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
+            val tab = tabs[page]
+            LazyColumn(
+                state = listStates[page],
+                modifier = Modifier.imePadding(),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = padding.calculateTopPadding() + 8.dp, bottom = padding.calculateBottomPadding() + 88.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                item {
+                    Header(
+                        account = state.selected,
+                        avatar = state.avatar,
+                        accounts = state.accounts,
+                        onSelect = viewModel::selectAccount,
+                        onAddAccount = onAddAccount,
+                        onSignOut = viewModel::signOut,
+                        directShareEnabled = state.directShareEnabled,
+                        onDirectShareChange = viewModel::setDirectShare,
+                    )
+                }
+                items(state.needsSignIn, key = { it.accountName }) { account -> SignInBanner(account, onSignIn = { onSignInAgain(account) }) }
+                item { StorageHero(state, onRetry = viewModel::refresh) }
+                item {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         when (tab) {
                             DashboardTab.Transfers -> TransfersSection(state.activeTransfers, state.recentTransfers)
@@ -157,8 +175,8 @@ fun DashboardScreen(
                         }
                     }
                 }
+                notice?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.error) } }
             }
-            notice?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.error) } }
         }
     }
 }

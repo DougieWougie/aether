@@ -139,7 +139,7 @@ fun DashboardScreen(
             val tab = tabs[page]
             LazyColumn(
                 state = listStates[page],
-                modifier = Modifier.imePadding(),
+                modifier = Modifier.fillMaxSize().imePadding(),
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = padding.calculateTopPadding() + 8.dp, bottom = padding.calculateBottomPadding() + 88.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {

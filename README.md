@@ -87,7 +87,7 @@ Studio hasn't already (`sdk.dir=/path/to/Android/Sdk`).
 ./gradlew lintDebug            # Android lint
 ```
 
-Pull requests run the unit tests, lint (when production code or build files change) and a small instrumented smoke set; the full instrumented suite runs on `release/**` branches. See [ADR-0010](docs/adr/0010-tiered-ci-pr-gate-and-release-suite.md).
+Pull requests run the unit tests, lint (when production code or build files change) and a small instrumented smoke set; the full instrumented suite runs on `release/**` branches. The `CI gate` check summarises them and is the one to require in branch protection. See [ADR-0010](docs/adr/0010-tiered-ci-pr-gate-and-release-suite.md); to reuse the approach elsewhere, see [`docs/ci/tiered-ci-prompt.md`](docs/ci/tiered-ci-prompt.md).
 
 ## Contributing
 

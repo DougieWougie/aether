@@ -105,7 +105,7 @@ com.aether.nextcloud/
 │   │   ├── AccountHeader.kt            # Header and account menu
 │   │   ├── StorageHero.kt              # Quota gauge and stat chips
 │   │   ├── TransfersSection.kt         # Active transfers and conflict rows
-│   │   ├── PinnedSection.kt            # Pinned items and the FAB menu
+│   │   ├── PinnedSection.kt            # Pinned items and the dashboard floating toolbar
 │   │   ├── CameraSection.kt            # Camera backup tile
 │   │   ├── DashboardComponents.kt      # Shared section title, empty state, formatting
 │   │   └── DashboardViewModel.kt
@@ -178,7 +178,7 @@ com.aether.nextcloud/
 - Always annotate composables using expressive APIs with `@OptIn(ExperimentalMaterial3ExpressiveApi::class)`.
 - Use `MaterialTheme.motionScheme.defaultSpatialSpec()` / `fastSpatialSpec()` for layout, expansion, and shape morphing animations—**never** use hardcoded `tween()` where a spring spec belongs.
 - Use `LoadingIndicator` / `ContainedLoadingIndicator` instead of legacy `CircularProgressIndicator` where appropriate.
-- Include an **"Open in System Files"** primary action (`ExtendedFloatingActionButton`, with section navigation in a `ShortNavigationBar`) on the Dashboard that launches `Intent(Intent.ACTION_VIEW)` with `DocumentsContract.buildRootUri(AUTHORITY, accountRootId)`.
+- Include an **"Open in System Files"** primary action on the Dashboard, as the FAB of a `HorizontalFloatingToolbar` (always expanded, the same on every tab; the tab's own actions sit beside it, and section navigation lives in a `ShortNavigationBar`). The FAB launches `Intent(Intent.ACTION_VIEW)` with `DocumentsContract.buildRootUri(AUTHORITY, accountRootId)`.
 
 ---
 

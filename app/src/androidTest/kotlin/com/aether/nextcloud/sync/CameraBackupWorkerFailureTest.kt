@@ -54,7 +54,11 @@ class CameraBackupWorkerFailureTest {
             .setInputData(workDataOf("triggered" to triggered))
             .build()
             .doWork()
+            .withoutOutput()
     }
+
+    /** A successful run also reports how many items it tried ; these tests only care that it succeeded. */
+    private fun ListenableWorker.Result.withoutOutput() = if (this is ListenableWorker.Result.Success) ListenableWorker.Result.success() else this
 
     private fun bytes(seed: Int, size: Int = 2048) = ByteArray(size) { (it * seed).toByte() }
 

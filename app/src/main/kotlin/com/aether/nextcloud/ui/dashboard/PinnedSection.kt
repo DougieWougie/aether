@@ -66,18 +66,20 @@ import com.aether.nextcloud.AetherConstants
 
 /**
  * The dashboard's floating toolbar: "Files" is the FAB on every tab and the actions beside it belong to the tab showing.
- * The Camera and Transfers actions are placeholders that report through [onNotReady] until they are wired up.
+ * Pause backup is a placeholder that reports through [onNotReady] until it is wired up.
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun DashboardToolbar(
     tab: DashboardTab,
     canSync: Boolean,
+    canBackUpNow: Boolean,
     canRetryFailed: Boolean,
     canClearFinished: Boolean,
     onPinFiles: () -> Unit,
     onPinFolder: () -> Unit,
     onSyncNow: () -> Unit,
+    onBackUpNow: () -> Unit,
     onRetryFailed: () -> Unit,
     onClearFinished: () -> Unit,
     onOpenFiles: () -> Unit,
@@ -101,7 +103,7 @@ internal fun DashboardToolbar(
                 ToolbarAction(R.string.sync_now, Icons.Outlined.Sync, onSyncNow, enabled = canSync)
             }
             DashboardTab.Camera -> {
-                ToolbarAction(R.string.backup_now, Icons.Outlined.CloudUpload, placeholder(R.string.backup_now, onNotReady))
+                ToolbarAction(R.string.backup_now, Icons.Outlined.CloudUpload, onBackUpNow, enabled = canBackUpNow)
                 ToolbarAction(R.string.backup_pause, Icons.Outlined.Pause, placeholder(R.string.backup_pause, onNotReady))
             }
             DashboardTab.Transfers -> {

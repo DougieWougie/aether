@@ -44,9 +44,17 @@ class CameraBackupWorkerTest {
         Thread.sleep(1_100)
     }
 
-    private fun runWorker(): ListenableWorker.Result = runBlocking {
+    private fun runWorkerRaw(): ListenableWorker.Result = runBlocking {
         TestListenableWorkerBuilder<CameraBackupWorker>(app).setWorkerFactory(app.workerFactory).build().doWork()
     }
+
+    private fun runWorker(): ListenableWorker.Result = runWorkerRaw().withoutOutput()
+
+    /** How many items the run reported trying to upload. */
+    private fun attempted(): Int = (runWorkerRaw() as ListenableWorker.Result.Success).outputData.getInt("attempted", -1)
+
+    /** A successful run also reports how many items it tried (see [attempted]); these tests only care that it succeeded. */
+    private fun ListenableWorker.Result.withoutOutput() = if (this is ListenableWorker.Result.Success) ListenableWorker.Result.success() else this
 
     private fun uploaded(): List<String> = env.nextcloud.paths().filter { it.startsWith("$folder/") && it.count { c -> c == '/' } == 5 }
 
@@ -64,6 +72,30 @@ class CameraBackupWorkerTest {
         assertArrayEquals(photo.bytes, env.nextcloud.bytes(path))
         val put = env.nextcloud.requestsMatching("PUT", path).single()
         assertEquals(Checksums.sha1(photo.bytes.inputStream()), put.getHeader("OC-Checksum"))
+    }
+
+    @Test
+    fun aRunReportsHowManyItemsItTriedToUpload() {
+        enableBackup()
+        assertEquals("nothing new yet", 0, attempted())
+
+        media.photo("aether_a.jpg", bytes(21))
+        media.photo("aether_b.jpg", bytes(23))
+        assertEquals(2, attempted())
+
+        assertEquals("both are backed up now", 0, attempted())
+    }
+
+    @Test
+    fun aUserRequestedRunIgnoresTheWifiAndChargingRulesAndReportsItsCount() {
+        enableBackup()
+        runBlocking { settings.updateBackup { it.copy(unmeteredOnly = true, chargingOnly = true) } }
+        media.photo("aether_now.jpg", bytes(29))
+
+        val count = runBlocking { CameraBackupWorker.runNowAndCount(app) }
+
+        assertEquals(1, count)
+        assertEquals(listOf("aether_now.jpg"), uploaded().map { it.substringAfterLast('/') })
     }
 
     @Test

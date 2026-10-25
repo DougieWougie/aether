@@ -37,6 +37,11 @@
     <string name="sync_now">Sync now</string>
     <string name="action_files">Files</string>
     <string name="backup_now">Back up now</string>
+    <string name="backup_now_started">Backing up now</string>
+    <string name="backup_nothing_new">Nothing new to back up</string>
+    <string name="backup_off_notice">Camera backup is off</string>
+    <string name="backup_no_permission_notice">Aether can\'t see your photos and videos</string>
+    <string name="backup_allow_access">Allow access to photos and videos</string>
     <string name="backup_pause">Pause backup</string>
     <string name="transfers_retry_failed">Retry failed</string>
     <plurals name="transfers_retrying">

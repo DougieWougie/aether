@@ -71,7 +71,7 @@ This supersedes the 2026-10-21 note on the "Open in System Files" FAB and the 20
 - **One `HorizontalFloatingToolbar` replaces the FAB menu and the extended FAB.** The earlier toolbar was rejected as *navigation* (a vibrant pill with an embedded FAB that hid two tab labels). Navigation stays in the `ShortNavigationBar`; the toolbar now holds *actions* only, so that objection does not apply.
 - **"Files" is the toolbar's FAB on every tab**, the same colour and size everywhere. The toolbar stays `expanded = true`: collapsed, it draws a larger FAB (about 96 dp against 56 dp), so the button changed size from tab to tab.
 - **The actions beside it follow the page showing**, read from `pagerState.currentPage` so they change during a swipe instead of after it settles. Pinned has Pin files, Pin folder and Sync now; Camera has Back up now and Pause backup; Transfers has Retry failed and Clear finished. At most three per tab keeps the toolbar's width similar. Sync now is disabled, not hidden, when nothing is pinned, so the width does not jump.
-- **Camera and Transfers actions are placeholders** that show a snackbar until the behaviour is wired up (Clear finished and Retry failed have since been implemented; see below). Cancel all was left out on purpose: a stray tap would cancel active uploads.
+- **Some Camera and Transfers actions were placeholders** that show a snackbar until the behaviour is wired up (Clear finished, Retry failed and Back up now have since been implemented; see below; Pause backup is still a placeholder). Cancel all was left out on purpose: a stray tap would cancel active uploads.
 - **Actions are icon buttons**, each with a tooltip and a content description (no visible labels, unlike the FAB menu items it replaces).
 - **The list on each pager page fills the page** (`fillMaxSize()`). `HorizontalPager` centres its pages vertically, which had left short tabs such as Transfers floating mid-screen since the swipe change.
 
@@ -88,3 +88,10 @@ This supersedes the 2026-10-21 note on the "Open in System Files" FAB and the 20
 - **Camera backup now shows its failures.** An item that fails for a reason other than being offline or a server outage gets one failed row (keyed `image:<id>` or `video:<id>`, replaced rather than duplicated on each scan) and loses it when it uploads. The bytes never leave MediaStore, so retrying runs a camera scan (`CameraBackupWorker.runNow`, any network, ignoring the Wi-Fi and charging rules). The backed-up log still decides what to send, so a retry cannot duplicate a photo.
 - **Downloads retry through a pinned sync.**
 - **A retried row is removed when its retry is queued**, because the new attempt writes its own row. A failed row whose staged file is gone stays, and the snackbar says how many could not be retried ("Retrying 2 transfers. 1 can't be retried because its file is gone").
+
+## Implementation notes: Back up now (2026-10-25)
+
+- **It runs the normal camera scan**, so it also picks up items that failed or were skipped earlier (they were never logged as backed up). It is the same run Retry failed starts for camera items (`CameraBackupWorker.runNow`). Album and video choices still apply.
+- **It ignores the Wi-Fi and charging rules** and needs only some network: the user asked for it now, and the rules still govern automatic runs.
+- **Backup off or no photo permission is reported, not hidden.** The button stays enabled and answers with a snackbar and a Set up action that opens the Camera tile's settings (the tile's fold state is hoisted to the dashboard for this). With backup on but the permission revoked, the settings show an "Allow access" button.
+- **Feedback.** A snackbar says "Backing up now", then "Nothing new to back up" if the run reports that it tried no uploads (`CameraBackupWorker` returns the count as output data). The button is disabled while a run is executing, and the tile's badge spins for this run too (`observeRunning` now includes it).

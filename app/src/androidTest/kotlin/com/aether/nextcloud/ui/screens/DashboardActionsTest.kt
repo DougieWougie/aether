@@ -9,6 +9,8 @@ import android.provider.DocumentsContract
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
@@ -22,6 +24,9 @@ import com.aether.nextcloud.AetherConstants
 import com.aether.nextcloud.MainActivity
 import com.aether.nextcloud.R
 import com.aether.nextcloud.data.local.entity.TransferDirection
+import com.aether.nextcloud.data.prefs.BackupSettings
+import com.aether.nextcloud.data.prefs.SettingsRepository
+import com.aether.nextcloud.support.MediaStoreFixtures
 import com.aether.nextcloud.data.local.entity.TransferState
 import com.aether.nextcloud.provider.DocumentId
 import com.aether.nextcloud.support.AetherTestRule
@@ -153,6 +158,48 @@ class DashboardActionsTest {
         } finally {
             staged.delete()
             transfers.deleteAccount(env.accountName)
+        }
+    }
+
+    private fun openCameraTab() {
+        launch()
+        compose.onNodeWithText(str(R.string.tab_camera)).performClick()
+        compose.waitUntil(10_000) { runCatching { compose.onNodeWithContentDescription(str(R.string.backup_now)).assertIsEnabled() }.isSuccess }
+    }
+
+    @Test
+    fun backUpNowWithBackupOffSaysSoAndSetUpOpensTheSettings() {
+        val settings = SettingsRepository(context)
+        runBlocking { settings.updateBackup { BackupSettings() } }
+        openCameraTab()
+
+        tap(R.string.backup_now)
+
+        compose.waitForText(str(R.string.backup_off_notice))
+        // The tile's own Set up button is first; the snackbar's action floats below it.
+        compose.onAllNodesWithText(str(R.string.action_set_up)).onLast().performClick()
+        compose.waitForText(str(R.string.backup_turn_on))
+    }
+
+    @Test
+    fun backUpNowUploadsAPhotoDespiteTheWifiOnlyRule() {
+        val settings = SettingsRepository(context)
+        val media = MediaStoreFixtures(context)
+        media.grantMediaPermissions()
+        runBlocking {
+            settings.updateBackup { it.copy(enabled = true, accountName = env.accountName, remoteFolder = "/Photos", unmeteredOnly = true, chargingOnly = true) }
+        }
+        Thread.sleep(1_100)
+        media.photo("aether_now.jpg", ByteArray(2048) { (it * 3).toByte() })
+        try {
+            openCameraTab()
+
+            tap(R.string.backup_now)
+
+            awaitTrue("the photo to reach the server", timeoutMs = 30_000) { env.nextcloud.paths().any { it.endsWith("/aether_now.jpg") } }
+        } finally {
+            media.deleteAll()
+            runBlocking { settings.updateBackup { BackupSettings() } }
         }
     }
 

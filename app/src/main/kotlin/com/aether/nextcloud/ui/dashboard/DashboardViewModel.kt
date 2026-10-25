@@ -50,6 +50,9 @@ import kotlinx.coroutines.withContext
 
 enum class DashboardTab { Pinned, Camera, Transfers }
 
+/** What pressing Back up now did, in the order it can be reported: [Started], then [NothingNew] if the run found nothing to upload. */
+enum class BackUpNowEvent { Started, NothingNew, TurnedOff, NoPermission }
+
 data class StorageUsage(val cacheBytes: Long = 0, val pinnedBytes: Long = 0)
 
 data class DashboardUiState(
@@ -210,6 +213,24 @@ class DashboardViewModel @Inject constructor(
     fun retryFailedTransfers(onResult: (RetryOutcome) -> Unit) {
         val account = state.value.selected?.accountName ?: return
         viewModelScope.launch { onResult(retrier.retryFailed(account)) }
+    }
+
+    /**
+     * Starts a camera backup scan that ignores the Wi-Fi and charging rules. Backup being off or missing its photo permission
+     * is reported instead of silently doing nothing.
+     */
+    fun backUpNow(onEvent: (BackUpNowEvent) -> Unit) {
+        viewModelScope.launch {
+            val backup = settings.backup.first()
+            when {
+                !backup.enabled -> onEvent(BackUpNowEvent.TurnedOff)
+                !scheduler.canReadMedia() -> onEvent(BackUpNowEvent.NoPermission)
+                else -> {
+                    onEvent(BackUpNowEvent.Started)
+                    if (scheduler.backUpNowAndCount() == 0) onEvent(BackUpNowEvent.NothingNew)
+                }
+            }
+        }
     }
 
     /**

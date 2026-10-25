@@ -21,6 +21,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       lint: ${{ steps.filter.outputs.lint }}
+      smoke: ${{ steps.filter.outputs.smoke }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -32,10 +33,25 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" != "pull_request" ]; then
             echo "lint=true" >> "$GITHUB_OUTPUT"
-          elif git diff --name-only HEAD^1 HEAD | grep -qE '^app/src/(main|debug)/|\.gradle\.kts$|^gradle/|^gradle\.properties$|lint.*\.xml$|^\.github/'; then
+            echo "smoke=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          files=$(git diff --name-only HEAD^1 HEAD)
+
+          if grep -qE '^app/src/(main|debug)/|\.gradle\.kts$|^gradle/|^gradle\.properties$|lint.*\.xml$|^\.github/' <<< "$files"; then
             echo "lint=true" >> "$GITHUB_OUTPUT"
           else
             echo "lint=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          # The smoke tests cover migrations, the SAF provider and the upload worker, so they matter for anything
+          # but the Compose UI and its resources. Instrumented test changes count except the screen tests.
+          relevant='^app/src/(main|debug|androidTest)/|^app/schemas/|\.gradle\.kts$|^gradle/|^gradle\.properties$|^\.github/'
+          ui_only='^app/src/main/kotlin/com/aether/nextcloud/ui/|^app/src/main/res/(values|drawable|mipmap-anydpi)/|^app/src/androidTest/kotlin/com/aether/nextcloud/ui/screens/'
+          if grep -E "$relevant" <<< "$files" | grep -qvE "$ui_only"; then
+            echo "smoke=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "smoke=false" >> "$GITHUB_OUTPUT"
           fi
 
   lint:
@@ -91,8 +107,10 @@ jobs:
 
   smoke:
     name: Instrumented smoke tests
-    # Pull requests only: main already passed this on its pull request, and release branches run the full suite.
-    if: github.event_name == 'pull_request'
+    # Pull requests that touch more than the Compose UI. Main already passed this on its pull request, and
+    # release branches run the full suite.
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.smoke == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -140,6 +158,7 @@ jobs:
           LINT_NEEDED: ${{ needs.changes.outputs.lint }}
           LINT: ${{ needs.lint.result }}
           UNIT: ${{ needs.unit.result }}
+          SMOKE_NEEDED: ${{ needs.changes.outputs.smoke }}
           SMOKE: ${{ needs.smoke.result }}
           EVENT: ${{ github.event_name }}
         run: |
@@ -150,7 +169,7 @@ jobs:
           if [ "$LINT" != success ] && ! { [ "$LINT" = skipped ] && [ "$LINT_NEEDED" = false ]; }; then
             check "lint" "$LINT (needed: $LINT_NEEDED)"; fail=1
           fi
-          if [ "$SMOKE" != success ] && ! { [ "$SMOKE" = skipped ] && [ "$EVENT" != pull_request ]; }; then
-            check "smoke" "$SMOKE (event: $EVENT)"; fail=1
+          if [ "$SMOKE" != success ] && ! { [ "$SMOKE" = skipped ] && { [ "$EVENT" != pull_request ] || [ "$SMOKE_NEEDED" = false ]; }; }; then
+            check "smoke" "$SMOKE (needed: $SMOKE_NEEDED, event: $EVENT)"; fail=1
           fi
           exit $fail

@@ -43,6 +43,10 @@
     <string name="backup_no_permission_notice">Aether can\'t see your photos and videos</string>
     <string name="backup_allow_access">Allow access to photos and videos</string>
     <string name="backup_pause">Pause backup</string>
+    <string name="backup_resume">Resume backup</string>
+    <string name="backup_paused_notice">Camera backup is paused</string>
+    <string name="camera_paused">Backup paused</string>
+    <string name="action_resume">Resume</string>
     <string name="transfers_retry_failed">Retry failed</string>
     <plurals name="transfers_retrying">
         <item quantity="one">Retrying %1$d transfer</item>
@@ -53,7 +57,6 @@
         <item quantity="other">%1$d can\'t be retried because their files are gone</item>
     </plurals>
     <string name="transfers_clear_finished">Clear finished</string>
-    <string name="action_not_ready">%1$s isn\'t available yet</string>
     <string name="action_unpin">Unpin</string>
     <string name="pinned_empty_title">Nothing pinned yet</string>
     <string name="pinned_empty_body">Tap the pin button to keep files and folders on this device. They stay up to date.</string>

@@ -48,6 +48,18 @@ class SettingsRepositoryStorageTest {
     }
 
     @Test
+    fun aPauseIsStoredAndEndsWhenBackupIsSwitchedOffOrOnAgain() = runBlocking {
+        settings.updateBackup { it.copy(enabled = true, accountName = "a@h") }
+
+        assertTrue(settings.updateBackup { it.copy(paused = true) }.paused)
+        assertTrue(settings.backup.first().paused)
+
+        assertFalse("switching backup off ends the pause", settings.updateBackup { it.copy(enabled = false) }.paused)
+        assertFalse("and it stays ended when backup is back on", settings.updateBackup { it.copy(enabled = true, accountName = "a@h") }.paused)
+        Unit
+    }
+
+    @Test
     fun backupSettingsRoundTripIncludingAlbums() = runBlocking {
         val saved = settings.updateBackup {
             it.copy(accountName = "a@h", remoteFolder = "/Pics", unmeteredOnly = false, chargingOnly = true, includeVideos = false, albums = listOf(BackupAlbum(7, "Camera")))

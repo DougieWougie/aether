@@ -71,7 +71,7 @@ This supersedes the 2026-10-21 note on the "Open in System Files" FAB and the 20
 - **One `HorizontalFloatingToolbar` replaces the FAB menu and the extended FAB.** The earlier toolbar was rejected as *navigation* (a vibrant pill with an embedded FAB that hid two tab labels). Navigation stays in the `ShortNavigationBar`; the toolbar now holds *actions* only, so that objection does not apply.
 - **"Files" is the toolbar's FAB on every tab**, the same colour and size everywhere. The toolbar stays `expanded = true`: collapsed, it draws a larger FAB (about 96 dp against 56 dp), so the button changed size from tab to tab.
 - **The actions beside it follow the page showing**, read from `pagerState.currentPage` so they change during a swipe instead of after it settles. Pinned has Pin files, Pin folder and Sync now; Camera has Back up now and Pause backup; Transfers has Retry failed and Clear finished. At most three per tab keeps the toolbar's width similar. Sync now is disabled, not hidden, when nothing is pinned, so the width does not jump.
-- **Some Camera and Transfers actions were placeholders** that show a snackbar until the behaviour is wired up (Clear finished, Retry failed and Back up now have since been implemented; see below; Pause backup is still a placeholder). Cancel all was left out on purpose: a stray tap would cancel active uploads.
+- **Some Camera and Transfers actions were placeholders** that show a snackbar until the behaviour is wired up (Clear finished, Retry failed, Back up now and Pause backup have since been implemented; see below, so no placeholders remain). Cancel all was left out on purpose: a stray tap would cancel active uploads.
 - **Actions are icon buttons**, each with a tooltip and a content description (no visible labels, unlike the FAB menu items it replaces).
 - **The list on each pager page fills the page** (`fillMaxSize()`). `HorizontalPager` centres its pages vertically, which had left short tabs such as Transfers floating mid-screen since the swipe change.
 
@@ -95,3 +95,11 @@ This supersedes the 2026-10-21 note on the "Open in System Files" FAB and the 20
 - **It ignores the Wi-Fi and charging rules** and needs only some network: the user asked for it now, and the rules still govern automatic runs.
 - **Backup off or no photo permission is reported, not hidden.** The button stays enabled and answers with a snackbar and a Set up action that opens the Camera tile's settings (the tile's fold state is hoisted to the dashboard for this). With backup on but the permission revoked, the settings show an "Allow access" button.
 - **Feedback.** A snackbar says "Backing up now", then "Nothing new to back up" if the run reports that it tried no uploads (`CameraBackupWorker` returns the count as output data). The button is disabled while a run is executing, and the tile's badge spins for this run too (`observeRunning` now includes it).
+
+## Implementation notes: Pause / resume backup (2026-10-25)
+
+- **Pause is its own state, not the on/off switch.** `BackupSettings.paused` leaves the account, albums, folder, constraints and the backed-up log alone. It only means something while backup is on: switching backup off, or on again, clears it.
+- **Pausing cancels the schedules and any run in progress** (`SyncScheduler.applyBackup` cancels the trigger, periodic and Back up now work). The worker also checks `paused` itself, so a run that slips through does nothing. An interrupted upload is simply scanned again on resume, because the log decides what to send.
+- **Pause lasts until the user resumes.** There is no timer, so a forgotten pause stays visible on the tile instead of quietly restarting.
+- **Resume uploads everything taken while paused**, since `backupSinceMillis` is untouched, and starts a scan straight away rather than waiting for the next trigger.
+- **How it shows.** The toolbar button reads "Resume backup" with a play icon while paused, and is disabled when backup is off. The tile's title becomes "Backup paused" and its badge stops being the spinning Sunny shape. Back up now while paused answers "Camera backup is paused" with a Resume action instead of overriding the pause.

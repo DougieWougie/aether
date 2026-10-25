@@ -81,7 +81,6 @@ fun DashboardScreen(
     val scope = rememberCoroutineScope()
     val undoLabel = stringResource(R.string.action_undo)
     val unpinnedFormat = stringResource(R.string.pinned_unpinned)
-    val notReadyFormat = stringResource(R.string.action_not_ready)
     val resources = LocalResources.current
     // Hoisted from the Camera tile so the Back up now snackbar can open its settings.
     var cameraSettingsOpen by rememberSaveable { mutableStateOf(false) }
@@ -89,9 +88,11 @@ fun DashboardScreen(
         BackUpNowEvent.Started to stringResource(R.string.backup_now_started),
         BackUpNowEvent.NothingNew to stringResource(R.string.backup_nothing_new),
         BackUpNowEvent.TurnedOff to stringResource(R.string.backup_off_notice),
+        BackUpNowEvent.Paused to stringResource(R.string.backup_paused_notice),
         BackUpNowEvent.NoPermission to stringResource(R.string.backup_no_permission_notice),
     )
     val setUpLabel = stringResource(R.string.action_set_up)
+    val resumeLabel = stringResource(R.string.action_resume)
 
     val tabs = DashboardTab.entries
     val pagerState = rememberPagerState(initialPage = tabs.indexOf(state.tab)) { tabs.size }
@@ -121,6 +122,8 @@ fun DashboardScreen(
                     tab = tabs[pagerState.currentPage],
                     canSync = state.pinned.isNotEmpty(),
                     canBackUpNow = !state.backupRunning,
+                    backupPaused = state.backup.paused,
+                    canPauseBackup = state.backup.enabled,
                     canRetryFailed = state.recentTransfers.any { it.state == TransferState.FAILED },
                     canClearFinished = state.recentTransfers.any { it.state == TransferState.COMPLETED },
                     onPinFiles = { pickFiles.launch(rootDocumentUri) },
@@ -131,8 +134,11 @@ fun DashboardScreen(
                             scope.launch {
                                 snackbars.currentSnackbarData?.dismiss()
                                 val needsSetUp = event == BackUpNowEvent.TurnedOff || event == BackUpNowEvent.NoPermission
-                                val result = snackbars.showSnackbar(backUpNowMessages.getValue(event), actionLabel = setUpLabel.takeIf { needsSetUp })
-                                if (result == SnackbarResult.ActionPerformed) cameraSettingsOpen = true
+                                val action = if (event == BackUpNowEvent.Paused) resumeLabel else setUpLabel.takeIf { needsSetUp }
+                                val result = snackbars.showSnackbar(backUpNowMessages.getValue(event), actionLabel = action)
+                                if (result == SnackbarResult.ActionPerformed) {
+                                    if (event == BackUpNowEvent.Paused) viewModel.setBackupPaused(false) else cameraSettingsOpen = true
+                                }
                             }
                         }
                     },
@@ -144,14 +150,9 @@ fun DashboardScreen(
                             }
                         }
                     },
+                    onTogglePauseBackup = { viewModel.setBackupPaused(!state.backup.paused) },
                     onClearFinished = viewModel::clearFinishedTransfers,
                     onOpenFiles = openFiles,
-                    onNotReady = { name ->
-                        scope.launch {
-                            snackbars.currentSnackbarData?.dismiss()
-                            snackbars.showSnackbar(notReadyFormat.format(name))
-                        }
-                    },
                 )
             }
         },

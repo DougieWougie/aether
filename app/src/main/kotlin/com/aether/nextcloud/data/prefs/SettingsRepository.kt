@@ -37,6 +37,8 @@ data class BackupSettings(
     val backupSinceMillis: Long = 0,
     /** Albums to back up; null means every album, including ones created later. */
     val albums: List<BackupAlbum>? = null,
+    /** Backup is on but held: nothing is scheduled or uploaded until the user resumes. Always false while [enabled] is false. */
+    val paused: Boolean = false,
 ) {
     /** These settings after [accountName] signed out: backup that targeted it is switched off rather than left pointing nowhere. */
     fun withoutAccount(accountName: String): BackupSettings =
@@ -67,6 +69,7 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
             includeVideos = p[BACKUP_VIDEOS] ?: true,
             backupSinceMillis = p[BACKUP_SINCE] ?: 0,
             albums = p[BACKUP_ALBUMS]?.let { runCatching { Json.decodeFromString<List<BackupAlbum>>(it) }.getOrNull() },
+            paused = p[BACKUP_PAUSED] ?: false,
         )
     }
 
@@ -79,6 +82,8 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
         val before = backup.first()
         var after = transform(before)
         if (after.enabled && !before.enabled) after = after.copy(backupSinceMillis = System.currentTimeMillis())
+        // Switching backup off (or on again) ends any pause; a pause only means something while backup is on.
+        if (!after.enabled || !before.enabled) after = after.copy(paused = false)
         store.edit { p ->
             p[BACKUP_ENABLED] = after.enabled
             after.accountName?.let { p[BACKUP_ACCOUNT] = it } ?: p.remove(BACKUP_ACCOUNT)
@@ -87,6 +92,7 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
             p[BACKUP_CHARGING] = after.chargingOnly
             p[BACKUP_VIDEOS] = after.includeVideos
             p[BACKUP_SINCE] = after.backupSinceMillis
+            p[BACKUP_PAUSED] = after.paused
             after.albums?.let { p[BACKUP_ALBUMS] = Json.encodeToString(it) } ?: p.remove(BACKUP_ALBUMS)
         }
         return after
@@ -169,6 +175,7 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
         private val BACKUP_VIDEOS = booleanPreferencesKey("backup_include_videos")
         private val BACKUP_SINCE = longPreferencesKey("backup_since")
         private val BACKUP_ALBUMS = stringPreferencesKey("backup_albums")
+        private val BACKUP_PAUSED = booleanPreferencesKey("backup_paused")
         private val PINNED_UNMETERED = booleanPreferencesKey("pinned_unmetered_only")
     }
 }

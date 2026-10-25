@@ -90,14 +90,14 @@ class CameraBackupWorker @AssistedInject constructor(
     override suspend fun doWork(): Result {
         val triggered = inputData.getBoolean(KEY_TRIGGERED, false)
         val settings = settingsRepository.backup.first()
-        val result = if (!settings.enabled || !hasMediaPermission(applicationContext)) {
+        val result = if (!settings.enabled || settings.paused || !hasMediaPermission(applicationContext)) {
             Result.success()
         } else {
             val credentials = settings.accountName?.let(accounts::credentials)
             if (credentials == null) Result.success() else scanMutex.withLock { backUpNewMedia(settings, credentials) }
         }
         // Content-URI triggers are one-shot: queue the next watcher unless this run will be retried (it keeps its trigger).
-        if (triggered && settings.enabled && result != Result.retry()) scheduleTrigger(applicationContext, settings, ExistingWorkPolicy.APPEND_OR_REPLACE)
+        if (triggered && settings.enabled && !settings.paused && result != Result.retry()) scheduleTrigger(applicationContext, settings, ExistingWorkPolicy.APPEND_OR_REPLACE)
         return result
     }
 
@@ -352,6 +352,7 @@ class CameraBackupWorker @AssistedInject constructor(
             WorkManager.getInstance(context).apply {
                 cancelUniqueWork(TRIGGER_NAME)
                 cancelUniqueWork(PERIODIC_NAME)
+                cancelUniqueWork(NOW_NAME)
             }
         }
     }

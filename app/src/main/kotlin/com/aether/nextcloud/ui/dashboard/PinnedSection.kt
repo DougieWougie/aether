@@ -12,6 +12,7 @@ import android.net.Uri
 import androidx.compose.material.icons.outlined.ClearAll
 import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.Pause
+import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Replay
 import androidx.annotation.StringRes
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -66,7 +67,7 @@ import com.aether.nextcloud.AetherConstants
 
 /**
  * The dashboard's floating toolbar: "Files" is the FAB on every tab and the actions beside it belong to the tab showing.
- * Pause backup is a placeholder that reports through [onNotReady] until it is wired up.
+ * On the Camera tab the pause button turns into Resume while backup is paused.
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -74,16 +75,18 @@ internal fun DashboardToolbar(
     tab: DashboardTab,
     canSync: Boolean,
     canBackUpNow: Boolean,
+    backupPaused: Boolean,
+    canPauseBackup: Boolean,
     canRetryFailed: Boolean,
     canClearFinished: Boolean,
     onPinFiles: () -> Unit,
     onPinFolder: () -> Unit,
     onSyncNow: () -> Unit,
     onBackUpNow: () -> Unit,
+    onTogglePauseBackup: () -> Unit,
     onRetryFailed: () -> Unit,
     onClearFinished: () -> Unit,
     onOpenFiles: () -> Unit,
-    onNotReady: (String) -> Unit,
 ) {
     HorizontalFloatingToolbar(
         expanded = true,
@@ -104,7 +107,12 @@ internal fun DashboardToolbar(
             }
             DashboardTab.Camera -> {
                 ToolbarAction(R.string.backup_now, Icons.Outlined.CloudUpload, onBackUpNow, enabled = canBackUpNow)
-                ToolbarAction(R.string.backup_pause, Icons.Outlined.Pause, placeholder(R.string.backup_pause, onNotReady))
+                ToolbarAction(
+                    if (backupPaused) R.string.backup_resume else R.string.backup_pause,
+                    if (backupPaused) Icons.Outlined.PlayArrow else Icons.Outlined.Pause,
+                    onTogglePauseBackup,
+                    enabled = canPauseBackup,
+                )
             }
             DashboardTab.Transfers -> {
                 ToolbarAction(R.string.transfers_retry_failed, Icons.Outlined.Replay, onRetryFailed, enabled = canRetryFailed)
@@ -112,13 +120,6 @@ internal fun DashboardToolbar(
             }
         }
     }
-}
-
-/** A click handler that reports the action's name through [onNotReady]; the text is read in composition. */
-@Composable
-private fun placeholder(@StringRes label: Int, onNotReady: (String) -> Unit): () -> Unit {
-    val text = stringResource(label)
-    return { onNotReady(text) }
 }
 
 @Composable

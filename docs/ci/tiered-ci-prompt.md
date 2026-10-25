@@ -54,6 +54,9 @@ with each question.
 - Add path-based gating through a small job that computes an output, then `if:` on the dependent job.
   For pull requests the checkout is the merge commit, so `git diff HEAD^1 HEAD` with `fetch-depth: 2`
   gives the changed files without an API call or a third-party action.
+- Add one aggregate "gate" job (`needs` every other job, `if: always()`) that fails unless each needed job
+  succeeded, accepting a skip only where one is expected, and require only that job in branch protection.
+  Otherwise a failed setup job makes its dependents skip, and skipped required checks report success.
 - Add a "how to add a test to the smoke set" note where contributors will find it.
 - Write or update an ADR: context (with the measured timings), decision (what runs where), consequences
   (the regression window you are accepting and the follow-ups). Update the ADR index and README.

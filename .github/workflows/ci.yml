@@ -124,3 +124,33 @@ jobs:
           name: smoke-reports
           path: app/build/reports/androidTests/
           if-no-files-found: ignore
+
+  gate:
+    name: CI gate
+    # The one check to require in the branch ruleset. A job skipped because its dependency failed reports
+    # success, so this checks each result explicitly and only accepts a skip where one is expected.
+    needs: [changes, lint, unit, smoke]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check results
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          LINT_NEEDED: ${{ needs.changes.outputs.lint }}
+          LINT: ${{ needs.lint.result }}
+          UNIT: ${{ needs.unit.result }}
+          SMOKE: ${{ needs.smoke.result }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          fail=0
+          check() { echo "$1: $2"; }
+          [ "$CHANGES" = success ] || { check "changes" "$CHANGES (expected success)"; fail=1; }
+          [ "$UNIT" = success ] || { check "unit" "$UNIT (expected success)"; fail=1; }
+          if [ "$LINT" != success ] && ! { [ "$LINT" = skipped ] && [ "$LINT_NEEDED" = false ]; }; then
+            check "lint" "$LINT (needed: $LINT_NEEDED)"; fail=1
+          fi
+          if [ "$SMOKE" != success ] && ! { [ "$SMOKE" = skipped ] && [ "$EVENT" != pull_request ]; }; then
+            check "smoke" "$SMOKE (event: $EVENT)"; fail=1
+          fi
+          exit $fail

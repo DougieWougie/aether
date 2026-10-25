@@ -30,6 +30,9 @@ interface TransferDao {
     @Query("DELETE FROM transfers WHERE state NOT IN ('QUEUED', 'RUNNING') AND updatedAt < :olderThan")
     fun pruneFinished(olderThan: Long)
 
+    @Query("DELETE FROM transfers WHERE accountName = :account AND state = 'COMPLETED'")
+    fun clearCompleted(account: String)
+
     @Query("DELETE FROM transfers WHERE accountName = :account")
     fun deleteAccount(account: String)
 }

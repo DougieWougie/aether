@@ -103,11 +103,13 @@ class DashboardViewModelTest {
         unmockkStatic(DocumentsContract::class)
     }
 
+    private val transferDao = mockk<TransferDao> {
+        every { observeActive() } returns active
+        every { observeRecent(any()) } returns recent
+        every { clearCompleted(any()) } returns Unit
+    }
+
     private fun database(): AetherDatabase {
-        val transferDao = mockk<TransferDao> {
-            every { observeActive() } returns active
-            every { observeRecent(any()) } returns recent
-        }
         val documentDao = mockk<DocumentDao> { every { observePinnedRoots() } returns pinned }
         val backedUp = mockk<BackedUpMediaDao> {
             every { observeCount(any()) } returns flowOf(3)
@@ -296,6 +298,17 @@ class DashboardViewModelTest {
         vm.clearCache()
 
         verify(timeout = 2_000) { diskCache.clearCache() }
+    }
+
+    @Test
+    fun `clearing finished transfers only touches the selected account`() = runTest(dispatcher) {
+        val vm = subscribed(viewModel())
+        vm.selectAccount("bob@h")
+
+        vm.clearFinishedTransfers()
+
+        verify(timeout = 2_000) { transferDao.clearCompleted("bob@h") }
+        verify(exactly = 0) { transferDao.clearCompleted("alice@h") }
     }
 
     @Test

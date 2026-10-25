@@ -36,6 +36,11 @@
     <string name="pick_prompt_pin">Pin</string>
     <string name="sync_now">Sync now</string>
     <string name="action_files">Files</string>
+    <string name="backup_now">Back up now</string>
+    <string name="backup_pause">Pause backup</string>
+    <string name="transfers_retry_failed">Retry failed</string>
+    <string name="transfers_clear_finished">Clear finished</string>
+    <string name="action_not_ready">%1$s isn\'t available yet</string>
     <string name="action_unpin">Unpin</string>
     <string name="pinned_empty_title">Nothing pinned yet</string>
     <string name="pinned_empty_body">Tap the pin button to keep files and folders on this device. They stay up to date.</string>

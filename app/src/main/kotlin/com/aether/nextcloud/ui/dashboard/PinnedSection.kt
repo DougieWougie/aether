@@ -9,6 +9,10 @@ import android.content.Intent
 import android.provider.DocumentsContract
 import androidx.compose.material.icons.outlined.CreateNewFolder
 import android.net.Uri
+import androidx.compose.material.icons.outlined.ClearAll
+import androidx.compose.material.icons.outlined.CloudUpload
+import androidx.compose.material.icons.outlined.Pause
+import androidx.compose.material.icons.outlined.Replay
 import androidx.annotation.StringRes
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingToolbarDefaults
@@ -61,21 +65,22 @@ import kotlinx.coroutines.withContext
 import com.aether.nextcloud.AetherConstants
 
 /**
- * The dashboard's floating toolbar. "Files" is the FAB on every tab; on the Pinned tab the toolbar expands to show the
- * pin actions beside it, and on the other tabs it collapses to the FAB alone.
+ * The dashboard's floating toolbar: "Files" is the FAB on every tab and the actions beside it belong to the tab showing.
+ * The Camera and Transfers actions are placeholders that report through [onNotReady] until they are wired up.
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun DashboardToolbar(
-    actionsVisible: Boolean,
+    tab: DashboardTab,
     canSync: Boolean,
     onPinFiles: () -> Unit,
     onPinFolder: () -> Unit,
     onSyncNow: () -> Unit,
     onOpenFiles: () -> Unit,
+    onNotReady: (String) -> Unit,
 ) {
     HorizontalFloatingToolbar(
-        expanded = actionsVisible,
+        expanded = true,
         floatingActionButton = {
             ToolbarTooltip(stringResource(R.string.action_files)) {
                 FloatingToolbarDefaults.VibrantFloatingActionButton(onClick = onOpenFiles) {
@@ -85,17 +90,36 @@ internal fun DashboardToolbar(
         },
         colors = FloatingToolbarDefaults.vibrantFloatingToolbarColors(),
     ) {
-        ToolbarAction(R.string.pin_files, Icons.Outlined.PushPin, onPinFiles)
-        ToolbarAction(R.string.pin_folder, Icons.Outlined.CreateNewFolder, onPinFolder)
-        if (canSync) ToolbarAction(R.string.sync_now, Icons.Outlined.Sync, onSyncNow)
+        when (tab) {
+            DashboardTab.Pinned -> {
+                ToolbarAction(R.string.pin_files, Icons.Outlined.PushPin, onPinFiles)
+                ToolbarAction(R.string.pin_folder, Icons.Outlined.CreateNewFolder, onPinFolder)
+                ToolbarAction(R.string.sync_now, Icons.Outlined.Sync, onSyncNow, enabled = canSync)
+            }
+            DashboardTab.Camera -> {
+                ToolbarAction(R.string.backup_now, Icons.Outlined.CloudUpload, placeholder(R.string.backup_now, onNotReady))
+                ToolbarAction(R.string.backup_pause, Icons.Outlined.Pause, placeholder(R.string.backup_pause, onNotReady))
+            }
+            DashboardTab.Transfers -> {
+                ToolbarAction(R.string.transfers_retry_failed, Icons.Outlined.Replay, placeholder(R.string.transfers_retry_failed, onNotReady))
+                ToolbarAction(R.string.transfers_clear_finished, Icons.Outlined.ClearAll, placeholder(R.string.transfers_clear_finished, onNotReady))
+            }
+        }
     }
 }
 
+/** A click handler that reports the action's name through [onNotReady]; the text is read in composition. */
 @Composable
-private fun ToolbarAction(@StringRes label: Int, icon: ImageVector, onClick: () -> Unit) {
+private fun placeholder(@StringRes label: Int, onNotReady: (String) -> Unit): () -> Unit {
+    val text = stringResource(label)
+    return { onNotReady(text) }
+}
+
+@Composable
+private fun ToolbarAction(@StringRes label: Int, icon: ImageVector, onClick: () -> Unit, enabled: Boolean = true) {
     val text = stringResource(label)
     ToolbarTooltip(text) {
-        IconButton(onClick = onClick) { Icon(icon, contentDescription = text) }
+        IconButton(onClick = onClick, enabled = enabled) { Icon(icon, contentDescription = text) }
     }
 }
 

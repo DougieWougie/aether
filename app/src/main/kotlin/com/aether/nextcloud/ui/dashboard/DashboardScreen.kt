@@ -78,6 +78,7 @@ fun DashboardScreen(
     val scope = rememberCoroutineScope()
     val undoLabel = stringResource(R.string.action_undo)
     val unpinnedFormat = stringResource(R.string.pinned_unpinned)
+    val notReadyFormat = stringResource(R.string.action_not_ready)
 
     val tabs = DashboardTab.entries
     val pagerState = rememberPagerState(initialPage = tabs.indexOf(state.tab)) { tabs.size }
@@ -104,12 +105,18 @@ fun DashboardScreen(
             state.selected?.let { account ->
                 val openFiles = { if (!openInSystemFiles(context, account)) notice = noFileManager }
                 DashboardToolbar(
-                    actionsVisible = tabs[pagerState.currentPage] == DashboardTab.Pinned,
+                    tab = tabs[pagerState.currentPage],
                     canSync = state.pinned.isNotEmpty(),
                     onPinFiles = { pickFiles.launch(rootDocumentUri) },
                     onPinFolder = { pickFolder.launch(rootDocumentUri) },
                     onSyncNow = viewModel::syncPinsNow,
                     onOpenFiles = openFiles,
+                    onNotReady = { name ->
+                        scope.launch {
+                            snackbars.currentSnackbarData?.dismiss()
+                            snackbars.showSnackbar(notReadyFormat.format(name))
+                        }
+                    },
                 )
             }
         },

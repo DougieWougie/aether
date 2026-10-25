@@ -12,8 +12,9 @@ import javax.inject.Singleton
 /** Translates user settings into WorkManager schedules. */
 @Singleton
 class SyncScheduler @Inject constructor(@ApplicationContext private val context: Context) {
+    /** Schedules camera backup, or cancels it (including a run in progress) when it is off or paused. */
     fun applyBackup(settings: BackupSettings) {
-        if (settings.enabled && settings.accountName != null) {
+        if (settings.enabled && !settings.paused && settings.accountName != null) {
             CameraBackupWorker.scheduleTrigger(context, settings, ExistingWorkPolicy.REPLACE)
             CameraBackupWorker.schedulePeriodic(context, settings)
         } else {

@@ -86,7 +86,7 @@ internal fun CameraSection(state: DashboardUiState, expanded: Boolean, onExpande
                 modifier = if (backup.enabled) Modifier.clip(MaterialTheme.shapes.large).clickable { openPhotos(context) } else Modifier,
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text(if (backup.enabled) stringResource(R.string.camera_backing_up) else stringResource(R.string.camera_title), style = MaterialTheme.typography.labelLargeEmphasized)
+                    Text(stringResource(if (!backup.enabled) R.string.camera_title else if (backup.paused) R.string.camera_paused else R.string.camera_backing_up), style = MaterialTheme.typography.labelLargeEmphasized)
                     if (backup.enabled) {
                         // The server's folder size also counts photos other devices put there; fall back to this phone's total until it arrives.
                         val shown = stats.serverBytes ?: stats.localBytes
@@ -111,7 +111,7 @@ internal fun CameraSection(state: DashboardUiState, expanded: Boolean, onExpande
                     }
                 }
                 MorphingShapeBadge(
-                    shape = if (backup.enabled) MaterialShapes.Sunny else MaterialShapes.Cookie9Sided,
+                    shape = if (backup.enabled && !backup.paused) MaterialShapes.Sunny else MaterialShapes.Cookie9Sided,
                     size = 84.dp,
                     container = colors.tertiary,
                     spinning = backup.enabled && state.backupRunning,

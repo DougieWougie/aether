@@ -360,6 +360,60 @@ class DashboardViewModelTest {
         assertEquals("a run that did not succeed says nothing more", listOf(BackUpNowEvent.Started), backUpNowEvents(vm))
     }
 
+    private fun pauseSetup(initial: BackupSettings): MutableList<BackupSettings> {
+        val saved = mutableListOf<BackupSettings>()
+        every { settings.backup } returns flowOf(initial)
+        coEvery { settings.updateBackup(any()) } coAnswers { firstArg<(BackupSettings) -> BackupSettings>()(initial).also { saved += it } }
+        return saved
+    }
+
+    @Test
+    fun `pausing backup keeps the settings, applies the schedule and does not scan`() = runTest(dispatcher) {
+        val on = BackupSettings(enabled = true, accountName = "alice@h", remoteFolder = "/Photos")
+        val saved = pauseSetup(on)
+
+        subscribed(viewModel()).setBackupPaused(true)
+
+        assertEquals(listOf(on.copy(paused = true)), saved)
+        verify { scheduler.applyBackup(on.copy(paused = true)) }
+        verify(exactly = 0) { scheduler.backUpNow() }
+    }
+
+    @Test
+    fun `resuming backup applies the schedule and scans straight away`() = runTest(dispatcher) {
+        val paused = BackupSettings(enabled = true, accountName = "alice@h", paused = true)
+        val saved = pauseSetup(paused)
+
+        subscribed(viewModel()).setBackupPaused(false)
+
+        assertEquals(listOf(paused.copy(paused = false)), saved)
+        verify { scheduler.applyBackup(paused.copy(paused = false)) }
+        verify(exactly = 1) { scheduler.backUpNow() }
+    }
+
+    @Test
+    fun `pausing does nothing when backup is off or already in that state`() = runTest(dispatcher) {
+        val saved = pauseSetup(BackupSettings())
+        subscribed(viewModel()).setBackupPaused(true)
+
+        pauseSetup(BackupSettings(enabled = true, accountName = "alice@h", paused = true)).also { saved += it }
+        subscribed(viewModel()).setBackupPaused(true)
+
+        assertEquals(emptyList<BackupSettings>(), saved)
+        verify(exactly = 0) { scheduler.applyBackup(any()) }
+    }
+
+    @Test
+    fun `back up now says backup is paused and starts nothing`() = runTest(dispatcher) {
+        every { settings.backup } returns flowOf(BackupSettings(enabled = true, accountName = "alice@h", paused = true))
+        every { scheduler.canReadMedia() } returns true
+
+        val events = backUpNowEvents(subscribed(viewModel()))
+
+        assertEquals(listOf(BackUpNowEvent.Paused), events)
+        coVerify(exactly = 0) { scheduler.backUpNowAndCount() }
+    }
+
     @Test
     fun `turning direct share off is saved`() = runTest(dispatcher) {
         coEvery { settings.setDirectShareEnabled(any()) } returns Unit

@@ -51,7 +51,7 @@ import kotlinx.coroutines.withContext
 enum class DashboardTab { Pinned, Camera, Transfers }
 
 /** What pressing Back up now did, in the order it can be reported: [Started], then [NothingNew] if the run found nothing to upload. */
-enum class BackUpNowEvent { Started, NothingNew, TurnedOff, NoPermission }
+enum class BackUpNowEvent { Started, NothingNew, TurnedOff, Paused, NoPermission }
 
 data class StorageUsage(val cacheBytes: Long = 0, val pinnedBytes: Long = 0)
 
@@ -224,12 +224,26 @@ class DashboardViewModel @Inject constructor(
             val backup = settings.backup.first()
             when {
                 !backup.enabled -> onEvent(BackUpNowEvent.TurnedOff)
+                backup.paused -> onEvent(BackUpNowEvent.Paused)
                 !scheduler.canReadMedia() -> onEvent(BackUpNowEvent.NoPermission)
                 else -> {
                     onEvent(BackUpNowEvent.Started)
                     if (scheduler.backUpNowAndCount() == 0) onEvent(BackUpNowEvent.NothingNew)
                 }
             }
+        }
+    }
+
+    /**
+     * Holds camera backup (cancelling its schedules and any run in progress) or lets it carry on. Settings and the backed-up log
+     * are kept, so resuming uploads everything taken meanwhile, starting with a scan right away.
+     */
+    fun setBackupPaused(paused: Boolean) {
+        viewModelScope.launch {
+            val before = settings.backup.first()
+            if (!before.enabled || before.paused == paused) return@launch
+            scheduler.applyBackup(settings.updateBackup { it.copy(paused = paused) })
+            if (!paused) scheduler.backUpNow()
         }
     }
 

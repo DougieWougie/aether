@@ -36,6 +36,8 @@ import kotlinx.coroutines.runBlocking
 import org.hamcrest.Matchers.allOf
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -197,6 +199,34 @@ class DashboardActionsTest {
             tap(R.string.backup_now)
 
             awaitTrue("the photo to reach the server", timeoutMs = 30_000) { env.nextcloud.paths().any { it.endsWith("/aether_now.jpg") } }
+        } finally {
+            media.deleteAll()
+            runBlocking { settings.updateBackup { BackupSettings() } }
+        }
+    }
+
+    @Test
+    fun pauseHoldsBackupAndResumeUploadsWhatWasTakenMeanwhile() {
+        val settings = SettingsRepository(context)
+        val media = MediaStoreFixtures(context)
+        media.grantMediaPermissions()
+        runBlocking { settings.updateBackup { it.copy(enabled = true, accountName = env.accountName, remoteFolder = "/Photos") } }
+        Thread.sleep(1_100)
+        try {
+            openCameraTab()
+
+            tap(R.string.backup_pause)
+            compose.waitForText(str(R.string.camera_paused))
+            awaitTrue("the pause to be stored") { runBlocking { settings.backup.first() }.paused }
+            media.photo("aether_while_paused.jpg", ByteArray(2048) { (it * 5).toByte() })
+            tap(R.string.backup_now)
+            compose.waitForText(str(R.string.backup_paused_notice))
+            assertTrue("nothing is uploaded while paused", env.nextcloud.paths().none { it.endsWith("/aether_while_paused.jpg") })
+
+            tap(R.string.backup_resume)
+
+            awaitTrue("the photo to reach the server", timeoutMs = 30_000) { env.nextcloud.paths().any { it.endsWith("/aether_while_paused.jpg") } }
+            assertFalse(runBlocking { settings.backup.first() }.paused)
         } finally {
             media.deleteAll()
             runBlocking { settings.updateBackup { BackupSettings() } }

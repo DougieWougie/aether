@@ -74,6 +74,20 @@ class CameraBackupWorkerFailureTest {
     }
 
     @Test
+    fun aPausedBackupUploadsNothingAndKeepsTheItemsForResume() {
+        enableBackup()
+        runBlocking { settings.updateBackup { it.copy(paused = true) } }
+        media.photo("aether_paused.jpg", bytes(3))
+
+        assertEquals(ListenableWorker.Result.success(), runWorker())
+        assertTrue(env.nextcloud.requests.isEmpty())
+
+        runBlocking { settings.updateBackup { it.copy(paused = false) } }
+        assertEquals(ListenableWorker.Result.success(), runWorker())
+        assertTrue("the photo taken during the pause goes up on resume", env.nextcloud.paths().any { it.endsWith("/aether_paused.jpg") })
+    }
+
+    @Test
     fun anAccountThatWasRemovedIsLeftAlone() {
         enableBackup(account = "ghost@nowhere")
         media.photo("aether_ghost.jpg", bytes(3))

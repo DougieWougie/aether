@@ -1,0 +1,18 @@
+name: Emulator host setup
+description: Frees disk space and enables KVM so the Android emulator can run on a GitHub-hosted runner.
+runs:
+  using: composite
+  steps:
+    - name: Free disk space
+      # The emulator's default user-data partition is ~7 GB and the runner image leaves too little room for it.
+      shell: bash
+      run: |
+        sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /usr/local/lib/android/sdk/ndk
+        df -h /
+
+    - name: Enable KVM
+      shell: bash
+      run: |
+        echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+        sudo udevadm control --reload-rules
+        sudo udevadm trigger --name-match=kvm

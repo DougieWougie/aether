@@ -28,8 +28,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Icon
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Cloud
+import androidx.compose.ui.res.painterResource
+import com.aether.nextcloud.R
 import androidx.graphics.shapes.Morph
 import com.aether.nextcloud.ui.components.toComposePath
 import androidx.graphics.shapes.RoundedPolygon
@@ -79,6 +79,7 @@ fun MorphingHero(
         Canvas(Modifier.fillMaxSize().rotate(rotation)) {
             drawPath(morphs[index].toComposePath(progress.value, this.size, path), container)
         }
-        Icon(Icons.Outlined.Cloud, contentDescription = null, tint = onContainer, modifier = Modifier.size(size / 3))
+        // The launcher mark's themed layer, so the sign-in screen shows the same logo as the home screen.
+        Icon(painterResource(R.drawable.ic_launcher_monochrome), contentDescription = null, tint = onContainer, modifier = Modifier.size(size * 0.75f))
     }
 }

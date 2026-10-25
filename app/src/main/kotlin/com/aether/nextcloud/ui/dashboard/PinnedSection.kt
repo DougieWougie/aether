@@ -7,17 +7,19 @@ import com.aether.nextcloud.R
 import androidx.compose.ui.res.stringResource
 import android.content.Intent
 import android.provider.DocumentsContract
-import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.graphics.vector.rememberVectorPainter
-import androidx.compose.material3.ToggleFloatingActionButton
-import androidx.compose.material3.ToggleFloatingActionButtonDefaults.animateIcon
-import androidx.compose.material3.FloatingActionButtonMenuItem
-import androidx.compose.material3.FloatingActionButtonMenu
 import androidx.compose.material.icons.outlined.CreateNewFolder
-import androidx.compose.material.icons.outlined.Close
 import android.net.Uri
+import androidx.annotation.StringRes
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingToolbarDefaults
+import androidx.compose.material3.HorizontalFloatingToolbar
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.PlainTooltip
+import androidx.compose.material3.TooltipAnchorPosition
+import androidx.compose.material3.TooltipBox
+import androidx.compose.material3.TooltipDefaults
+import androidx.compose.material3.rememberTooltipState
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -58,44 +60,54 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.aether.nextcloud.AetherConstants
 
-/** Pin actions live in a FAB menu on the Pinned tab; "Files" stays reachable from it, as on the other tabs. */
+/**
+ * The dashboard's floating toolbar. "Files" is the FAB on every tab; on the Pinned tab the toolbar expands to show the
+ * pin actions beside it, and on the other tabs it collapses to the FAB alone.
+ */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-internal fun PinnedFabMenu(
-    expanded: Boolean,
-    onExpandedChange: (Boolean) -> Unit,
+internal fun DashboardToolbar(
+    actionsVisible: Boolean,
     canSync: Boolean,
     onPinFiles: () -> Unit,
     onPinFolder: () -> Unit,
     onSyncNow: () -> Unit,
     onOpenFiles: () -> Unit,
 ) {
-    fun item(action: () -> Unit): () -> Unit = { onExpandedChange(false); action() }
-    val menuDescription = stringResource(R.string.pin_menu_description)
-    val stateText = stringResource(if (expanded) R.string.state_expanded else R.string.state_collapsed)
-    FloatingActionButtonMenu(
-        expanded = expanded,
-        button = {
-            ToggleFloatingActionButton(
-                checked = expanded,
-                onCheckedChange = onExpandedChange,
-                modifier = Modifier.semantics {
-                    stateDescription = stateText
-                    contentDescription = menuDescription
-                },
-            ) {
-                val icon by remember { derivedStateOf { if (checkedProgress > 0.5f) Icons.Outlined.Close else Icons.Outlined.PushPin } }
-                Icon(rememberVectorPainter(icon), contentDescription = null, modifier = Modifier.animateIcon({ checkedProgress }))
+    HorizontalFloatingToolbar(
+        expanded = actionsVisible,
+        floatingActionButton = {
+            ToolbarTooltip(stringResource(R.string.action_files)) {
+                FloatingToolbarDefaults.VibrantFloatingActionButton(onClick = onOpenFiles) {
+                    Icon(Icons.Outlined.FolderOpen, contentDescription = stringResource(R.string.action_files))
+                }
             }
         },
+        colors = FloatingToolbarDefaults.vibrantFloatingToolbarColors(),
     ) {
-        FloatingActionButtonMenuItem(onClick = item(onPinFiles), text = { Text(stringResource(R.string.pin_files)) }, icon = { Icon(Icons.Outlined.PushPin, contentDescription = null) })
-        FloatingActionButtonMenuItem(onClick = item(onPinFolder), text = { Text(stringResource(R.string.pin_folder)) }, icon = { Icon(Icons.Outlined.CreateNewFolder, contentDescription = null) })
-        if (canSync) {
-            FloatingActionButtonMenuItem(onClick = item(onSyncNow), text = { Text(stringResource(R.string.sync_now)) }, icon = { Icon(Icons.Outlined.Sync, contentDescription = null) })
-        }
-        FloatingActionButtonMenuItem(onClick = item(onOpenFiles), text = { Text(stringResource(R.string.action_files)) }, icon = { Icon(Icons.Outlined.FolderOpen, contentDescription = null) })
+        ToolbarAction(R.string.pin_files, Icons.Outlined.PushPin, onPinFiles)
+        ToolbarAction(R.string.pin_folder, Icons.Outlined.CreateNewFolder, onPinFolder)
+        if (canSync) ToolbarAction(R.string.sync_now, Icons.Outlined.Sync, onSyncNow)
     }
+}
+
+@Composable
+private fun ToolbarAction(@StringRes label: Int, icon: ImageVector, onClick: () -> Unit) {
+    val text = stringResource(label)
+    ToolbarTooltip(text) {
+        IconButton(onClick = onClick) { Icon(icon, contentDescription = text) }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ToolbarTooltip(text: String, content: @Composable () -> Unit) {
+    TooltipBox(
+        positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Above),
+        tooltip = { PlainTooltip { Text(text) } },
+        state = rememberTooltipState(),
+        content = content,
+    )
 }
 
 /**

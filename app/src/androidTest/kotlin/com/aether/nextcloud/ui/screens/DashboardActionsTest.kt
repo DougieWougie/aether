@@ -7,7 +7,6 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ActivityScenario
 import androidx.test.espresso.intent.Intents
@@ -60,7 +59,7 @@ class DashboardActionsTest {
         compose.waitForText(str(R.string.pinned_empty_title))
     }
 
-    private fun openMenu() = compose.onNodeWithContentDescription(str(R.string.pin_menu_description)).performClick()
+    private fun tap(label: Int) = compose.onNodeWithContentDescription(str(label)).performClick()
 
     @Test
     fun pinningAFileFromThePickerListsItAndStartsTheSync() {
@@ -68,8 +67,7 @@ class DashboardActionsTest {
         answer(Intent.ACTION_OPEN_DOCUMENT, DocumentsContract.buildDocumentUri(AetherConstants.AUTHORITY, env.docId("/notes.txt")))
         launch()
 
-        openMenu()
-        compose.onNodeWithText(str(R.string.pin_files)).performClick()
+        tap(R.string.pin_files)
 
         compose.waitForText("notes.txt")
         awaitTrue("the pinned copy to be downloaded", timeoutMs = 30_000) {
@@ -83,8 +81,7 @@ class DashboardActionsTest {
         answer(Intent.ACTION_OPEN_DOCUMENT_TREE, DocumentsContract.buildTreeDocumentUri(AetherConstants.AUTHORITY, env.docId("/Docs")))
         launch()
 
-        openMenu()
-        compose.onNodeWithText(str(R.string.pin_folder)).performClick()
+        tap(R.string.pin_folder)
 
         compose.waitForText("Docs")
         awaitTrue("the folder to be pinned", timeoutMs = 30_000) {
@@ -103,8 +100,7 @@ class DashboardActionsTest {
         scenario = ActivityScenario.launch(MainActivity::class.java)
         compose.waitForText("notes.txt")
 
-        openMenu()
-        compose.onNodeWithText(str(R.string.sync_now)).performClick()
+        tap(R.string.sync_now)
 
         awaitTrue("the file to be downloaded", timeoutMs = 30_000) {
             env.graph.documents().cached(DocumentId(env.accountName, "/notes.txt"))?.localCachePath != null
@@ -112,12 +108,11 @@ class DashboardActionsTest {
     }
 
     @Test
-    fun filesInThePinMenuOpensTheAccountRootInTheSystemFilesApp() {
+    fun theFilesButtonOpensTheAccountRootInTheSystemFilesApp() {
         Intents.intending(hasAction(Intent.ACTION_VIEW)).respondWith(Instrumentation.ActivityResult(Activity.RESULT_CANCELED, null))
         launch()
 
-        openMenu()
-        compose.onNodeWithText(str(R.string.action_files)).performClick()
+        tap(R.string.action_files)
 
         compose.waitUntil(10_000) {
             runCatching {

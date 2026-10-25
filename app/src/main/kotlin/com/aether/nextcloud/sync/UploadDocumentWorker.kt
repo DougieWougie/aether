@@ -92,6 +92,9 @@ class UploadDocumentWorker @AssistedInject constructor(
                     state = TransferState.RUNNING,
                     totalBytes = total,
                     createdAt = System.currentTimeMillis(),
+                    sourcePath = source.absolutePath,
+                    mimeType = mimeType,
+                    ifMatchEtag = ifMatch,
                 ),
             )
         }
@@ -106,7 +109,7 @@ class UploadDocumentWorker @AssistedInject constructor(
                 first is AetherResult.Success -> finish(credentials, target, source, first.value, transferId, TransferState.COMPLETED)
                 first is AetherResult.Failure && first.error == AetherError.PreconditionFailed ->
                     saveConflictCopy(dav, credentials, target, source, mimeType, total, progress, transferId)
-                first is AetherResult.Failure -> failed(first.error, source, transferId)
+                first is AetherResult.Failure -> failed(first.error, transferId)
                 else -> Result.failure()
             }
         } catch (e: CancellationException) {
@@ -141,14 +144,14 @@ class UploadDocumentWorker @AssistedInject constructor(
         progress: ThrottledProgress,
         transferId: Long,
     ): Result {
-        val parent = target.parent ?: return failed(AetherError.PreconditionFailed, source, transferId)
+        val parent = target.parent ?: return failed(AetherError.PreconditionFailed, transferId)
         val conflict = parent.child(ConflictNaming.conflictName(target.name, System.currentTimeMillis()))
         return when (val copy = upload(dav, credentials, conflict, source, mimeType, null, total, progress)) {
             is AetherResult.Success -> {
                 notifications.notifyConflict(credentials.accountName, target.name, conflict.name)
                 finish(credentials, conflict, source, copy.value, transferId, TransferState.CONFLICT, refreshOriginal = target)
             }
-            is AetherResult.Failure -> failed(copy.error, source, transferId)
+            is AetherResult.Failure -> failed(copy.error, transferId)
         }
     }
 
@@ -171,7 +174,7 @@ class UploadDocumentWorker @AssistedInject constructor(
         return Result.success()
     }
 
-    private suspend fun failed(error: AetherError, source: File, transferId: Long): Result {
+    private suspend fun failed(error: AetherError, transferId: Long): Result {
         // A server-side lock normally clears once the other editor closes, so it is retried like a transient failure.
         val retryable = error is AetherError.Network || error == AetherError.Locked || (error is AetherError.Http && error.code >= 500)
         if (retryable && runAttemptCount < MAX_ATTEMPTS) {
@@ -179,8 +182,8 @@ class UploadDocumentWorker @AssistedInject constructor(
             return Result.retry()
         }
         setTransferState(transferId, TransferState.FAILED, error.describe())
-        // Keep the staged bytes only when the user can fix things (re-sign-in); otherwise they are unrecoverable clutter.
-        if (error == AetherError.Unauthorized) inputData.getString(KEY_ACCOUNT)?.let(authIssues::report) else source.delete()
+        // The staged bytes stay: the failed row points at them so Retry failed can send them again. Pruning the row deletes them.
+        if (error == AetherError.Unauthorized) inputData.getString(KEY_ACCOUNT)?.let(authIssues::report)
         return Result.failure()
     }
 

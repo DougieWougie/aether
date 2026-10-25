@@ -39,6 +39,14 @@
     <string name="backup_now">Back up now</string>
     <string name="backup_pause">Pause backup</string>
     <string name="transfers_retry_failed">Retry failed</string>
+    <plurals name="transfers_retrying">
+        <item quantity="one">Retrying %1$d transfer</item>
+        <item quantity="other">Retrying %1$d transfers</item>
+    </plurals>
+    <plurals name="transfers_retry_skipped">
+        <item quantity="one">%1$d can\'t be retried because its file is gone</item>
+        <item quantity="other">%1$d can\'t be retried because their files are gone</item>
+    </plurals>
     <string name="transfers_clear_finished">Clear finished</string>
     <string name="action_not_ready">%1$s isn\'t available yet</string>
     <string name="action_unpin">Unpin</string>

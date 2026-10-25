@@ -13,7 +13,7 @@ import com.aether.nextcloud.data.local.entity.TransferEntity
 
 @Database(
     entities = [DocumentEntity::class, TransferEntity::class, BackedUpMediaEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 abstract class AetherDatabase : RoomDatabase() {
@@ -25,8 +25,17 @@ abstract class AetherDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE backed_up_media ADD COLUMN bucketName TEXT")
             }
         }
-    }
 
+        /** Failed uploads remember their staged file so they can be retried; failed camera items remember their MediaStore key. */
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE transfers ADD COLUMN sourcePath TEXT")
+                db.execSQL("ALTER TABLE transfers ADD COLUMN mimeType TEXT")
+                db.execSQL("ALTER TABLE transfers ADD COLUMN ifMatchEtag TEXT")
+                db.execSQL("ALTER TABLE transfers ADD COLUMN mediaKey TEXT")
+            }
+        }
+    }
 
     abstract fun documentDao(): DocumentDao
     abstract fun transferDao(): TransferDao

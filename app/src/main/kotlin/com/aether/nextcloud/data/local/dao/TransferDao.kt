@@ -27,8 +27,21 @@ interface TransferDao {
     @Query("SELECT * FROM transfers WHERE state NOT IN ('QUEUED', 'RUNNING') ORDER BY updatedAt DESC LIMIT :limit")
     fun observeRecent(limit: Int): Flow<List<TransferEntity>>
 
-    @Query("DELETE FROM transfers WHERE state NOT IN ('QUEUED', 'RUNNING') AND updatedAt < :olderThan")
-    fun pruneFinished(olderThan: Long)
+    @Query("SELECT * FROM transfers WHERE accountName = :account AND state = 'FAILED' ORDER BY createdAt")
+    fun failed(account: String): List<TransferEntity>
+
+    @Query("DELETE FROM transfers WHERE id = :id")
+    fun delete(id: Long)
+
+    /** Failed rows outlive other finished ones so there is time to retry them; their staged files go with them. */
+    @Query("SELECT sourcePath FROM transfers WHERE sourcePath IS NOT NULL AND ((state = 'FAILED' AND updatedAt < :failedBefore) OR (state NOT IN ('QUEUED', 'RUNNING', 'FAILED') AND updatedAt < :finishedBefore))")
+    fun prunableSources(finishedBefore: Long, failedBefore: Long): List<String>
+
+    @Query("DELETE FROM transfers WHERE (state = 'FAILED' AND updatedAt < :failedBefore) OR (state NOT IN ('QUEUED', 'RUNNING', 'FAILED') AND updatedAt < :finishedBefore)")
+    fun pruneFinished(finishedBefore: Long, failedBefore: Long)
+
+    @Query("DELETE FROM transfers WHERE accountName = :account AND mediaKey = :mediaKey")
+    fun deleteForMedia(account: String, mediaKey: String)
 
     @Query("DELETE FROM transfers WHERE accountName = :account AND state = 'COMPLETED'")
     fun clearCompleted(account: String)

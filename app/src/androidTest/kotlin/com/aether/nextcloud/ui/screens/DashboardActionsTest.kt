@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.Instrumentation
 import android.content.Intent
 import android.net.Uri
+import java.io.File
 import android.provider.DocumentsContract
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -126,6 +127,41 @@ class DashboardActionsTest {
                 Intents.intended(allOf(hasAction(Intent.ACTION_VIEW), hasData(DocumentsContract.buildRootUri(AetherConstants.AUTHORITY, env.accountName))))
             }.isSuccess
         }
+    }
+
+    @Test
+    fun retryFailedRequeuesAStagedUploadAndRemovesItsFailedRow() {
+        env.nextcloud.putFile("/seed.txt", "x")
+        val staged = File.createTempFile("retry", ".tmp", InstrumentationRegistry.getInstrumentation().targetContext.cacheDir).apply { writeText("kept bytes") }
+        val transfers = env.graph.database().transferDao()
+        transfers.insert(
+            transfer("/retry.txt", TransferState.FAILED, error = "Your Nextcloud storage is full.")
+                .copy(accountName = env.accountName, sourcePath = staged.absolutePath, mimeType = "text/plain"),
+        )
+        transfers.insert(transfer("/gone.txt", TransferState.FAILED, error = "boom").copy(accountName = env.accountName, sourcePath = "/nonexistent/file"))
+        try {
+            launch()
+            compose.onNodeWithText(str(R.string.tab_transfers)).performClick()
+            compose.waitUntil(10_000) { runCatching { compose.onNodeWithContentDescription(str(R.string.transfers_retry_failed)).assertIsEnabled() }.isSuccess }
+
+            tap(R.string.transfers_retry_failed)
+
+            awaitTrue("the staged bytes to reach the server", timeoutMs = 30_000) { env.nextcloud.text("/retry.txt") == "kept bytes" }
+            val mine = { runBlocking { transfers.observeRecent(100).first() }.filter { it.accountName == env.accountName } }
+            awaitTrue("the retried row to be replaced by its new attempt") { mine().none { it.remotePath == "/retry.txt" && it.state == TransferState.FAILED } }
+            assertEquals("the row whose file is gone stays", listOf("/gone.txt"), mine().filter { it.state == TransferState.FAILED }.map { it.remotePath })
+        } finally {
+            staged.delete()
+            transfers.deleteAccount(env.accountName)
+        }
+    }
+
+    @Test
+    fun retryFailedIsDisabledWhenNothingHasFailed() {
+        launch()
+        compose.onNodeWithText(str(R.string.tab_transfers)).performClick()
+
+        compose.onNodeWithContentDescription(str(R.string.transfers_retry_failed)).assertIsNotEnabled()
     }
 
     @Test

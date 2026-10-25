@@ -28,8 +28,12 @@ import com.aether.nextcloud.auth.AuthIssues
 import com.aether.nextcloud.auth.AetherCredentials
 import com.aether.nextcloud.core.AetherError
 import com.aether.nextcloud.core.AetherResult
+import com.aether.nextcloud.core.describe
 import com.aether.nextcloud.data.local.AetherDatabase
 import com.aether.nextcloud.data.local.entity.BackedUpMediaEntity
+import com.aether.nextcloud.data.local.entity.TransferDirection
+import com.aether.nextcloud.data.local.entity.TransferEntity
+import com.aether.nextcloud.data.local.entity.TransferState
 import com.aether.nextcloud.data.prefs.BackupSettings
 import com.aether.nextcloud.data.prefs.SettingsRepository
 import com.aether.nextcloud.dav.Checksums
@@ -107,12 +111,13 @@ class CameraBackupWorker @AssistedInject constructor(
                 is AetherResult.Success -> Unit
                 is AetherResult.Failure -> when (val error = outcome.error) {
                     is AetherError.Network -> return Result.retry()
-                    is AetherError.Http -> if (error.code >= 500) return Result.retry() // else: skip this item, keep going
+                    is AetherError.Http -> if (error.code >= 500) return Result.retry() else recordFailure(credentials, item, settings, error)
                     AetherError.Unauthorized -> {
                         authIssues.report(credentials.accountName)
                         return Result.failure()
                     }
-                    else -> Unit
+                    // Skip this item and keep going; it shows under Transfers until a later scan (or Retry failed) gets it up.
+                    else -> recordFailure(credentials, item, settings, error)
                 }
             }
         }
@@ -171,7 +176,29 @@ class CameraBackupWorker @AssistedInject constructor(
         }
     }
 
+    private fun mediaKey(item: MediaItem) = "${if (item.isVideo) "video" else "image"}:${item.id}"
+
+    /** One failed row per item: a repeated failure replaces the earlier row instead of piling up. */
+    private suspend fun recordFailure(credentials: AetherCredentials, item: MediaItem, settings: BackupSettings, error: AetherError) = withContext(Dispatchers.IO) {
+        val transfers = database.transferDao()
+        transfers.deleteForMedia(credentials.accountName, mediaKey(item))
+        val now = System.currentTimeMillis()
+        transfers.insert(
+            TransferEntity(
+                accountName = credentials.accountName,
+                remotePath = BackupPaths.remotePath(settings.remoteFolder, item.takenMillis, item.name),
+                direction = TransferDirection.UPLOAD,
+                state = TransferState.FAILED,
+                totalBytes = item.size,
+                error = error.describe(),
+                createdAt = now,
+                mediaKey = mediaKey(item),
+            ),
+        )
+    }
+
     private suspend fun record(credentials: AetherCredentials, item: MediaItem, remotePath: String) = withContext(Dispatchers.IO) {
+        database.transferDao().deleteForMedia(credentials.accountName, mediaKey(item))
         database.backedUpMediaDao().upsert(
             BackedUpMediaEntity(
                 accountName = credentials.accountName,
@@ -249,6 +276,7 @@ class CameraBackupWorker @AssistedInject constructor(
         private const val KEY_TRIGGERED = "triggered"
         private const val TRIGGER_NAME = "camera-backup-trigger"
         private const val PERIODIC_NAME = "camera-backup-periodic"
+        private const val NOW_NAME = "camera-backup-now"
 
         /** Runs never overlap: the trigger and periodic workers share the same scan. */
         private val scanMutex = Mutex()
@@ -271,6 +299,15 @@ class CameraBackupWorker @AssistedInject constructor(
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 1, TimeUnit.MINUTES)
                 .build()
             WorkManager.getInstance(context).enqueueUniqueWork(TRIGGER_NAME, policy, request)
+        }
+
+        /** A user-requested scan: any network will do, whatever the automatic runs' Wi-Fi or charging rules say. */
+        fun runNow(context: Context) {
+            val request = OneTimeWorkRequestBuilder<CameraBackupWorker>()
+                .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 1, TimeUnit.MINUTES)
+                .build()
+            WorkManager.getInstance(context).enqueueUniqueWork(NOW_NAME, ExistingWorkPolicy.KEEP, request)
         }
 
         /** Safety net for events missed while the process was dead, and for items the first scan could not finish. */

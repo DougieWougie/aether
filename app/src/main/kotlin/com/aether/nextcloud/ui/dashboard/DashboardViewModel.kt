@@ -27,7 +27,9 @@ import com.aether.nextcloud.data.prefs.BackupSettings
 import com.aether.nextcloud.data.prefs.SettingsRepository
 import com.aether.nextcloud.dav.UserInfo
 import com.aether.nextcloud.provider.DocumentId
+import com.aether.nextcloud.sync.RetryOutcome
 import com.aether.nextcloud.sync.SyncScheduler
+import com.aether.nextcloud.sync.TransferRetrier
 import com.aether.nextcloud.ui.share.DirectShareShortcuts
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -85,6 +87,7 @@ class DashboardViewModel @Inject constructor(
     private val settings: SettingsRepository,
     private val cameraStats: CameraBackupStatsRepository,
     private val scheduler: SyncScheduler,
+    private val retrier: TransferRetrier,
     authIssues: AuthIssues,
     database: AetherDatabase,
 ) : ViewModel() {
@@ -201,6 +204,12 @@ class DashboardViewModel @Inject constructor(
     fun clearFinishedTransfers() {
         val account = state.value.selected?.accountName ?: return
         viewModelScope.launch { withContext(Dispatchers.IO) { transferDao.clearCompleted(account) } }
+    }
+
+    /** Queues the selected account's failed transfers again (see [TransferRetrier]) and reports what happened to [onResult]. */
+    fun retryFailedTransfers(onResult: (RetryOutcome) -> Unit) {
+        val account = state.value.selected?.accountName ?: return
+        viewModelScope.launch { onResult(retrier.retryFailed(account)) }
     }
 
     /**

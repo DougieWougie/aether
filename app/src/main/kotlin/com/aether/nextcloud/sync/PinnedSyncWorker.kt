@@ -31,6 +31,7 @@ import com.aether.nextcloud.data.local.entity.TransferState
 import com.aether.nextcloud.provider.DocumentId
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import java.io.File
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -73,7 +74,13 @@ class PinnedSyncWorker @AssistedInject constructor(
             val credentials = accounts.credentials(root.accountName) ?: continue
             syncNode(credentials, DocumentId.parse(root.documentId))
         }
-        withContext(Dispatchers.IO) { transfers.pruneFinished(System.currentTimeMillis() - TimeUnit.DAYS.toMillis(1)) }
+        withContext(Dispatchers.IO) {
+            val now = System.currentTimeMillis()
+            val finishedBefore = now - TimeUnit.DAYS.toMillis(1)
+            val failedBefore = now - TimeUnit.DAYS.toMillis(FAILED_KEPT_DAYS)
+            transfers.prunableSources(finishedBefore, failedBefore).forEach { File(it).delete() }
+            transfers.pruneFinished(finishedBefore, failedBefore)
+        }
         return if (retryNeeded) Result.retry() else Result.success()
     }
 
@@ -151,6 +158,8 @@ class PinnedSyncWorker @AssistedInject constructor(
     }
 
     companion object {
+        /** How long a failed transfer stays listed (and its staged upload stays on disk) for Retry failed. */
+        private const val FAILED_KEPT_DAYS = 7L
         private const val KEY_FOREGROUND = "foreground"
         private const val PROGRESS_INTERVAL_MS = 500L
         private const val PERIODIC_NAME = "pinned-sync-periodic"

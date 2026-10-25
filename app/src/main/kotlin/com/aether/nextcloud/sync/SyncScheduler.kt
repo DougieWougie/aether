@@ -26,5 +26,7 @@ class SyncScheduler @Inject constructor(@ApplicationContext private val context:
 
     fun applyPinnedSync(settings: SyncSettings) = PinnedSyncWorker.schedulePeriodic(context, settings.pinnedSyncUnmeteredOnly)
 
+    fun backUpNow() = CameraBackupWorker.runNow(context)
+
     fun syncPinsNow() = PinnedSyncWorker.syncNow(context)
 }

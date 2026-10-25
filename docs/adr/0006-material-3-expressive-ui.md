@@ -71,7 +71,7 @@ This supersedes the 2026-10-21 note on the "Open in System Files" FAB and the 20
 - **One `HorizontalFloatingToolbar` replaces the FAB menu and the extended FAB.** The earlier toolbar was rejected as *navigation* (a vibrant pill with an embedded FAB that hid two tab labels). Navigation stays in the `ShortNavigationBar`; the toolbar now holds *actions* only, so that objection does not apply.
 - **"Files" is the toolbar's FAB on every tab**, the same colour and size everywhere. The toolbar stays `expanded = true`: collapsed, it draws a larger FAB (about 96 dp against 56 dp), so the button changed size from tab to tab.
 - **The actions beside it follow the page showing**, read from `pagerState.currentPage` so they change during a swipe instead of after it settles. Pinned has Pin files, Pin folder and Sync now; Camera has Back up now and Pause backup; Transfers has Retry failed and Clear finished. At most three per tab keeps the toolbar's width similar. Sync now is disabled, not hidden, when nothing is pinned, so the width does not jump.
-- **Camera and Transfers actions are placeholders** that show a snackbar until the behaviour is wired up (Clear finished has since been implemented; see below). Cancel all was left out on purpose: a stray tap would cancel active uploads.
+- **Camera and Transfers actions are placeholders** that show a snackbar until the behaviour is wired up (Clear finished and Retry failed have since been implemented; see below). Cancel all was left out on purpose: a stray tap would cancel active uploads.
 - **Actions are icon buttons**, each with a tooltip and a content description (no visible labels, unlike the FAB menu items it replaces).
 - **The list on each pager page fills the page** (`fillMaxSize()`). `HorizontalPager` centres its pages vertically, which had left short tabs such as Transfers floating mid-screen since the swipe change.
 
@@ -80,3 +80,11 @@ This supersedes the 2026-10-21 note on the "Open in System Files" FAB and the 20
 - **Clear finished removes only the selected account's completed transfers.** Failed rows stay because they are what Retry failed acts on, and conflict rows stay because they still need a decision (their "Show folder" button). Other accounts' history is untouched; it is not on screen to be cleared.
 - **No confirmation and no undo.** Completed rows are only history, and the sync worker already prunes finished rows after a day, so there is nothing to protect.
 - **The button is disabled, not hidden, when the Recent list has no completed row.** It follows the rows shown (the latest 10), so completed rows older than that are not counted when deciding whether to enable it.
+
+## Implementation notes: Retry failed (2026-10-25)
+
+- **Retry failed acts on the selected account's failed rows.** Conflict rows are excluded because they need a decision, not a retry. The button is disabled, not hidden, when the Recent list has no failed row.
+- **Every failed upload keeps what it needs to be sent again.** Uploads from the share sheet and SAF write-backs keep their staged file after a final failure (they used to delete it) and the row records the file, MIME type and `If-Match` ETag (database version 3). Pruning removes failed rows after 7 days, other finished rows after 1 day, and deletes a pruned row's staged file with it.
+- **Camera backup now shows its failures.** An item that fails for a reason other than being offline or a server outage gets one failed row (keyed `image:<id>` or `video:<id>`, replaced rather than duplicated on each scan) and loses it when it uploads. The bytes never leave MediaStore, so retrying runs a camera scan (`CameraBackupWorker.runNow`, any network, ignoring the Wi-Fi and charging rules). The backed-up log still decides what to send, so a retry cannot duplicate a photo.
+- **Downloads retry through a pinned sync.**
+- **A retried row is removed when its retry is queued**, because the new attempt writes its own row. A failed row whose staged file is gone stays, and the snackbar says how many could not be retried ("Retrying 2 transfers. 1 can't be retried because its file is gone").

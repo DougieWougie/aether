@@ -13,6 +13,7 @@ Every push to a pull request and to `main` ran lint, the JVM unit tests and the 
    - **Unit tests** (`testDebugUnitTest`) always.
    - **Lint** (`lintDebug`) only when the change touches `app/src/main`, `app/src/debug`, a `*.gradle.kts` file, `gradle/`, `gradle.properties`, a lint config or `.github/`. A skipped job counts as passing for a required check.
    - **Instrumented smoke tests**: only classes annotated `@Smoke` (`support/Smoke.kt`), selected with `-Pandroid.testInstrumentationRunnerArguments.annotation=com.aether.nextcloud.support.Smoke`. The set is the Room migration test, the SAF provider test and the upload worker test: the areas a JVM test cannot cover and where a regression is costliest.
+   - **CI gate**: a final job that fails unless every job above succeeded, accepting a skip only where one is expected (lint when `changes` says it is not needed, smoke outside pull requests). It is the only check the branch rulesets require. Requiring the jobs individually would let a failed `changes` job skip `Lint`, which reports success.
 2. **Push to `main`** runs lint and unit tests only. The smoke tests already passed on the pull request.
 3. **Release branches** (`release/**`, plus manual dispatch) run `release.yml`: lint, unit tests, the full instrumented logic suite and the combined coverage report.
 4. **Compose screen tests stay out of CI**, as in [ADR-0009](0009-ci-test-scope.md); `release.yml` keeps the `notPackage=...ui.screens` exclusion. Run them locally before cutting a release branch.

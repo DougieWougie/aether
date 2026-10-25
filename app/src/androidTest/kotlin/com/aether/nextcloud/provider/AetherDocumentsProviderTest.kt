@@ -7,6 +7,7 @@ import android.provider.DocumentsContract.Root
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.aether.nextcloud.AetherConstants
 import com.aether.nextcloud.support.AetherTestRule
+import com.aether.nextcloud.support.Smoke
 import com.aether.nextcloud.support.awaitTrue
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -16,6 +17,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /** The SAF provider driven through [android.content.ContentResolver], as DocumentsUI and other apps use it. */
+@Smoke
 @RunWith(AndroidJUnit4::class)
 class AetherDocumentsProviderTest {
     @get:Rule val env = AetherTestRule()

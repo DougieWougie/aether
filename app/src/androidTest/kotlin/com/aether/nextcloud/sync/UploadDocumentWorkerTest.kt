@@ -3,6 +3,7 @@ package com.aether.nextcloud.sync
 import android.provider.DocumentsContract.Document
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.aether.nextcloud.support.AetherTestRule
+import com.aether.nextcloud.support.Smoke
 import com.aether.nextcloud.support.awaitTrue
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -12,6 +13,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /** Write-backs go through the provider, which stages the bytes and hands them to the real [UploadDocumentWorker]. */
+@Smoke
 @RunWith(AndroidJUnit4::class)
 class UploadDocumentWorkerTest {
     @get:Rule val env = AetherTestRule()

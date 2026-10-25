@@ -87,7 +87,7 @@ Studio hasn't already (`sdk.dir=/path/to/Android/Sdk`).
 ./gradlew lintDebug            # Android lint
 ```
 
-CI runs lint and the unit tests on every push and pull request.
+Pull requests run the unit tests, lint (when production code or build files change) and a small instrumented smoke set; the full instrumented suite runs on `release/**` branches. See [ADR-0010](docs/adr/0010-tiered-ci-pr-gate-and-release-suite.md).
 
 ## Contributing
 

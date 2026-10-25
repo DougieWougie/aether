@@ -1,6 +1,6 @@
 # ADR-0009: CI Test Scope — Logic on the Emulator, Interface Tests Locally
 
-- **Status:** Accepted
+- **Status:** Accepted (amended by [ADR-0010](0010-tiered-ci-pr-gate-and-release-suite.md): which suite runs when)
 - **Date:** 2026-10-24
 
 ## Context

@@ -73,9 +73,11 @@ import com.aether.nextcloud.AetherConstants
 internal fun DashboardToolbar(
     tab: DashboardTab,
     canSync: Boolean,
+    canClearFinished: Boolean,
     onPinFiles: () -> Unit,
     onPinFolder: () -> Unit,
     onSyncNow: () -> Unit,
+    onClearFinished: () -> Unit,
     onOpenFiles: () -> Unit,
     onNotReady: (String) -> Unit,
 ) {
@@ -102,7 +104,7 @@ internal fun DashboardToolbar(
             }
             DashboardTab.Transfers -> {
                 ToolbarAction(R.string.transfers_retry_failed, Icons.Outlined.Replay, placeholder(R.string.transfers_retry_failed, onNotReady))
-                ToolbarAction(R.string.transfers_clear_finished, Icons.Outlined.ClearAll, placeholder(R.string.transfers_clear_finished, onNotReady))
+                ToolbarAction(R.string.transfers_clear_finished, Icons.Outlined.ClearAll, onClearFinished, enabled = canClearFinished)
             }
         }
     }

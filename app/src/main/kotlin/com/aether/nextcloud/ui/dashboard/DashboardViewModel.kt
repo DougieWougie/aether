@@ -89,6 +89,7 @@ class DashboardViewModel @Inject constructor(
     database: AetherDatabase,
 ) : ViewModel() {
 
+    private val transferDao = database.transferDao()
     private val selectedName = MutableStateFlow(savedState.get<String>(KEY_ACCOUNT))
     private val tab = MutableStateFlow(savedState.get<String>(KEY_TAB)?.let { name -> DashboardTab.entries.firstOrNull { it.name == name } } ?: DashboardTab.Pinned)
     private val storage = MutableStateFlow(StorageUsage())
@@ -195,6 +196,12 @@ class DashboardViewModel @Inject constructor(
     }
 
     fun syncPinsNow() = scheduler.syncPinsNow()
+
+    /** Removes the selected account's completed transfers from the Recent list. Failed and conflict rows stay: they still need action. */
+    fun clearFinishedTransfers() {
+        val account = state.value.selected?.accountName ?: return
+        viewModelScope.launch { withContext(Dispatchers.IO) { transferDao.clearCompleted(account) } }
+    }
 
     /**
      * Pins whatever the user picked in the system document picker (tree URIs pin a whole folder). URIs from other

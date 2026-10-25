@@ -5,7 +5,10 @@ import android.app.Instrumentation
 import android.content.Intent
 import android.net.Uri
 import android.provider.DocumentsContract
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ActivityScenario
@@ -17,12 +20,16 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.aether.nextcloud.AetherConstants
 import com.aether.nextcloud.MainActivity
 import com.aether.nextcloud.R
+import com.aether.nextcloud.data.local.entity.TransferDirection
+import com.aether.nextcloud.data.local.entity.TransferState
 import com.aether.nextcloud.provider.DocumentId
 import com.aether.nextcloud.support.AetherTestRule
 import com.aether.nextcloud.support.awaitTrue
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.hamcrest.Matchers.allOf
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -118,6 +125,31 @@ class DashboardActionsTest {
             runCatching {
                 Intents.intended(allOf(hasAction(Intent.ACTION_VIEW), hasData(DocumentsContract.buildRootUri(AetherConstants.AUTHORITY, env.accountName))))
             }.isSuccess
+        }
+    }
+
+    @Test
+    fun clearFinishedRemovesCompletedTransfersButKeepsFailedOnesAndOtherAccounts() {
+        val transfers = env.graph.database().transferDao()
+        val other = "bob@elsewhere"
+        fun mine() = runBlocking { transfers.observeRecent(100).first() }.filter { it.accountName == env.accountName }
+        fun theirs() = runBlocking { transfers.observeRecent(100).first() }.filter { it.accountName == other }
+        transfers.insert(transfer("/done.txt", TransferState.COMPLETED, TransferDirection.DOWNLOAD).copy(accountName = env.accountName))
+        transfers.insert(transfer("/bad.txt", TransferState.FAILED, error = "Your Nextcloud storage is full.").copy(accountName = env.accountName))
+        transfers.insert(transfer("/theirs.txt", TransferState.COMPLETED, TransferDirection.DOWNLOAD).copy(accountName = other))
+        try {
+            launch()
+            compose.onNodeWithText(str(R.string.tab_transfers)).performClick()
+            compose.waitUntil(10_000) { runCatching { compose.onNodeWithContentDescription(str(R.string.transfers_clear_finished)).assertIsEnabled() }.isSuccess }
+
+            tap(R.string.transfers_clear_finished)
+
+            awaitTrue("the completed transfer to be removed") { mine().none { it.state == TransferState.COMPLETED } }
+            assertEquals(listOf("/bad.txt"), mine().map { it.remotePath })
+            assertEquals(listOf("/theirs.txt"), theirs().map { it.remotePath })
+            compose.onNodeWithContentDescription(str(R.string.transfers_clear_finished)).assertIsNotEnabled()
+        } finally {
+            transfers.deleteAccount(other)
         }
     }
 }

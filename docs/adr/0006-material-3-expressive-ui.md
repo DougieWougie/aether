@@ -71,7 +71,12 @@ This supersedes the 2026-10-21 note on the "Open in System Files" FAB and the 20
 - **One `HorizontalFloatingToolbar` replaces the FAB menu and the extended FAB.** The earlier toolbar was rejected as *navigation* (a vibrant pill with an embedded FAB that hid two tab labels). Navigation stays in the `ShortNavigationBar`; the toolbar now holds *actions* only, so that objection does not apply.
 - **"Files" is the toolbar's FAB on every tab**, the same colour and size everywhere. The toolbar stays `expanded = true`: collapsed, it draws a larger FAB (about 96 dp against 56 dp), so the button changed size from tab to tab.
 - **The actions beside it follow the page showing**, read from `pagerState.currentPage` so they change during a swipe instead of after it settles. Pinned has Pin files, Pin folder and Sync now; Camera has Back up now and Pause backup; Transfers has Retry failed and Clear finished. At most three per tab keeps the toolbar's width similar. Sync now is disabled, not hidden, when nothing is pinned, so the width does not jump.
-- **Camera and Transfers actions are placeholders** that show a snackbar until the behaviour is wired up. Cancel all was left out on purpose: a stray tap would cancel active uploads.
+- **Camera and Transfers actions are placeholders** that show a snackbar until the behaviour is wired up (Clear finished has since been implemented; see below). Cancel all was left out on purpose: a stray tap would cancel active uploads.
 - **Actions are icon buttons**, each with a tooltip and a content description (no visible labels, unlike the FAB menu items it replaces).
 - **The list on each pager page fills the page** (`fillMaxSize()`). `HorizontalPager` centres its pages vertically, which had left short tabs such as Transfers floating mid-screen since the swipe change.
 
+## Implementation notes: Clear finished (2026-10-25)
+
+- **Clear finished removes only the selected account's completed transfers.** Failed rows stay because they are what Retry failed acts on, and conflict rows stay because they still need a decision (their "Show folder" button). Other accounts' history is untouched; it is not on screen to be cleared.
+- **No confirmation and no undo.** Completed rows are only history, and the sync worker already prunes finished rows after a day, so there is nothing to protect.
+- **The button is disabled, not hidden, when the Recent list has no completed row.** It follows the rows shown (the latest 10), so completed rows older than that are not counted when deciding whether to enable it.

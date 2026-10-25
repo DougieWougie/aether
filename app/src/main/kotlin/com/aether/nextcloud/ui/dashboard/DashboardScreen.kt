@@ -58,6 +58,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.aether.nextcloud.AetherConstants
 import com.aether.nextcloud.auth.AetherCredentials
+import com.aether.nextcloud.data.local.entity.TransferState
 import com.aether.nextcloud.provider.DocumentId
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
@@ -107,9 +108,11 @@ fun DashboardScreen(
                 DashboardToolbar(
                     tab = tabs[pagerState.currentPage],
                     canSync = state.pinned.isNotEmpty(),
+                    canClearFinished = state.recentTransfers.any { it.state == TransferState.COMPLETED },
                     onPinFiles = { pickFiles.launch(rootDocumentUri) },
                     onPinFolder = { pickFolder.launch(rootDocumentUri) },
                     onSyncNow = viewModel::syncPinsNow,
+                    onClearFinished = viewModel::clearFinishedTransfers,
                     onOpenFiles = openFiles,
                     onNotReady = { name ->
                         scope.launch {

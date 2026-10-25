@@ -1,5 +1,8 @@
 package com.aether.nextcloud.ui.backup
 
+import android.content.pm.PackageManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 import com.aether.nextcloud.provider.DocumentId
 import com.aether.nextcloud.AetherConstants
 import androidx.compose.material3.IconButton
@@ -64,6 +67,8 @@ fun CameraBackupSettings(modifier: Modifier = Modifier, viewModel: CameraBackupV
     val settings = state.settings
     var folder by remember(settings.remoteFolder) { mutableStateOf(settings.remoteFolder) }
     var permissionDenied by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    var hasPermission by remember { mutableStateOf(mediaPermissions.any { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }) }
     var showAlbums by remember { mutableStateOf(false) }
     val availableAlbums by viewModel.albums.collectAsStateWithLifecycle()
     val colors = MaterialTheme.colorScheme
@@ -83,6 +88,7 @@ fun CameraBackupSettings(modifier: Modifier = Modifier, viewModel: CameraBackupV
         // Partial photo access ("selected photos") still counts: backup then uploads what the user shared with Aether.
         val ok = granted.values.any { it }
         permissionDenied = !ok
+        hasPermission = ok
         if (ok) {
             viewModel.setEnabled(true)
             askForNotifications()
@@ -92,6 +98,15 @@ fun CameraBackupSettings(modifier: Modifier = Modifier, viewModel: CameraBackupV
     Column(modifier, verticalArrangement = Arrangement.spacedBy(16.dp)) {
         if (permissionDenied) {
             Text(stringResource(R.string.backup_permission_needed), style = MaterialTheme.typography.bodyMedium, color = colors.error)
+        }
+        if (settings.enabled && !hasPermission) {
+            // Backup is on but the photo permission was taken away: without it every scan finds nothing.
+            Button(
+                onClick = { requestPermissions.launch(mediaPermissions) },
+                shapes = ButtonDefaults.shapes(),
+                colors = ButtonDefaults.buttonColors(containerColor = colors.tertiary, contentColor = colors.onTertiary),
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text(stringResource(R.string.backup_allow_access)) }
         }
         if (settings.enabled) {
             OutlinedButton(onClick = { viewModel.setEnabled(false) }, shapes = ButtonDefaults.shapes(), modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.backup_turn_off)) }

@@ -327,6 +327,39 @@ class DashboardViewModelTest {
         coVerify(exactly = 0) { retrier.retryFailed("alice@h") }
     }
 
+    private fun backUpNowEvents(vm: DashboardViewModel) = mutableListOf<BackUpNowEvent>().also { events -> vm.backUpNow { events += it } }
+
+    @Test
+    fun `back up now says so when backup is off and starts nothing`() = runTest(dispatcher) {
+        val events = backUpNowEvents(subscribed(viewModel()))
+
+        assertEquals(listOf(BackUpNowEvent.TurnedOff), events)
+        coVerify(exactly = 0) { scheduler.backUpNowAndCount() }
+    }
+
+    @Test
+    fun `back up now says so when the photo permission is missing and starts nothing`() = runTest(dispatcher) {
+        every { settings.backup } returns flowOf(BackupSettings(enabled = true, accountName = "alice@h"))
+        every { scheduler.canReadMedia() } returns false
+
+        val events = backUpNowEvents(subscribed(viewModel()))
+
+        assertEquals(listOf(BackUpNowEvent.NoPermission), events)
+        coVerify(exactly = 0) { scheduler.backUpNowAndCount() }
+    }
+
+    @Test
+    fun `back up now reports nothing new only when the run found nothing to upload`() = runTest(dispatcher) {
+        every { settings.backup } returns flowOf(BackupSettings(enabled = true, accountName = "alice@h"))
+        every { scheduler.canReadMedia() } returns true
+        coEvery { scheduler.backUpNowAndCount() } returnsMany listOf(0, 3, null)
+        val vm = subscribed(viewModel())
+
+        assertEquals(listOf(BackUpNowEvent.Started, BackUpNowEvent.NothingNew), backUpNowEvents(vm))
+        assertEquals("uploads were attempted", listOf(BackUpNowEvent.Started), backUpNowEvents(vm))
+        assertEquals("a run that did not succeed says nothing more", listOf(BackUpNowEvent.Started), backUpNowEvents(vm))
+    }
+
     @Test
     fun `turning direct share off is saved`() = runTest(dispatcher) {
         coEvery { settings.setDirectShareEnabled(any()) } returns Unit

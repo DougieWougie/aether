@@ -2,6 +2,7 @@ package com.aether.nextcloud.ui.dashboard
 
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
@@ -82,6 +83,15 @@ fun DashboardScreen(
     val unpinnedFormat = stringResource(R.string.pinned_unpinned)
     val notReadyFormat = stringResource(R.string.action_not_ready)
     val resources = LocalResources.current
+    // Hoisted from the Camera tile so the Back up now snackbar can open its settings.
+    var cameraSettingsOpen by rememberSaveable { mutableStateOf(false) }
+    val backUpNowMessages = mapOf(
+        BackUpNowEvent.Started to stringResource(R.string.backup_now_started),
+        BackUpNowEvent.NothingNew to stringResource(R.string.backup_nothing_new),
+        BackUpNowEvent.TurnedOff to stringResource(R.string.backup_off_notice),
+        BackUpNowEvent.NoPermission to stringResource(R.string.backup_no_permission_notice),
+    )
+    val setUpLabel = stringResource(R.string.action_set_up)
 
     val tabs = DashboardTab.entries
     val pagerState = rememberPagerState(initialPage = tabs.indexOf(state.tab)) { tabs.size }
@@ -110,11 +120,22 @@ fun DashboardScreen(
                 DashboardToolbar(
                     tab = tabs[pagerState.currentPage],
                     canSync = state.pinned.isNotEmpty(),
+                    canBackUpNow = !state.backupRunning,
                     canRetryFailed = state.recentTransfers.any { it.state == TransferState.FAILED },
                     canClearFinished = state.recentTransfers.any { it.state == TransferState.COMPLETED },
                     onPinFiles = { pickFiles.launch(rootDocumentUri) },
                     onPinFolder = { pickFolder.launch(rootDocumentUri) },
                     onSyncNow = viewModel::syncPinsNow,
+                    onBackUpNow = {
+                        viewModel.backUpNow { event ->
+                            scope.launch {
+                                snackbars.currentSnackbarData?.dismiss()
+                                val needsSetUp = event == BackUpNowEvent.TurnedOff || event == BackUpNowEvent.NoPermission
+                                val result = snackbars.showSnackbar(backUpNowMessages.getValue(event), actionLabel = setUpLabel.takeIf { needsSetUp })
+                                if (result == SnackbarResult.ActionPerformed) cameraSettingsOpen = true
+                            }
+                        }
+                    },
                     onRetryFailed = {
                         viewModel.retryFailedTransfers { outcome ->
                             scope.launch {
@@ -171,7 +192,7 @@ fun DashboardScreen(
                                     }
                                 },
                             )
-                            DashboardTab.Camera -> CameraSection(state)
+                            DashboardTab.Camera -> CameraSection(state, cameraSettingsOpen) { cameraSettingsOpen = it }
                         }
                     }
                 }

@@ -16,11 +16,13 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
 import androidx.work.ForegroundInfo
 import androidx.work.NetworkType
+import androidx.work.Operation
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import androidx.work.await
 import androidx.work.workDataOf
 import com.aether.nextcloud.R
 import com.aether.nextcloud.auth.AccountRepository
@@ -48,6 +50,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -87,7 +90,7 @@ class CameraBackupWorker @AssistedInject constructor(
     override suspend fun doWork(): Result {
         val triggered = inputData.getBoolean(KEY_TRIGGERED, false)
         val settings = settingsRepository.backup.first()
-        val result = if (!settings.enabled || !hasMediaPermission()) {
+        val result = if (!settings.enabled || !hasMediaPermission(applicationContext)) {
             Result.success()
         } else {
             val credentials = settings.accountName?.let(accounts::credentials)
@@ -100,13 +103,15 @@ class CameraBackupWorker @AssistedInject constructor(
 
     private suspend fun backUpNewMedia(settings: BackupSettings, credentials: AetherCredentials): Result {
         val items = withContext(Dispatchers.IO) { queryNewMedia(settings) }
-        if (items.isEmpty()) return Result.success()
+        if (items.isEmpty()) return Result.success(workDataOf(KEY_ATTEMPTED to 0))
         runCatching { setForeground(getForegroundInfo()) } // not allowed for background-started runs; best effort
 
         val dav = davFactory.forAccount(credentials)
         val createdDirectories = HashSet<String>()
+        var attempted = 0
         for (item in items) {
             if (database.backedUpMediaDao().find(credentials.accountName, item.id, item.isVideo) != null) continue
+            attempted++
             when (val outcome = backUp(item, dav, credentials, settings, createdDirectories)) {
                 is AetherResult.Success -> Unit
                 is AetherResult.Failure -> when (val error = outcome.error) {
@@ -121,7 +126,7 @@ class CameraBackupWorker @AssistedInject constructor(
                 }
             }
         }
-        return Result.success()
+        return Result.success(workDataOf(KEY_ATTEMPTED to attempted))
     }
 
     private suspend fun backUp(
@@ -261,22 +266,24 @@ class CameraBackupWorker @AssistedInject constructor(
         return result
     }
 
-    private fun hasMediaPermission(): Boolean {
-        val permissions = when {
-            Build.VERSION.SDK_INT >= 34 -> listOf(
-                Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED,
-            )
-            Build.VERSION.SDK_INT >= 33 -> listOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO)
-            else -> listOf(Manifest.permission.READ_EXTERNAL_STORAGE)
-        }
-        return permissions.any { ContextCompat.checkSelfPermission(applicationContext, it) == PackageManager.PERMISSION_GRANTED }
-    }
-
     companion object {
         private const val KEY_TRIGGERED = "triggered"
         private const val TRIGGER_NAME = "camera-backup-trigger"
         private const val PERIODIC_NAME = "camera-backup-periodic"
         private const val NOW_NAME = "camera-backup-now"
+        /** Output of a run: how many items it tried to upload (not counting ones already backed up). */
+        private const val KEY_ATTEMPTED = "attempted"
+
+        fun hasMediaPermission(context: Context): Boolean {
+            val permissions = when {
+                Build.VERSION.SDK_INT >= 34 -> listOf(
+                    Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED,
+                )
+                Build.VERSION.SDK_INT >= 33 -> listOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO)
+                else -> listOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+            }
+            return permissions.any { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }
+        }
 
         /** Runs never overlap: the trigger and periodic workers share the same scan. */
         private val scanMutex = Mutex()
@@ -302,12 +309,24 @@ class CameraBackupWorker @AssistedInject constructor(
         }
 
         /** A user-requested scan: any network will do, whatever the automatic runs' Wi-Fi or charging rules say. */
-        fun runNow(context: Context) {
+        fun runNow(context: Context): Operation {
             val request = OneTimeWorkRequestBuilder<CameraBackupWorker>()
                 .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 1, TimeUnit.MINUTES)
                 .build()
-            WorkManager.getInstance(context).enqueueUniqueWork(NOW_NAME, ExistingWorkPolicy.KEEP, request)
+            return WorkManager.getInstance(context).enqueueUniqueWork(NOW_NAME, ExistingWorkPolicy.KEEP, request)
+        }
+
+        /**
+         * [runNow], then waits for the run to finish (which can be a while offline) and returns how many items it tried to
+         * upload, or null if it did not succeed. Work already queued under the same name is kept, so this may report that run.
+         */
+        suspend fun runNowAndCount(context: Context): Int? {
+            runNow(context).await()
+            val finished = WorkManager.getInstance(context).getWorkInfosForUniqueWorkFlow(NOW_NAME)
+                .mapNotNull { infos -> infos.firstOrNull { it.state.isFinished } }
+                .first()
+            return if (finished.state == WorkInfo.State.SUCCEEDED) finished.outputData.getInt(KEY_ATTEMPTED, 0) else null
         }
 
         /** Safety net for events missed while the process was dead, and for items the first scan could not finish. */
@@ -319,13 +338,14 @@ class CameraBackupWorker @AssistedInject constructor(
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(PERIODIC_NAME, ExistingPeriodicWorkPolicy.UPDATE, request)
         }
 
-        /** True while either the content-trigger or the periodic backup run is actually executing. */
+        /** True while a content-trigger, periodic or user-requested backup run is actually executing. */
         fun observeRunning(context: Context): Flow<Boolean> {
             val manager = WorkManager.getInstance(context)
             return combine(
                 manager.getWorkInfosForUniqueWorkFlow(TRIGGER_NAME),
                 manager.getWorkInfosForUniqueWorkFlow(PERIODIC_NAME),
-            ) { trigger, periodic -> (trigger + periodic).any { it.state == WorkInfo.State.RUNNING } }.distinctUntilChanged()
+                manager.getWorkInfosForUniqueWorkFlow(NOW_NAME),
+            ) { trigger, periodic, now -> (trigger + periodic + now).any { it.state == WorkInfo.State.RUNNING } }.distinctUntilChanged()
         }
 
         fun cancel(context: Context) {

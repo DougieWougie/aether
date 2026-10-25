@@ -26,7 +26,14 @@ class SyncScheduler @Inject constructor(@ApplicationContext private val context:
 
     fun applyPinnedSync(settings: SyncSettings) = PinnedSyncWorker.schedulePeriodic(context, settings.pinnedSyncUnmeteredOnly)
 
-    fun backUpNow() = CameraBackupWorker.runNow(context)
+    fun backUpNow() {
+        CameraBackupWorker.runNow(context)
+    }
+
+    /** Runs a backup scan now and waits for it: how many items it tried to upload, or null if the run did not succeed. */
+    suspend fun backUpNowAndCount(): Int? = CameraBackupWorker.runNowAndCount(context)
+
+    fun canReadMedia(): Boolean = CameraBackupWorker.hasMediaPermission(context)
 
     fun syncPinsNow() = PinnedSyncWorker.syncNow(context)
 }

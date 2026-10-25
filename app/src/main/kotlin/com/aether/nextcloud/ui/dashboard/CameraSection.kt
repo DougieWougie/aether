@@ -1,13 +1,13 @@
 package com.aether.nextcloud.ui.dashboard
 
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.res.pluralStringResource
 import com.aether.nextcloud.R
 import androidx.compose.ui.res.stringResource
 import android.text.format.Formatter
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.animation.AnimatedVisibility
 import com.aether.nextcloud.ui.backup.CameraBackupSettings
 import com.aether.nextcloud.ui.backup.MediaSplit
@@ -54,14 +54,20 @@ internal fun CameraChip(text: String) {
     }
 }
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+/** The tile with its own settings fold; the dashboard hoists that state instead, so Back up now can open it. */
 @Composable
 internal fun CameraSection(state: DashboardUiState) {
     var expanded by rememberSaveable { mutableStateOf(false) }
+    CameraSection(state, expanded) { expanded = it }
+}
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+internal fun CameraSection(state: DashboardUiState, expanded: Boolean, onExpandedChange: (Boolean) -> Unit) {
     // Turning backup on is the end of setting it up, so fold the settings away and let the tile show the result.
     var wasEnabled by remember { mutableStateOf(state.backup.enabled) }
     LaunchedEffect(state.backup.enabled) {
-        if (state.backup.enabled && !wasEnabled) expanded = false
+        if (state.backup.enabled && !wasEnabled) onExpandedChange(false)
         wasEnabled = state.backup.enabled
     }
     val context = LocalContext.current
@@ -132,7 +138,7 @@ internal fun CameraSection(state: DashboardUiState) {
             AnimatedVisibility(expanded) { CameraBackupSettings() }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 Button(
-                    onClick = { expanded = !expanded },
+                    onClick = { onExpandedChange(!expanded) },
                     shapes = ButtonDefaults.shapes(),
                     colors = ButtonDefaults.buttonColors(containerColor = colors.tertiary, contentColor = colors.onTertiary),
                 ) { Text(if (expanded) stringResource(R.string.action_done) else if (backup.enabled) stringResource(R.string.action_settings) else stringResource(R.string.action_set_up)) }

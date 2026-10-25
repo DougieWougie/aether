@@ -31,6 +31,8 @@ Tier 1, PR gate. Goal: feedback in a few minutes, no flakiness, no heavy infrast
     schema migrations, the main integration boundary with the OS/database/network, the core write path.
     Select it by an explicit tag or annotation on the test, not by directory, so moving a file cannot
     silently remove it from the gate. Keep it to a few minutes; if it grows, trim it.
+    Also gate it on paths: skip it for changes that cannot affect what it covers (docs, UI-only), and let the
+    aggregate gate accept that skip.
 Tier 2, mainline. Goal: confirm the merge result without repeating work.
   - Re-run the fast tier on the merge result. Do not repeat the smoke subset; it already passed on the PR.
 Tier 3, release candidate. Goal: everything, before shipping.

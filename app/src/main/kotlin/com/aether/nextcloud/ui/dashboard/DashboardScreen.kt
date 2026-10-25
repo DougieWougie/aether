@@ -12,8 +12,6 @@ import android.content.Intent
 import android.provider.DocumentsContract
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -29,7 +27,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.PhotoCamera
@@ -43,7 +40,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.ShortNavigationBar
 import androidx.compose.material3.ShortNavigationBarItem
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -82,18 +78,14 @@ fun DashboardScreen(
     val scope = rememberCoroutineScope()
     val undoLabel = stringResource(R.string.action_undo)
     val unpinnedFormat = stringResource(R.string.pinned_unpinned)
+    val notReadyFormat = stringResource(R.string.action_not_ready)
 
     val tabs = DashboardTab.entries
     val pagerState = rememberPagerState(initialPage = tabs.indexOf(state.tab)) { tabs.size }
     val listStates = tabs.map { rememberLazyListState() }
-    val listState = listStates[pagerState.currentPage]
     val rootDocumentUri = state.selected?.let { DocumentsContract.buildDocumentUri(AetherConstants.AUTHORITY, DocumentId.root(it.accountName).toString()) }
     val pickFiles = rememberLauncherForActivityResult(PickAetherDocuments()) { viewModel.pin(it); if (it.isNotEmpty()) askForNotifications() }
     val pickFolder = rememberLauncherForActivityResult(PickAetherFolder()) { uri -> if (uri != null) { viewModel.pin(listOf(uri)); askForNotifications() } }
-    var fabMenuExpanded by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(state.tab) { fabMenuExpanded = false }
-    BackHandler(fabMenuExpanded) { fabMenuExpanded = false }
-    val fabExpanded by remember { derivedStateOf { listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0 } }
 
     // The view model owns the selected tab (nav bar taps, saved state); the pager follows it, and a settled swipe reports back.
     // The first settled page is skipped: the view model's real tab may not have arrived yet.
@@ -112,26 +104,20 @@ fun DashboardScreen(
         floatingActionButton = {
             state.selected?.let { account ->
                 val openFiles = { if (!openInSystemFiles(context, account)) notice = noFileManager }
-                if (state.tab == DashboardTab.Pinned) {
-                    PinnedFabMenu(
-                        expanded = fabMenuExpanded,
-                        onExpandedChange = { fabMenuExpanded = it },
-                        canSync = state.pinned.isNotEmpty(),
-                        onPinFiles = { pickFiles.launch(rootDocumentUri) },
-                        onPinFolder = { pickFolder.launch(rootDocumentUri) },
-                        onSyncNow = viewModel::syncPinsNow,
-                        onOpenFiles = openFiles,
-                    )
-                } else {
-                    ExtendedFloatingActionButton(
-                        onClick = openFiles,
-                        expanded = fabExpanded,
-                        icon = { Icon(Icons.Outlined.FolderOpen, contentDescription = null) },
-                        text = { Text(stringResource(R.string.action_files)) },
-                        containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-                    )
-                }
+                DashboardToolbar(
+                    tab = tabs[pagerState.currentPage],
+                    canSync = state.pinned.isNotEmpty(),
+                    onPinFiles = { pickFiles.launch(rootDocumentUri) },
+                    onPinFolder = { pickFolder.launch(rootDocumentUri) },
+                    onSyncNow = viewModel::syncPinsNow,
+                    onOpenFiles = openFiles,
+                    onNotReady = { name ->
+                        scope.launch {
+                            snackbars.currentSnackbarData?.dismiss()
+                            snackbars.showSnackbar(notReadyFormat.format(name))
+                        }
+                    },
+                )
             }
         },
     ) { padding ->

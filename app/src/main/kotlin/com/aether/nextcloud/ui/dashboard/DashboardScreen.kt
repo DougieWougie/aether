@@ -52,6 +52,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -80,6 +81,7 @@ fun DashboardScreen(
     val undoLabel = stringResource(R.string.action_undo)
     val unpinnedFormat = stringResource(R.string.pinned_unpinned)
     val notReadyFormat = stringResource(R.string.action_not_ready)
+    val resources = LocalResources.current
 
     val tabs = DashboardTab.entries
     val pagerState = rememberPagerState(initialPage = tabs.indexOf(state.tab)) { tabs.size }
@@ -108,10 +110,19 @@ fun DashboardScreen(
                 DashboardToolbar(
                     tab = tabs[pagerState.currentPage],
                     canSync = state.pinned.isNotEmpty(),
+                    canRetryFailed = state.recentTransfers.any { it.state == TransferState.FAILED },
                     canClearFinished = state.recentTransfers.any { it.state == TransferState.COMPLETED },
                     onPinFiles = { pickFiles.launch(rootDocumentUri) },
                     onPinFolder = { pickFolder.launch(rootDocumentUri) },
                     onSyncNow = viewModel::syncPinsNow,
+                    onRetryFailed = {
+                        viewModel.retryFailedTransfers { outcome ->
+                            scope.launch {
+                                snackbars.currentSnackbarData?.dismiss()
+                                snackbars.showSnackbar(retryMessage(resources, outcome))
+                            }
+                        }
+                    },
                     onClearFinished = viewModel::clearFinishedTransfers,
                     onOpenFiles = openFiles,
                     onNotReady = { name ->

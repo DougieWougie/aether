@@ -28,7 +28,9 @@ import com.aether.nextcloud.data.prefs.BackupSettings
 import com.aether.nextcloud.data.prefs.SettingsRepository
 import com.aether.nextcloud.dav.UserInfo
 import com.aether.nextcloud.provider.DocumentId
+import com.aether.nextcloud.sync.RetryOutcome
 import com.aether.nextcloud.sync.SyncScheduler
+import com.aether.nextcloud.sync.TransferRetrier
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -70,6 +72,7 @@ class DashboardViewModelTest {
     private val settings = mockk<SettingsRepository>()
     private val cameraStats = mockk<CameraBackupStatsRepository>(relaxed = true)
     private val scheduler = mockk<SyncScheduler>(relaxed = true)
+    private val retrier = mockk<TransferRetrier>()
     private val authIssues = mockk<AuthIssues>()
 
     private val active = MutableStateFlow<List<TransferEntity>>(emptyList())
@@ -123,7 +126,7 @@ class DashboardViewModelTest {
     }
 
     private fun viewModel(saved: SavedStateHandle = SavedStateHandle()) =
-        DashboardViewModel(context, saved, accountRepository, cleaner, quotas, avatars, documents, diskCache, settings, cameraStats, scheduler, authIssues, database())
+        DashboardViewModel(context, saved, accountRepository, cleaner, quotas, avatars, documents, diskCache, settings, cameraStats, scheduler, retrier, authIssues, database())
 
     private fun TestScope.subscribed(vm: DashboardViewModel) = vm.also { backgroundScope.launch(dispatcher) { it.state.collect {} } }
 
@@ -309,6 +312,19 @@ class DashboardViewModelTest {
 
         verify(timeout = 2_000) { transferDao.clearCompleted("bob@h") }
         verify(exactly = 0) { transferDao.clearCompleted("alice@h") }
+    }
+
+    @Test
+    fun `retrying failed transfers acts on the selected account and reports the outcome`() = runTest(dispatcher) {
+        coEvery { retrier.retryFailed("bob@h") } returns RetryOutcome(retried = 2, skipped = 1)
+        val vm = subscribed(viewModel())
+        vm.selectAccount("bob@h")
+        var outcome: RetryOutcome? = null
+
+        vm.retryFailedTransfers { outcome = it }
+
+        assertEquals(RetryOutcome(2, 1), outcome)
+        coVerify(exactly = 0) { retrier.retryFailed("alice@h") }
     }
 
     @Test

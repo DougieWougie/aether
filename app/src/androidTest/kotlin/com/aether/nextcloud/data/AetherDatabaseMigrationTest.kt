@@ -34,4 +34,21 @@ class AetherDatabaseMigrationTest {
             assertNull(c.getString(3))
         }
     }
+
+    @Test
+    fun upgradingFromVersionTwoKeepsTransfersAndAddsTheRetryColumns() {
+        helper.createDatabase("migration-test-3", 2).apply {
+            execSQL("INSERT INTO transfers (accountName, remotePath, direction, state, bytesTransferred, totalBytes, error, createdAt, updatedAt) VALUES ('a@h', '/x.txt', 'UPLOAD', 'FAILED', 0, 5, 'boom', 1, 2)")
+            close()
+        }
+
+        val db = helper.runMigrationsAndValidate("migration-test-3", 3, true, AetherDatabase.MIGRATION_1_2, AetherDatabase.MIGRATION_2_3)
+
+        db.query("SELECT remotePath, error, sourcePath, mimeType, ifMatchEtag, mediaKey FROM transfers").use { c ->
+            assertEquals(true, c.moveToFirst())
+            assertEquals("/x.txt", c.getString(0))
+            assertEquals("boom", c.getString(1))
+            (2..5).forEach { assertEquals(true, c.isNull(it)) }
+        }
+    }
 }

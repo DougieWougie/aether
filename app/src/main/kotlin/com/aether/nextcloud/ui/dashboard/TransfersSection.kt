@@ -1,5 +1,7 @@
 package com.aether.nextcloud.ui.dashboard
 
+import android.content.res.Resources
+import com.aether.nextcloud.sync.RetryOutcome
 import androidx.compose.ui.semantics.semantics
 import com.aether.nextcloud.R
 import androidx.compose.ui.res.stringResource
@@ -212,3 +214,9 @@ internal fun TransferRow(transfer: TransferEntity, shape: androidx.compose.ui.gr
         }
     }
 }
+
+/** "Retrying 3 transfers", plus a second sentence when some could not be queued again. */
+internal fun retryMessage(resources: Resources, outcome: RetryOutcome): String = listOfNotNull(
+    resources.getQuantityString(R.plurals.transfers_retrying, outcome.retried, outcome.retried).takeIf { outcome.retried > 0 },
+    resources.getQuantityString(R.plurals.transfers_retry_skipped, outcome.skipped, outcome.skipped).takeIf { outcome.skipped > 0 },
+).joinToString(". ")

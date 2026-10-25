@@ -21,4 +21,11 @@ data class TransferEntity(
     val error: String? = null,
     val createdAt: Long,
     val updatedAt: Long = createdAt,
+    /** Staged upload bytes, kept after a failure so Retry failed can send them again; null for downloads and camera backup. */
+    val sourcePath: String? = null,
+    val mimeType: String? = null,
+    /** ETag the staged edit was based on (`If-Match`), replayed on retry. */
+    val ifMatchEtag: String? = null,
+    /** `image:<id>` or `video:<id>` for a failed camera backup item, whose bytes stay in MediaStore; retry re-runs the scan. */
+    val mediaKey: String? = null,
 )

@@ -131,24 +131,27 @@ class UploadDocumentWorkerFailureTest {
     }
 
     @Test
-    fun afterTheLastAttemptARetryableErrorBecomesAFailureAndTheBytesAreDropped() {
+    fun afterTheLastAttemptARetryableErrorBecomesAFailureAndTheBytesAreKeptForRetry() {
         val file = stage()
         env.nextcloud.forcedStatus = 503
 
         assertEquals(ListenableWorker.Result.failure(), run(input(file), attempt = 5))
 
-        assertFalse(file.exists())
-        assertEquals(TransferState.FAILED, transfers().single().state)
+        assertTrue(file.exists())
+        val row = transfers().single()
+        assertEquals(TransferState.FAILED, row.state)
+        assertEquals(file.absolutePath, row.sourcePath)
+        assertEquals("text/plain", row.mimeType)
     }
 
     @Test
-    fun aFullQuotaFailsAtOnceAndDropsTheBytes() {
+    fun aFullQuotaFailsAtOnceAndKeepsTheBytesForRetry() {
         val file = stage()
         env.nextcloud.quotaFull = true
 
         assertEquals(ListenableWorker.Result.failure(), run(input(file)))
 
-        assertFalse(file.exists())
+        assertTrue(file.exists())
         assertEquals(1, env.nextcloud.requestsMatching("PUT").size)
     }
 

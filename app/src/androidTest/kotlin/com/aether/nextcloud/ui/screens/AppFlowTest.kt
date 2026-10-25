@@ -8,6 +8,10 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeLeft
+import androidx.compose.ui.test.swipeRight
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -100,6 +104,27 @@ class AppFlowTest {
 
         compose.onNodeWithText(str(R.string.tab_pinned)).performClick()
         waitForText(str(R.string.pinned_empty_title))
+    }
+
+    @Test
+    fun swipingMovesBetweenTabsAndStopsAtTheEnds() {
+        launch()
+        waitForText(str(R.string.pinned_empty_title))
+
+        compose.onRoot().performTouchInput { swipeRight() }
+        compose.onNodeWithText(str(R.string.pinned_empty_title)).assertIsDisplayed()
+
+        compose.onRoot().performTouchInput { swipeLeft() }
+        waitForText(str(R.string.camera_off))
+
+        compose.onRoot().performTouchInput { swipeLeft() }
+        waitForText(str(R.string.transfers_empty_title))
+
+        compose.onRoot().performTouchInput { swipeLeft() }
+        compose.onNodeWithText(str(R.string.transfers_empty_title)).assertIsDisplayed()
+
+        compose.onRoot().performTouchInput { swipeRight() }
+        waitForText(str(R.string.camera_off))
     }
 
     @Test

@@ -56,3 +56,10 @@ The separate Camera backup screen and its route are gone. The Camera tab's tile 
 - **Cards read as one unit.** Storage and transfer rows merge their descendants for TalkBack. The quota gauge and status badge are decorative; they carry only a short description (percent used, or transfers in progress), because the text beside them already states the numbers.
 - **Icons that carry meaning** (upload or download in a transfer row, the pin menu) have a `contentDescription`; icons beside a text label do not.
 - **Sign-out stays in the account menu** and pinning stays in the Pinned tab's FAB menu. There is no settings screen, in line with ADR-0001's minimal companion app. The empty Pinned tab names the pin button so a new user can find it.
+
+## Implementation notes: swipe between dashboard tabs (2026-10-25)
+
+- **A `HorizontalPager` replaces `AnimatedContent`.** Each tab is a full page with its own `LazyColumn`, so the header and storage hero slide with the section and every tab keeps its own scroll position. Swiping stops at the first and last tab (no wrap-around).
+- **The view model still owns the selected tab** (nav bar taps, `SavedStateHandle`). The pager follows `state.tab` with `animateScrollToPage`, and a settled swipe reports back through `selectTab`. The pager's first settled page is skipped, because the view model's real tab may not have reached the UI yet and the default page would overwrite it.
+- **Only the settled page is reported back.** Using the current page would make a multi-tab jump from the nav bar (Pinned to Transfers) pass through Camera and cancel its own animation.
+- The Files FAB expands or collapses from the scroll state of the page currently showing.

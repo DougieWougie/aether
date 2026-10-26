@@ -108,7 +108,12 @@ fun DashboardScreen(
         if (pagerState.settledPage != target || pagerState.currentPage != target) pagerState.animateScrollToPage(target)
     }
     LaunchedEffect(pagerState) {
-        snapshotFlow { pagerState.settledPage }.drop(1).collect { viewModel.selectTab(tabs[it]) }
+        snapshotFlow { pagerState.settledPage }.drop(1).collect {
+            // Transient UI belongs to the tab it was opened on.
+            cameraSettingsOpen = false
+            snackbars.currentSnackbarData?.dismiss()
+            viewModel.selectTab(tabs[it])
+        }
     }
 
     Scaffold(
@@ -135,7 +140,7 @@ fun DashboardScreen(
                                 snackbars.currentSnackbarData?.dismiss()
                                 val needsSetUp = event == BackUpNowEvent.TurnedOff || event == BackUpNowEvent.NoPermission
                                 val action = if (event == BackUpNowEvent.Paused) resumeLabel else setUpLabel.takeIf { needsSetUp }
-                                val result = snackbars.showSnackbar(backUpNowMessages.getValue(event), actionLabel = action)
+                                val result = snackbars.showSnackbar(backUpNowMessages.getValue(event), actionLabel = action, duration = SnackbarDuration.Long)
                                 if (result == SnackbarResult.ActionPerformed) {
                                     if (event == BackUpNowEvent.Paused) viewModel.setBackupPaused(false) else cameraSettingsOpen = true
                                 }

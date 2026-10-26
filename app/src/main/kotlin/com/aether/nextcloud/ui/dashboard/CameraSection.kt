@@ -141,7 +141,7 @@ internal fun CameraSection(state: DashboardUiState, expanded: Boolean, onExpande
                     onClick = { onExpandedChange(!expanded) },
                     shapes = ButtonDefaults.shapes(),
                     colors = ButtonDefaults.buttonColors(containerColor = colors.tertiary, contentColor = colors.onTertiary),
-                ) { Text(if (expanded) stringResource(R.string.action_done) else if (backup.enabled) stringResource(R.string.action_settings) else stringResource(R.string.action_set_up)) }
+                ) { Text(if (expanded && !backup.enabled) stringResource(R.string.action_cancel) else if (expanded) stringResource(R.string.action_done) else if (backup.enabled) stringResource(R.string.action_settings) else stringResource(R.string.action_set_up)) }
             }
         }
     }

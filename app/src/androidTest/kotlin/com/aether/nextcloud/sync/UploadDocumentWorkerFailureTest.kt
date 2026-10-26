@@ -122,6 +122,25 @@ class UploadDocumentWorkerFailureTest {
     }
 
     @Test
+    fun aRetryContinuesTheQueuedRowInsteadOfAddingAnother() {
+        val file = stage()
+        env.nextcloud.forcedStatus = 503
+        assertEquals(ListenableWorker.Result.retry(), run(input(file)))
+        val first = queued().single()
+
+        assertEquals(ListenableWorker.Result.retry(), run(input(file), attempt = 1))
+        assertEquals(first.id, queued().single().id)
+
+        env.nextcloud.forcedStatus = null
+        assertEquals(ListenableWorker.Result.success(), run(input(file), attempt = 2))
+
+        assertTrue(queued().isEmpty())
+        val row = transfers().single()
+        assertEquals(first.id, row.id)
+        assertEquals(TransferState.COMPLETED, row.state)
+    }
+
+    @Test
     fun aLockedFileIsRetriedBecauseTheOtherEditorWillLetGo() {
         val file = stage()
         env.nextcloud.putFile("/doc.txt", "old")

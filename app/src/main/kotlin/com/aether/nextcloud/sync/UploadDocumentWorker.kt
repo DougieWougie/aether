@@ -84,19 +84,26 @@ class UploadDocumentWorker @AssistedInject constructor(
         val total = source.length()
 
         val transferId = withContext(Dispatchers.IO) {
-            transfers.insert(
-                TransferEntity(
-                    accountName = accountName,
-                    remotePath = target.path,
-                    direction = TransferDirection.UPLOAD,
-                    state = TransferState.RUNNING,
-                    totalBytes = total,
-                    createdAt = System.currentTimeMillis(),
-                    sourcePath = source.absolutePath,
-                    mimeType = mimeType,
-                    ifMatchEtag = ifMatch,
-                ),
-            )
+            // A retry continues the row the previous attempt left QUEUED rather than adding a second one.
+            val previous = if (runAttemptCount > 0) transfers.queuedUploadFor(source.absolutePath) else null
+            if (previous != null) {
+                transfers.setState(previous, TransferState.RUNNING, null, System.currentTimeMillis())
+                previous
+            } else {
+                transfers.insert(
+                    TransferEntity(
+                        accountName = accountName,
+                        remotePath = target.path,
+                        direction = TransferDirection.UPLOAD,
+                        state = TransferState.RUNNING,
+                        totalBytes = total,
+                        createdAt = System.currentTimeMillis(),
+                        sourcePath = source.absolutePath,
+                        mimeType = mimeType,
+                        ifMatchEtag = ifMatch,
+                    ),
+                )
+            }
         }
         val large = total > WebDavClient.CHUNKED_THRESHOLD
         if (large) setForeground(getForegroundInfo())

@@ -15,6 +15,10 @@ interface TransferDao {
     @Query("SELECT * FROM transfers WHERE id = :id")
     fun get(id: Long): TransferEntity?
 
+    /** The row a retried upload left `QUEUED`, so the next attempt can pick it up instead of inserting another. */
+    @Query("SELECT id FROM transfers WHERE direction = 'UPLOAD' AND state = 'QUEUED' AND sourcePath = :sourcePath ORDER BY id DESC LIMIT 1")
+    fun queuedUploadFor(sourcePath: String): Long?
+
     @Query("UPDATE transfers SET state = :state, error = :error, updatedAt = :now WHERE id = :id")
     fun setState(id: Long, state: TransferState, error: String?, now: Long)
 

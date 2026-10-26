@@ -198,7 +198,7 @@ internal fun PinnedSection(
                     preview?.let {
                         Image(it, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.size(48.dp).clip(RoundedCornerShape(14.dp)))
                     } ?: MorphingShapeBadge(
-                        shape = if (doc.isDirectory) MaterialShapes.Square else MaterialShapes.Cookie6Sided,
+                        shape = MaterialShapes.Cookie6Sided,
                         size = 48.dp,
                         container = MaterialTheme.colorScheme.secondaryContainer,
                     ) {

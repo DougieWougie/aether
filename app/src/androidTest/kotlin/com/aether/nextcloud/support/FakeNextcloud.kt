@@ -130,6 +130,7 @@ class FakeNextcloud(val user: String = "alice") : AutoCloseable {
         return when {
             path.startsWith("/remote.php/dav/uploads/$user/") -> uploads(request, path.removePrefix("/remote.php/dav/uploads/$user/"))
             path.startsWith("/remote.php/dav/files/$user") -> files(request, normalise(path.removePrefix("/remote.php/dav/files/$user")))
+            path == "/remote.php/dav/" && request.method == "SEARCH" -> search(request)
             path == "/index.php/core/preview" -> {
                 val fileId = request.requestUrl?.queryParameter("fileId")
                 if (files.values.any { it.fileId.toString() == fileId && it.preview }) MockResponse().setHeader("Content-Type", "image/png").setBody("PREVIEW-$fileId") else MockResponse().setResponseCode(404)
@@ -237,6 +238,17 @@ class FakeNextcloud(val user: String = "alice") : AutoCloseable {
                 files.filterKeys { it != path && it.substringBeforeLast('/').ifEmpty { "/" } == path }.toSortedMap().forEach { (k, v) -> add(k to v) }
             }
         }
+        return multistatus(entries)
+    }
+
+    /** `SEARCH /remote.php/dav/`: every file or folder whose name contains the first `displayname` literal in the body. */
+    private fun search(request: RecordedRequest): MockResponse {
+        val text = Regex("""<d:displayname/></d:prop><d:literal>%(.*?)%</d:literal>""").find(request.body.readUtf8())?.groupValues?.get(1).orEmpty()
+        val hits = files.filterKeys { it != "/" && it.substringAfterLast('/').contains(text, ignoreCase = true) }.toSortedMap()
+        return multistatus(hits.map { it.key to it.value })
+    }
+
+    private fun multistatus(entries: List<Pair<String, Node>>): MockResponse {
         val body = buildString {
             append("""<?xml version="1.0" encoding="utf-8"?><d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns" xmlns:nc="http://nextcloud.org/ns">""")
             entries.forEach { (p, n) ->

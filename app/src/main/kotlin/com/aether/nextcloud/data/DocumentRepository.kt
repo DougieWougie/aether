@@ -8,6 +8,7 @@ import com.aether.nextcloud.core.getOrNull
 import com.aether.nextcloud.data.cache.DocumentDiskCache
 import com.aether.nextcloud.data.local.AetherDatabase
 import com.aether.nextcloud.data.local.entity.DocumentEntity
+import com.aether.nextcloud.dav.SearchQuery
 import com.aether.nextcloud.dav.WebDavClientFactory
 import com.aether.nextcloud.dav.ProgressListener
 import com.aether.nextcloud.provider.DocumentId
@@ -32,6 +33,43 @@ class DocumentRepository @Inject constructor(
     fun cached(id: DocumentId): DocumentEntity? = dao.get(id.toString())
 
     fun cachedChildren(id: DocumentId): List<DocumentEntity> = dao.children(id.toString())
+
+    /**
+     * Cached rows that match [query], for answering a search at once while [search] runs. A name filter is applied in SQL;
+     * the rest of the query is applied to what it returns.
+     */
+    fun cachedMatches(accountName: String, query: SearchQuery): List<DocumentEntity> =
+        dao.searchByName(accountName, "%" + escapeLike(query.name.trim()) + "%", CACHED_SEARCH_LIMIT).filter { it.matches(query) }
+
+    /** The cached rows for [ids], in that order; ids that have since left the cache are skipped. */
+    fun cachedAll(ids: List<String>): List<DocumentEntity> {
+        val byId = dao.getAll(ids).associateBy { it.documentId }
+        return ids.mapNotNull(byId::get)
+    }
+
+    /**
+     * Server-side search of the whole account. Hits are stored with the same local state a listing would keep (pin flag,
+     * local copy), but no folder is marked as listed, so a later listing still diffs against the server. Returns the hits
+     * in the server's order.
+     */
+    suspend fun search(credentials: AetherCredentials, query: SearchQuery): AetherResult<List<DocumentEntity>> {
+        val resources = when (val result = davFactory.forAccount(credentials).search(query)) {
+            is AetherResult.Success -> result.value
+            is AetherResult.Failure -> return result
+        }
+        return withContext(Dispatchers.IO) {
+            database.withTransaction {
+                val hits = resources.map { it.toEntity(credentials.accountName, credentials.loginName) }
+                    .filter { it.parentId != null && it.matches(query) }
+                val existing = dao.getAll(hits.map { it.documentId }).associateBy { it.documentId }
+                val merged = hits.map { it.withLocalStateOf(existing[it.documentId]) }
+                dao.upsertAll(merged)
+                AetherResult.Success(merged)
+            }
+        }
+    }
+
+    private fun DocumentEntity.matches(query: SearchQuery) = query.matches(name, mimeType, isDirectory, size, lastModified)
 
     /** `PROPFIND Depth: 1` on a folder; replaces the cached child list and stamps the folder's `childrenSyncedAt`. */
     suspend fun refreshChildren(credentials: AetherCredentials, dir: DocumentId): AetherResult<DocumentEntity> {
@@ -311,5 +349,6 @@ class DocumentRepository @Inject constructor(
 
     private companion object {
         const val MAX_NAME_ATTEMPTS = 100
+        const val CACHED_SEARCH_LIMIT = 100
     }
 }

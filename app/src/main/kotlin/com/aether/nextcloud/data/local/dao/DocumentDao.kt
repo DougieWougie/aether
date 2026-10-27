@@ -15,6 +15,16 @@ interface DocumentDao {
     @Query("SELECT * FROM documents WHERE parentId = :parentId")
     fun children(parentId: String): List<DocumentEntity>
 
+    @Query("SELECT * FROM documents WHERE documentId IN (:ids)")
+    fun getAll(ids: List<String>): List<DocumentEntity>
+
+    /** Cached rows whose name contains [likePattern] (`%escapedText%`), newest first; the account root is never a hit. */
+    @Query(
+        "SELECT * FROM documents WHERE accountName = :account AND parentId IS NOT NULL AND name LIKE :likePattern ESCAPE '\\' " +
+            "ORDER BY lastModified DESC LIMIT :limit",
+    )
+    fun searchByName(account: String, likePattern: String, limit: Int): List<DocumentEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun upsert(entity: DocumentEntity)
 

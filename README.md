@@ -34,6 +34,7 @@ plugs into the platform and keeps its own UI small.
 - Browse, open, create, rename, move and delete files through the system file manager.
 - Safe write-back: edits made by other apps are staged and uploaded with `If-Match`, so a change made on the server
   in the meantime is never overwritten. On a conflict your version is saved as a conflict copy.
+- Search from the Files app's search box across your whole Nextcloud, including the file-type and date filters.
 - Offline pinning of files and folders, kept up to date in the background by comparing ETags.
 - Automatic camera backup of new photos and videos, with network and charging constraints.
 - Large uploads use Nextcloud's chunked upload v2.

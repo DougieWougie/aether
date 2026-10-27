@@ -30,6 +30,7 @@ import com.aether.nextcloud.data.QuotaRepository
 import com.aether.nextcloud.data.cache.DocumentDiskCache
 import com.aether.nextcloud.data.local.entity.DocumentEntity
 import com.aether.nextcloud.dav.NextcloudOcsClient
+import com.aether.nextcloud.dav.SearchQuery
 import com.aether.nextcloud.di.ApplicationScope
 import com.aether.nextcloud.sync.UploadDocumentWorker
 import com.aether.nextcloud.sync.UploadRequest
@@ -85,6 +86,17 @@ class AetherDocumentsProvider : DocumentsProvider() {
     private val listingsInFlight: MutableSet<String> = ConcurrentHashMap.newKeySet()
     private val listingErrors = ConcurrentHashMap<String, Pair<String, Long>>()
     private val quotaInFlight: MutableSet<String> = ConcurrentHashMap.newKeySet()
+    private val searchesInFlight: MutableSet<String> = ConcurrentHashMap.newKeySet()
+    private val searchErrors = ConcurrentHashMap<String, Pair<String, Long>>()
+
+    /** The server's last answer per search, so a repeat query (DocumentsUI re-queries on every notify) is not re-sent. */
+    private val searchAnswers: MutableMap<String, SearchAnswer> = java.util.Collections.synchronizedMap(
+        object : LinkedHashMap<String, SearchAnswer>(16, 0.75f, true) {
+            override fun removeEldestEntry(eldest: Map.Entry<String, SearchAnswer>) = size > MAX_REMEMBERED_SEARCHES
+        },
+    )
+
+    private class SearchAnswer(val ids: List<String>, val at: Long)
 
     override fun onCreate(): Boolean = true
 
@@ -105,7 +117,7 @@ class AetherDocumentsProvider : DocumentsProvider() {
                 Root.COLUMN_TITLE to title,
                 Root.COLUMN_SUMMARY to rootSummary(credentials.accountName, all.size),
                 Root.COLUMN_ICON to R.mipmap.ic_launcher,
-                Root.COLUMN_FLAGS to (Root.FLAG_SUPPORTS_CREATE or Root.FLAG_SUPPORTS_IS_CHILD),
+                Root.COLUMN_FLAGS to (Root.FLAG_SUPPORTS_CREATE or Root.FLAG_SUPPORTS_IS_CHILD or Root.FLAG_SUPPORTS_SEARCH),
                 Root.COLUMN_MIME_TYPES to "*/*",
                 Root.COLUMN_AVAILABLE_BYTES to quota?.freeBytes,
                 Root.COLUMN_CAPACITY_BYTES to capacity,
@@ -147,6 +159,80 @@ class AetherDocumentsProvider : DocumentsProvider() {
         documents.cachedChildren(parent).forEach { cursor.addDocument(it, columns) }
         cursor.setNotificationUri(context!!.contentResolver, notifyUri)
         return cursor
+    }
+
+    override fun querySearchDocuments(rootId: String, query: String, projection: Array<out String>?): Cursor =
+        search(rootId, SearchQuery(name = query), projection)
+
+    /**
+     * Android 11+: DocumentsUI sends the typed text and its file-type and date filters here, not in the URI. The system
+     * file manager is the only caller (the provider requires `MANAGE_DOCUMENTS`), and it always fills the arguments in; a query
+     * made with the URI alone reaches this with no arguments and is rejected.
+     */
+    @android.annotation.SuppressLint("Override")
+    @androidx.annotation.RequiresApi(android.os.Build.VERSION_CODES.R)
+    override fun querySearchDocuments(rootId: String, projection: Array<out String>?, queryArgs: Bundle): Cursor =
+        search(
+            rootId,
+            SearchQuery(
+                name = queryArgs.getString(DocumentsContract.QUERY_ARG_DISPLAY_NAME).orEmpty(),
+                mimeTypes = queryArgs.getStringArray(DocumentsContract.QUERY_ARG_MIME_TYPES)?.toList().orEmpty(),
+                modifiedAfter = queryArgs.getLong(DocumentsContract.QUERY_ARG_LAST_MODIFIED_AFTER, -1L).takeIf { it >= 0 },
+                sizeOver = queryArgs.getLong(DocumentsContract.QUERY_ARG_FILE_SIZE_OVER, -1L).takeIf { it >= 0 },
+                excludeMedia = queryArgs.getBoolean(DocumentsContract.QUERY_ARG_EXCLUDE_MEDIA, false),
+            ),
+            projection,
+        )
+
+    /**
+     * Same shape as [queryChildDocuments]: answer from Room now, ask the server in the background, and `notifyChange` the
+     * search URI when its answer is stored. Once the server has answered, its hits replace the cached guess.
+     */
+    private fun search(rootId: String, query: SearchQuery, projection: Array<out String>?): Cursor {
+        val credentials = accounts.credentials(rootId) ?: throw FileNotFoundException("Account $rootId is no longer signed in")
+        val columns = projection ?: DEFAULT_DOCUMENT_PROJECTION
+        val notifyUri = DocumentsContract.buildSearchDocumentsUri(AetherConstants.AUTHORITY, rootId, query.name)
+        val key = "$rootId|${query.key}"
+        val now = System.currentTimeMillis()
+
+        val answer = searchAnswers[key]
+        val extras = Bundle()
+        val recentError = searchErrors[key]?.takeIf { now - it.second < ERROR_BACKOFF_MS }
+        if (recentError != null) {
+            extras.putString(DocumentsContract.EXTRA_ERROR, recentError.first)
+        } else {
+            searchErrors.remove(key)
+            val stale = answer == null || now - answer.at > DocumentEntity.CHILDREN_TTL_MS
+            if (stale) refreshSearch(key, credentials, query, notifyUri)
+            if (stale || key in searchesInFlight) extras.putBoolean(DocumentsContract.EXTRA_LOADING, true)
+        }
+
+        val rows = if (answer != null) documents.cachedAll(answer.ids) else documents.cachedMatches(rootId, query)
+        val cursor = ExtrasCursor(columns, extras)
+        rows.forEach { cursor.addDocument(it, columns) }
+        cursor.setNotificationUri(context!!.contentResolver, notifyUri)
+        return cursor
+    }
+
+    private fun refreshSearch(key: String, credentials: AetherCredentials, query: SearchQuery, notifyUri: Uri) {
+        if (!searchesInFlight.add(key)) return
+        scope.launch {
+            try {
+                when (val result = documents.search(credentials, query)) {
+                    is AetherResult.Failure -> {
+                        if (result.error == AetherError.Unauthorized) deps.authIssues().report(credentials.accountName)
+                        searchErrors[key] = result.error.describe() to System.currentTimeMillis()
+                    }
+                    is AetherResult.Success -> {
+                        searchErrors.remove(key)
+                        searchAnswers[key] = SearchAnswer(result.value.map { it.documentId }, System.currentTimeMillis())
+                    }
+                }
+            } finally {
+                searchesInFlight.remove(key)
+                context?.contentResolver?.notifyChange(notifyUri, null)
+            }
+        }
     }
 
     override fun isChildDocument(parentDocumentId: String, documentId: String): Boolean {
@@ -378,6 +464,7 @@ class AetherDocumentsProvider : DocumentsProvider() {
             Document.COLUMN_LAST_MODIFIED, Document.COLUMN_FLAGS, Document.COLUMN_ICON,
         )
         const val ERROR_BACKOFF_MS = 10_000L
+        const val MAX_REMEMBERED_SEARCHES = 16
         const val MIN_THUMBNAIL = 64
         const val MAX_THUMBNAIL = 512
     }

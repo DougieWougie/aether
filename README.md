@@ -87,7 +87,25 @@ Studio hasn't already (`sdk.dir=/path/to/Android/Sdk`).
 ./gradlew lintDebug            # Android lint
 ```
 
+### Release builds
+
+`./gradlew assembleRelease` minifies with R8 and, when signing is configured, signs the APK. Without a key it
+produces `app-release-unsigned.apk`. To sign, copy `keystore.properties.example` to `keystore.properties` and fill it
+in, or set `AETHER_KEYSTORE_FILE`, `AETHER_KEYSTORE_PASSWORD`, `AETHER_KEY_ALIAS` and `AETHER_KEY_PASSWORD` (for CI).
+Neither the properties file nor any `*.jks` is committed. Create an upload key with:
+
+```bash
+keytool -genkeypair -v -keystore aether-upload.jks -alias aether-upload -keyalg RSA -keysize 4096 -validity 10000
+```
+
+Upload `app/build/outputs/mapping/release/mapping.txt` to Play Console with each release so crash traces are readable.
+
 Pull requests run the unit tests, lint (when production code or build files change) and a small instrumented smoke set; the full instrumented suite runs on `release/**` branches. The `CI gate` check summarises them and is the one to require in branch protection. See [ADR-0010](docs/adr/0010-tiered-ci-pr-gate-and-release-suite.md); to reuse the approach elsewhere, see [`docs/ci/tiered-ci-prompt.md`](docs/ci/tiered-ci-prompt.md).
+
+## Privacy
+
+Aether talks only to the Nextcloud server you sign in to: no analytics, no ads, no crash reporting, no third parties.
+Read the [privacy policy](https://dougiewougie.github.io/aether/privacy/) and [ADR-0008](docs/adr/0008-local-data-storage-and-privacy.md).
 
 ## Contributing
 

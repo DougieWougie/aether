@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -6,6 +8,14 @@ plugins {
     alias(libs.plugins.hilt)
     jacoco
 }
+
+// Release signing comes from keystore.properties (git-ignored) or, in CI, from AETHER_* environment variables.
+// With neither present the release build is unsigned, so contributors can still build it.
+val keystoreProperties = Properties().apply {
+    rootProject.file("keystore.properties").takeIf { it.isFile }?.inputStream()?.use(::load)
+}
+
+fun signingValue(key: String, env: String): String? = keystoreProperties.getProperty(key) ?: System.getenv(env)
 
 android {
     namespace = "com.aether.nextcloud"
@@ -20,6 +30,18 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        val storePath = signingValue("storeFile", "AETHER_KEYSTORE_FILE")
+        if (storePath != null) {
+            create("release") {
+                storeFile = rootProject.file(storePath)
+                storePassword = signingValue("storePassword", "AETHER_KEYSTORE_PASSWORD")
+                keyAlias = signingValue("keyAlias", "AETHER_KEY_ALIAS")
+                keyPassword = signingValue("keyPassword", "AETHER_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         debug {
             enableUnitTestCoverage = true
@@ -27,6 +49,8 @@ android {
         }
         release {
             isMinifyEnabled = true
+            isShrinkResources = true
+            signingConfig = signingConfigs.findByName("release")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }

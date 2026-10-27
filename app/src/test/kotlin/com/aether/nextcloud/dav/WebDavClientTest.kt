@@ -44,6 +44,27 @@ class WebDavClientTest {
     private fun fixture(name: String) = javaClass.getResourceAsStream("/fixtures/$name")!!.readBytes().decodeToString()
 
     @Test
+    fun `search posts a SEARCH to the dav root and parses the multistatus`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(207).setBody(fixture("propfind_depth1.xml")))
+
+        val result = dav.search(SearchQuery(name = "notes"))
+
+        assertEquals(3, (result as AetherResult.Success).value.size)
+        val request = server.takeRequest()
+        assertEquals("SEARCH", request.method)
+        assertEquals("/remote.php/dav/", request.path)
+        assertTrue(request.getHeader("Content-Type").orEmpty().startsWith("application/xml"))
+        assertTrue(request.body.readUtf8().contains("<d:literal>%notes%</d:literal>"))
+    }
+
+    @Test
+    fun `search maps a server error to a failure`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(500))
+
+        assertTrue(dav.search(SearchQuery(name = "x")) is AetherResult.Failure)
+    }
+
+    @Test
     fun `propfind sends depth, auth and the property body and parses the multistatus`() = runBlocking {
         server.enqueue(MockResponse().setResponseCode(207).setBody(fixture("propfind_depth1.xml")))
 

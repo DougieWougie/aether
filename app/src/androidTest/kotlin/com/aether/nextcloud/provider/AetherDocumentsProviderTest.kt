@@ -1,6 +1,7 @@
 package com.aether.nextcloud.provider
 
 import android.net.Uri
+import android.os.Bundle
 import android.provider.DocumentsContract
 import android.provider.DocumentsContract.Document
 import android.provider.DocumentsContract.Root
@@ -29,6 +30,64 @@ class AetherDocumentsProviderTest {
 
     private fun awaitChildren(path: String, expected: Set<String>) =
         awaitTrue("children of $path to be $expected") { listNames(path).toSet() == expected }
+
+    /** Searches the way DocumentsUI does on Android 11+: the typed text travels in the query arguments. */
+    private fun searchNames(query: String, args: Bundle = Bundle()): List<String> {
+        val uri = DocumentsContract.buildSearchDocumentsUri(AetherConstants.AUTHORITY, env.accountName, query)
+        args.putString(DocumentsContract.QUERY_ARG_DISPLAY_NAME, query)
+        return env.resolver.query(uri, arrayOf(Document.COLUMN_DISPLAY_NAME), args, null)!!.use { c ->
+            buildList { while (c.moveToNext()) add(c.getString(0)) }
+        }
+    }
+
+    @Test
+    fun rootsAdvertiseSearch() {
+        env.resolver.query(DocumentsContract.buildRootsUri(AetherConstants.AUTHORITY), null, null, null, null)!!.use { c ->
+            c.moveToFirst()
+            assertTrue(c.getInt(c.getColumnIndexOrThrow(Root.COLUMN_FLAGS)) and Root.FLAG_SUPPORTS_SEARCH != 0)
+        }
+    }
+
+    @Test
+    fun searchFindsFilesInFoldersThatWereNeverListed() {
+        env.nextcloud.putFile("/Projects/2026/budget-2026.txt", "b")
+        env.nextcloud.putFile("/Projects/2026/minutes.txt", "m")
+        env.nextcloud.putFile("/Budget.md", "x")
+
+        searchNames("budget")
+        awaitTrue("search to find both budget files") { searchNames("budget").toSet() == setOf("budget-2026.txt", "Budget.md") }
+    }
+
+    @Test
+    fun aDeletedFileLeavesTheRememberedSearchAnswer() {
+        env.nextcloud.putFile("/old-report.txt", "o")
+        env.nextcloud.putFile("/keep-report.txt", "k")
+        searchNames("report")
+        awaitTrue("first answer") { searchNames("report").toSet() == setOf("old-report.txt", "keep-report.txt") }
+
+        assertTrue(DocumentsContract.deleteDocument(env.resolver, env.documentUri("/old-report.txt")))
+
+        // The server's answer is remembered for a minute; the deleted file must not come back from it.
+        assertEquals(listOf("keep-report.txt"), searchNames("report"))
+    }
+
+    @Test
+    fun searchAppliesTheMimeFilterFromTheFileManager() {
+        env.nextcloud.putFile("/holiday.png", "p".toByteArray(), "image/png")
+        env.nextcloud.putFile("/holiday.txt", "t")
+        val images = Bundle().apply { putStringArray(DocumentsContract.QUERY_ARG_MIME_TYPES, arrayOf("image/*")) }
+
+        searchNames("holiday", images)
+        awaitTrue("only the image to match") { searchNames("holiday", images) == listOf("holiday.png") }
+    }
+
+    @Test
+    fun searchNeverReturnsTheAccountRoot() {
+        env.nextcloud.putFile("/a.txt", "a")
+
+        searchNames("")
+        awaitTrue("a listing of the one file") { searchNames("") == listOf("a.txt") }
+    }
 
     @Test
     fun queryRootsListsTheSignedInAccount() {

@@ -50,6 +50,21 @@ class WebDavClient(
         }
     }
 
+    /** `SEARCH` over the account's files (Nextcloud's DAV:basicsearch). Resources come back in the same shape as a PROPFIND. */
+    suspend fun search(query: SearchQuery): AetherResult<List<DavResource>> {
+        val request = request(credentials.serverUrl.trimEnd('/') + "/remote.php/dav/")
+            .method("SEARCH", query.toRequestBody(credentials.loginName).toRequestBody(XML))
+            .build()
+        return client.execute(request) { response ->
+            if (response.code != 207) return@execute AetherResult.Failure(response.toError())
+            try {
+                AetherResult.Success(parser.parse(response.body.byteStream()))
+            } catch (e: XmlPullParserException) {
+                AetherResult.Failure(AetherError.Malformed(e.message ?: "invalid XML"))
+            }
+        }
+    }
+
     /** Downloads to a `.part` sibling and renames on success, so [targetFile] is never half-written. Returns the ETag. */
     suspend fun downloadFile(url: String, targetFile: File, onProgress: ProgressListener = { _, _ -> }): AetherResult<String?> {
         val partial = File(targetFile.parentFile, targetFile.name + ".part")

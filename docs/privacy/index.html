@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aether Privacy Policy</title>
+<style>
+  :root { color-scheme: light dark; --bg: #fff; --fg: #1b1b1f; --muted: #5e5e66; --line: #d9d9e0; --accent: #3b5bdb; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #121216; --fg: #e4e4ea; --muted: #a0a0ab; --line: #34343c; --accent: #8fa6ff; } }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.6 system-ui, sans-serif; }
+  main { max-width: 42rem; margin: 0 auto; padding: 2rem 1rem 4rem; }
+  h1 { font-size: 2rem; margin-bottom: .25rem; }
+  h2 { font-size: 1.25rem; margin-top: 2.25rem; }
+  a { color: var(--accent); }
+  .meta { color: var(--muted); margin-top: 0; }
+  table { border-collapse: collapse; width: 100%; font-size: .95rem; }
+  th, td { text-align: left; vertical-align: top; padding: .5rem .6rem; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+<h1>Aether Privacy Policy</h1>
+<p class="meta">Effective 27 October 2026 · Applies to the Aether Android app (<code>com.aether.nextcloud</code>)</p>
+
+<p>Aether is a free, open-source Android client for <a href="https://nextcloud.com">Nextcloud</a>. This policy explains what
+the app does with your data. The short version: <strong>Aether sends your data only to the Nextcloud server you sign in
+to, and the developer never receives it.</strong></p>
+
+<h2>Who is responsible</h2>
+<p>Aether is developed by Dougie Richardson as an open-source project. The developer runs no servers for the app and has
+no access to your files, account or usage. The Nextcloud server you connect to is run by you or by whoever hosts it, and
+that operator's own privacy policy governs what they do with your data.</p>
+
+<h2>What Aether does not do</h2>
+<ul>
+  <li>No analytics, advertising or tracking, and no advertising identifier.</li>
+  <li>No crash reporting or telemetry sent by the app.</li>
+  <li>No sharing or selling of data, and no third-party services or SDKs that collect data.</li>
+  <li>No account with the developer. You only sign in to your own Nextcloud server.</li>
+</ul>
+
+<h2>Data the app handles</h2>
+<table>
+  <thead><tr><th>Data</th><th>Why</th><th>Where it goes</th></tr></thead>
+  <tbody>
+    <tr><td>Server address, login name and an app password</td><td>To sign in. You approve the sign-in in your browser using Nextcloud's Login Flow v2; Aether never sees your main password.</td><td>Stored in Android's account manager on your device. Sent only to your server.</td></tr>
+    <tr><td>Your files and folders (names, types, sizes, modified times, contents)</td><td>To show them in Android's file manager, open them in other apps and save your edits.</td><td>Fetched from and sent to your server. Copies are cached on your device.</td></tr>
+    <tr><td>Files you pin for offline use</td><td>To keep them available offline and up to date.</td><td>Downloaded from your server and kept on your device until you unpin them.</td></tr>
+    <tr><td>Photos and videos on your device (only if you turn on camera backup, or choose files to share)</td><td>To upload them to the folder you chose. You pick which albums are backed up. Files are uploaded as they are, including any location data embedded in them.</td><td>Uploaded to your server only.</td></tr>
+    <tr><td>Your profile picture, display name and storage quota</td><td>To show them on the dashboard.</td><td>Fetched from your server and cached on your device.</td></tr>
+    <tr><td>Backup and transfer records (file paths, MediaStore ids, album names, progress, errors)</td><td>To avoid uploading the same photo twice and to show transfer status.</td><td>Stored on your device only.</td></tr>
+    <tr><td>Settings (backup folder, chosen albums, network and charging conditions)</td><td>To run camera backup and syncing the way you set it up.</td><td>Stored on your device only.</td></tr>
+  </tbody>
+</table>
+<p>When Aether contacts your server it identifies itself as <code>Aether (Android &lt;version number&gt;)</code>. It does not
+include your device model. Your server's operator may log requests, as any web server does.</p>
+
+<h2>Permissions</h2>
+<ul>
+  <li><strong>Internet and network state:</strong> to reach your server and respect your Wi-Fi-only setting.</li>
+  <li><strong>Photos and videos:</strong> to find new pictures for camera backup, only if you enable it. You can grant access to selected photos only.</li>
+  <li><strong>Notifications:</strong> to show upload, download and sign-in notifications. Notifications that name files are hidden on the lock screen.</li>
+  <li><strong>Foreground service (data sync):</strong> to finish large uploads and downloads while the app is in the background.</li>
+</ul>
+
+<h2>Storage and security on your device</h2>
+<p>Cached and pinned files, the metadata database and settings are kept in the app's private storage, which other apps
+cannot read and which Android encrypts at rest while your device is locked. Aether adds no extra encryption of its own.
+Android backup is switched off for the app, so this data is not copied to Google or to a new phone by device transfer.
+Connections to your server always use HTTPS; Aether refuses plain HTTP.</p>
+
+<h2>Browser sign-in</h2>
+<p>Signing in opens your Nextcloud server's login page in a Custom Tab, a browser window run by your default browser. What
+you type there goes to your server and is handled by your browser and server, not by Aether.</p>
+
+<h2>Retention and deleting your data</h2>
+<ul>
+  <li><strong>Sign out</strong> in the app's account menu. It removes that account's credentials, cached and pinned files, thumbnails, transfer and backup records and shortcuts from your device, and asks your server to revoke the app password. You can also revoke it yourself in Nextcloud under Settings → Security.</li>
+  <li><strong>Uninstalling</strong> the app removes everything it stored on your device.</li>
+  <li>Files already uploaded stay on your server until you delete them there. Aether does not hold copies on any other server.</li>
+</ul>
+
+<h2>Children</h2>
+<p>Aether is a general-purpose tool and is not directed at children. It collects no personal information about anyone.</p>
+
+<h2>Your rights</h2>
+<p>Because the developer holds none of your data, there is nothing for the developer to access, correct or erase. To exercise
+rights over data on your Nextcloud server, contact whoever runs it.</p>
+
+<h2>Changes to this policy</h2>
+<p>If the app's data practices change, this page will be updated and the effective date above changed. The full history is
+public in the <a href="https://github.com/DougieWougie/aether/commits/main/docs/privacy">project repository</a>.</p>
+
+<h2>Contact</h2>
+<p>Questions or concerns: open an issue at
+<a href="https://github.com/DougieWougie/aether/issues">github.com/DougieWougie/aether/issues</a>.</p>
+
+<p class="meta">The technical detail behind this policy is in
+<a href="https://github.com/DougieWougie/aether/blob/main/docs/adr/0008-local-data-storage-and-privacy.md">ADR-0008</a>. Aether is licensed under the GPL-3.0-or-later.</p>
+</main>
+</body>
+</html>

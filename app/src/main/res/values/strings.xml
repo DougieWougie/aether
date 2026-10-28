@@ -99,13 +99,10 @@
     <string name="share_choose_folder">Choose folder…</string>
     <string name="share_upload">Upload</string>
     <string name="share_progress_hint">Progress shows in your notifications.</string>
-    <string name="albums_title">Albums</string>
     <string name="albums_picker_title">Albums to back up</string>
     <string name="albums_all_hint">Includes albums created later</string>
     <string name="albums_loading">Loading albums…</string>
     <string name="albums_none">No photos or videos found. Allow access to photos first.</string>
-    <string name="albums_all_summary">Every album on this phone, including ones created later.</string>
-    <string name="albums_some_summary">Only these albums are backed up. Photos already in an album you add are not uploaded.</string>
     <string name="account_sign_out">Sign out %1$s</string>
     <string name="error_no_file_manager">No file manager found that can open Aether.</string>
     <string name="storage_used_of">used of %1$s</string>

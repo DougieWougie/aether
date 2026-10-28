@@ -159,7 +159,7 @@ fun CameraBackupSettings(modifier: Modifier = Modifier, viewModel: CameraBackupV
         }
 
         SectionTitle(R.string.backup_section_what)
-        AlbumsCard(settings.albums, onClick = { viewModel.loadAlbums(); showAlbums = true })
+        AlbumChips(settings.albums, onClick = { viewModel.loadAlbums(); showAlbums = true })
         SwitchRow(stringResource(R.string.option_videos), Icons.Outlined.Videocam, settings.includeVideos, viewModel::setIncludeVideos, hint = stringResource(R.string.option_videos_hint))
 
         SectionTitle(R.string.backup_section_where)

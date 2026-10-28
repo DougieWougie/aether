@@ -159,7 +159,7 @@ class CameraSettingsFlowTest {
         media.photo("b1.jpg", ByteArray(16) { 3 }, album = "AetherSheetSmall")
         openSettings()
 
-        compose.onNodeWithText(str(R.string.albums_all_summary)).performSemanticsAction(SemanticsActions.OnClick)
+        compose.onNodeWithText(str(R.string.albums_all)).performSemanticsAction(SemanticsActions.OnClick)
         compose.waitForText(str(R.string.albums_picker_title))
         compose.waitForText("AetherSheetBig")
         compose.onNodeWithText(str(R.string.album_on_phone, 2)).assertExists()
@@ -188,7 +188,7 @@ class CameraSettingsFlowTest {
         media.photo("a1.jpg", ByteArray(16) { 1 }, album = "AetherSheetOne")
         media.photo("b1.jpg", ByteArray(16) { 3 }, album = "AetherSheetTwo")
         openSettings()
-        compose.onNodeWithText(str(R.string.albums_all_summary)).performSemanticsAction(SemanticsActions.OnClick)
+        compose.onNodeWithText(str(R.string.albums_all)).performSemanticsAction(SemanticsActions.OnClick)
         compose.waitForText("AetherSheetOne")
         allAlbumsSwitch().performClick()
         awaitTrue("an explicit album list") { backup().albums != null }

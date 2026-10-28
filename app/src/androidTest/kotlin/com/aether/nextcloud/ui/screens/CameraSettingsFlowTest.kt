@@ -3,9 +3,12 @@ package com.aether.nextcloud.ui.screens
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasAnySibling
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -66,34 +69,53 @@ class CameraSettingsFlowTest {
 
     private fun backup() = runBlocking { settings.backup.first() }
 
-    private fun openSettings() {
+    private fun openCameraTab() {
         scenario = ActivityScenario.launch(MainActivity::class.java)
         compose.waitForText(str(R.string.tab_camera))
         compose.onNodeWithText(str(R.string.tab_camera)).performClick()
-        compose.waitForText(str(R.string.action_set_up))
-        compose.onNodeWithText(str(R.string.action_set_up)).performClick()
-        compose.waitForText(str(R.string.backup_turn_on))
+        compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription(str(R.string.action_settings)).fetchSemanticsNodes().isNotEmpty() }
     }
+
+    private fun openSettings() {
+        openCameraTab()
+        compose.onNodeWithContentDescription(str(R.string.action_settings)).performClick()
+        compose.waitForText(str(R.string.backup_settings_title))
+    }
+
+    /** The sheet's "All albums" switch; the settings sheet and the tile hold toggles of their own. */
+    private fun allAlbumsSwitch() = compose.onNode(isToggleable() and hasAnySibling(hasText(str(R.string.albums_all_hint))), useUnmergedTree = true)
+
+    private fun tileSwitch() = compose.onNode(isToggleable() and hasContentDescription(str(R.string.camera_title)))
 
     @Test
     fun turningBackupOnAndOffFollowsTheSwitch() {
-        openSettings()
+        openCameraTab()
 
-        compose.onNodeWithText(str(R.string.backup_turn_on)).performClick()
+        tileSwitch().performSemanticsAction(SemanticsActions.OnClick)
         awaitTrue("backup to turn on") { backup().enabled }
         assertEquals(env.accountName, backup().accountName)
 
         compose.waitForText(str(R.string.camera_backing_up))
-        compose.onNodeWithText(str(R.string.action_settings)).performClick()
-        compose.waitForText(str(R.string.backup_turn_off))
-        compose.onNodeWithText(str(R.string.backup_turn_off)).performSemanticsAction(SemanticsActions.OnClick)
+        tileSwitch().performSemanticsAction(SemanticsActions.OnClick)
 
         awaitTrue("backup to turn off") { !backup().enabled }
-        compose.waitForText(str(R.string.backup_turn_on))
+        compose.waitForText(str(R.string.camera_off))
     }
 
     @Test
-    fun theOptionChipsFlipTheirSettingsAndTheSummaryFollows() {
+    fun theSheetsTurnOnButtonFinishesSettingUpAndFoldsTheSheetAway() {
+        openSettings()
+
+        compose.onNodeWithText(str(R.string.backup_turn_on)).performClick()
+
+        awaitTrue("backup to turn on") { backup().enabled }
+        compose.waitUntil(10_000) { compose.onAllNodesWithText(str(R.string.backup_settings_title)).fetchSemanticsNodes().isEmpty() }
+        compose.waitForText(str(R.string.camera_backing_up))
+    }
+
+    @Test
+    fun theOptionSwitchesFlipTheirSettingsAndTheTileSummaryFollows() {
+        runBlocking { settings.updateBackup { it.copy(enabled = true, accountName = env.accountName) } }
         openSettings()
         assertTrue(backup().unmeteredOnly)
 
@@ -137,13 +159,13 @@ class CameraSettingsFlowTest {
         media.photo("b1.jpg", ByteArray(16) { 3 }, album = "AetherSheetSmall")
         openSettings()
 
-        compose.onNodeWithText(str(R.string.albums_all_summary)).performSemanticsAction(SemanticsActions.OnClick)
+        compose.onNodeWithText(str(R.string.albums_all)).performSemanticsAction(SemanticsActions.OnClick)
         compose.waitForText(str(R.string.albums_picker_title))
         compose.waitForText("AetherSheetBig")
         compose.onNodeWithText(str(R.string.album_on_phone, 2)).assertExists()
 
         // "All albums" off: every album is selected explicitly.
-        compose.onAllNodes(isToggleable())[0].performClick()
+        allAlbumsSwitch().performClick()
         awaitTrue("an explicit album list") { backup().albums != null }
         assertTrue(backup().albums!!.any { it.name == "AetherSheetBig" })
 
@@ -157,7 +179,7 @@ class CameraSettingsFlowTest {
         compose.onNodeWithText("${str(R.string.album_on_phone, 2)} · ${str(R.string.album_keep_one)}").assertExists()
 
         // Back to every album, including ones created later.
-        compose.onAllNodes(isToggleable())[0].performClick()
+        allAlbumsSwitch().performClick()
         awaitTrue("all albums again") { backup().albums == null }
     }
 
@@ -166,9 +188,9 @@ class CameraSettingsFlowTest {
         media.photo("a1.jpg", ByteArray(16) { 1 }, album = "AetherSheetOne")
         media.photo("b1.jpg", ByteArray(16) { 3 }, album = "AetherSheetTwo")
         openSettings()
-        compose.onNodeWithText(str(R.string.albums_all_summary)).performSemanticsAction(SemanticsActions.OnClick)
+        compose.onNodeWithText(str(R.string.albums_all)).performSemanticsAction(SemanticsActions.OnClick)
         compose.waitForText("AetherSheetOne")
-        compose.onAllNodes(isToggleable())[0].performClick()
+        allAlbumsSwitch().performClick()
         awaitTrue("an explicit album list") { backup().albums != null }
 
         compose.onNode(isToggleable() and hasAnySibling(hasText("AetherSheetOne")), useUnmergedTree = true).performSemanticsAction(SemanticsActions.OnClick)

@@ -92,9 +92,15 @@ class CameraBackupViewModel @Inject constructor(
     }
 
     /** Call only once media permission is granted. Defaults the destination account to the first signed-in one. */
-    fun setEnabled(enabled: Boolean) = update {
-        val account = it.accountName ?: state.value.accounts.firstOrNull()?.accountName
-        it.copy(enabled = enabled && account != null, accountName = account)
+    fun setEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            // Read the accounts directly: the dashboard's switch uses a view model whose [state] nobody is collecting.
+            val first = accountRepository.observeAccounts().first().firstOrNull()?.accountName
+            scheduler.applyBackup(settings.updateBackup {
+                val account = it.accountName ?: first
+                it.copy(enabled = enabled && account != null, accountName = account)
+            })
+        }
     }
 
     fun setAccount(accountName: String) = update { it.copy(accountName = accountName) }

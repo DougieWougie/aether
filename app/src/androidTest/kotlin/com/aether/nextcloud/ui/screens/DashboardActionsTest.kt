@@ -178,7 +178,6 @@ class DashboardActionsTest {
         tap(R.string.backup_now)
 
         compose.waitForText(str(R.string.backup_off_notice))
-        // The tile's own Set up button is first; the snackbar's action floats below it.
         compose.onAllNodesWithText(str(R.string.action_set_up)).onLast().performClick()
         compose.waitForText(str(R.string.backup_turn_on))
     }

@@ -1,19 +1,10 @@
 package com.aether.nextcloud.ui.backup
 
-import android.content.pm.PackageManager
-import androidx.compose.ui.platform.LocalContext
-import androidx.core.content.ContextCompat
-import com.aether.nextcloud.provider.DocumentId
-import com.aether.nextcloud.AetherConstants
-import androidx.compose.material3.IconButton
-import androidx.compose.material.icons.outlined.FolderOpen
-import androidx.compose.material.icons.outlined.Check
-import android.provider.DocumentsContract
-import com.aether.nextcloud.ui.components.rememberNotificationPermissionRequest
-import com.aether.nextcloud.R
-import androidx.compose.ui.res.stringResource
 import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
 import android.os.Build
+import android.provider.DocumentsContract
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -21,35 +12,60 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.BatteryChargingFull
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.Videocam
 import androidx.compose.material.icons.outlined.Wifi
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SheetValue
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.aether.nextcloud.AetherConstants
+import com.aether.nextcloud.R
+import com.aether.nextcloud.provider.DocumentId
+import com.aether.nextcloud.ui.components.rememberNotificationPermissionRequest
 
 private val mediaPermissions: Array<String> = when {
     Build.VERSION.SDK_INT >= 34 -> arrayOf(
@@ -59,19 +75,67 @@ private val mediaPermissions: Array<String> = when {
     else -> arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
 }
 
-/** Camera backup settings, laid out to sit inside the expanded Camera tile (tertiary container). */
+private fun hasMediaPermission(context: Context) = mediaPermissions.any { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }
+
+/** The camera backup on/off switch and the photo-permission flow behind it, shared by the tile and the settings sheet. */
+class BackupToggle internal constructor(
+    /** False when backup is on but the photo permission was taken away: without it every scan finds nothing. */
+    val hasPermission: Boolean,
+    /** The user refused the photo permission when turning backup on. */
+    val permissionDenied: Boolean,
+    val onToggle: (Boolean) -> Unit,
+    val requestAccess: () -> Unit,
+)
+
+/** Turning on asks for photo access first; [onSetEnabled] only hears `true` once it is granted. */
+@Composable
+fun rememberBackupToggle(enabled: Boolean, onSetEnabled: (Boolean) -> Unit): BackupToggle {
+    val context = LocalContext.current
+    var hasPermission by remember(enabled) { mutableStateOf(hasMediaPermission(context)) }
+    var denied by remember { mutableStateOf(false) }
+    val askForNotifications = rememberNotificationPermissionRequest()
+    val setEnabled by rememberUpdatedState(onSetEnabled)
+    val request = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted ->
+        // Partial photo access ("selected photos") still counts: backup then uploads what the user shared with Aether.
+        val ok = granted.values.any { it }
+        denied = !ok
+        hasPermission = ok
+        if (ok) {
+            setEnabled(true)
+            askForNotifications()
+        }
+    }
+    return BackupToggle(
+        hasPermission = hasPermission,
+        permissionDenied = denied,
+        onToggle = { on -> if (on) request.launch(mediaPermissions) else { denied = false; setEnabled(false) } },
+        requestAccess = { request.launch(mediaPermissions) },
+    )
+}
+
+/** The Camera tile's settings in a bottom sheet, so opening them never reflows the dashboard. */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+fun CameraSettingsSheet(onDismiss: () -> Unit, viewModel: CameraBackupViewModel = hiltViewModel()) {
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberBottomSheetState(SheetValue.Hidden, setOf(SheetValue.Hidden, SheetValue.Expanded))) {
+        CameraBackupSettings(
+            viewModel = viewModel,
+            modifier = Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).navigationBarsPadding().imePadding(),
+        )
+    }
+}
+
+/** Camera backup settings: what to back up, where it goes, and when. */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalLayoutApi::class)
 @Composable
 fun CameraBackupSettings(modifier: Modifier = Modifier, viewModel: CameraBackupViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val settings = state.settings
     var folder by remember(settings.remoteFolder) { mutableStateOf(settings.remoteFolder) }
-    var permissionDenied by remember { mutableStateOf(false) }
-    val context = LocalContext.current
-    var hasPermission by remember { mutableStateOf(mediaPermissions.any { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }) }
     var showAlbums by remember { mutableStateOf(false) }
     val availableAlbums by viewModel.albums.collectAsStateWithLifecycle()
     val colors = MaterialTheme.colorScheme
+    val toggle = rememberBackupToggle(settings.enabled, viewModel::setEnabled)
 
     if (showAlbums) {
         AlbumSheet(
@@ -83,46 +147,25 @@ fun CameraBackupSettings(modifier: Modifier = Modifier, viewModel: CameraBackupV
         )
     }
 
-    val askForNotifications = rememberNotificationPermissionRequest()
-    val requestPermissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted ->
-        // Partial photo access ("selected photos") still counts: backup then uploads what the user shared with Aether.
-        val ok = granted.values.any { it }
-        permissionDenied = !ok
-        hasPermission = ok
-        if (ok) {
-            viewModel.setEnabled(true)
-            askForNotifications()
-        }
-    }
+    // An edit that never got its keyboard Done is still saved when the field loses focus or the sheet goes away.
+    val saveFolder by rememberUpdatedState { if (folder != settings.remoteFolder) viewModel.setFolder(folder) }
+    DisposableEffect(Unit) { onDispose { saveFolder() } }
+    var folderFocused by remember { mutableStateOf(false) }
 
     Column(modifier, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        if (permissionDenied) {
+        Text(stringResource(R.string.backup_settings_title), style = MaterialTheme.typography.titleLargeEmphasized)
+        if (toggle.permissionDenied) {
             Text(stringResource(R.string.backup_permission_needed), style = MaterialTheme.typography.bodyMedium, color = colors.error)
         }
-        if (settings.enabled && !hasPermission) {
-            // Backup is on but the photo permission was taken away: without it every scan finds nothing.
-            Button(
-                onClick = { requestPermissions.launch(mediaPermissions) },
-                shapes = ButtonDefaults.shapes(),
-                colors = ButtonDefaults.buttonColors(containerColor = colors.tertiary, contentColor = colors.onTertiary),
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text(stringResource(R.string.backup_allow_access)) }
-        }
-        if (settings.enabled) {
-            OutlinedButton(onClick = { viewModel.setEnabled(false) }, shapes = ButtonDefaults.shapes(), modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.backup_turn_off)) }
-        } else {
-            Button(
-                onClick = { requestPermissions.launch(mediaPermissions) },
-                shapes = ButtonDefaults.shapes(),
-                colors = ButtonDefaults.buttonColors(containerColor = colors.tertiary, contentColor = colors.onTertiary),
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text(stringResource(R.string.backup_turn_on)) }
-            Text(stringResource(R.string.backup_new_only), style = MaterialTheme.typography.bodySmall)
-        }
 
+        SectionTitle(R.string.backup_section_what)
+        AlbumChips(settings.albums, onClick = { viewModel.loadAlbums(); showAlbums = true })
+        SwitchRow(stringResource(R.string.option_videos), Icons.Outlined.Videocam, settings.includeVideos, viewModel::setIncludeVideos, hint = stringResource(R.string.option_videos_hint))
+
+        SectionTitle(R.string.backup_section_where)
         if (state.accounts.size > 1) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(stringResource(R.string.backup_upload_to), style = MaterialTheme.typography.labelLargeEmphasized)
+                Text(stringResource(R.string.backup_upload_to), style = MaterialTheme.typography.labelLarge)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     state.accounts.forEach { account ->
                         FilterChip(
@@ -137,17 +180,17 @@ fun CameraBackupSettings(modifier: Modifier = Modifier, viewModel: CameraBackupV
                 }
             }
         }
-
-        AlbumsCard(settings.albums, onClick = { viewModel.loadAlbums(); showAlbums = true })
-
         val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { viewModel.onFolderPicked(it) }
         val pickerAccount = settings.accountName ?: state.accounts.firstOrNull()?.accountName
         OutlinedTextField(
             value = folder,
             onValueChange = { folder = it },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().onFocusChanged {
+                if (folderFocused && !it.isFocused) saveFolder()
+                folderFocused = it.isFocused
+            },
             label = { Text(stringResource(R.string.backup_destination)) },
-            supportingText = { Text(stringResource(R.string.backup_destination_hint, folder)) },
+            supportingText = { Text(stringResource(R.string.backup_destination_hint)) },
             singleLine = true,
             trailingIcon = pickerAccount?.let { account ->
                 {
@@ -160,32 +203,36 @@ fun CameraBackupSettings(modifier: Modifier = Modifier, viewModel: CameraBackupV
             keyboardActions = KeyboardActions(onDone = { viewModel.setFolder(folder) }),
         )
 
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(stringResource(R.string.backup_only_when), style = MaterialTheme.typography.labelLargeEmphasized)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OptionChip(stringResource(R.string.option_wifi), Icons.Outlined.Wifi, settings.unmeteredOnly, viewModel::setUnmeteredOnly)
-                OptionChip(stringResource(R.string.option_charging), Icons.Outlined.BatteryChargingFull, settings.chargingOnly, viewModel::setChargingOnly)
-                OptionChip(stringResource(R.string.option_videos), Icons.Outlined.Videocam, settings.includeVideos, viewModel::setIncludeVideos)
-            }
-            Text(
-                listOf(
-                    stringResource(if (settings.unmeteredOnly) R.string.backup_wifi_only else R.string.backup_mobile_too),
-                    if (settings.chargingOnly) stringResource(R.string.backup_charging_only) else null,
-                    stringResource(if (settings.includeVideos) R.string.backup_videos_included else R.string.backup_photos_only),
-                ).filterNotNull().joinToString(" · "),
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(start = 4.dp),
-            )
+        SectionTitle(R.string.backup_section_when)
+        SwitchRow(stringResource(R.string.option_wifi), Icons.Outlined.Wifi, settings.unmeteredOnly, viewModel::setUnmeteredOnly)
+        SwitchRow(stringResource(R.string.option_charging), Icons.Outlined.BatteryChargingFull, settings.chargingOnly, viewModel::setChargingOnly)
+
+        if (!settings.enabled) {
+            // Setting up ends here; once it is on, the switch on the tile is the way to turn it off.
+            Button(
+                onClick = { toggle.onToggle(true) },
+                shapes = ButtonDefaults.shapes(),
+                colors = ButtonDefaults.buttonColors(containerColor = colors.tertiary, contentColor = colors.onTertiary),
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text(stringResource(R.string.backup_turn_on)) }
+            Text(stringResource(R.string.backup_new_only), style = MaterialTheme.typography.bodySmall)
         }
     }
 }
 
 @Composable
-private fun OptionChip(label: String, icon: ImageVector, checked: Boolean, onChange: (Boolean) -> Unit) {
-    FilterChip(
-        selected = checked,
-        onClick = { onChange(!checked) },
-        label = { Text(label) },
-        leadingIcon = { Icon(if (checked) Icons.Outlined.Check else icon, contentDescription = null, modifier = Modifier.size(FilterChipDefaults.IconSize)) },
-    )
+private fun SectionTitle(text: Int) {
+    Text(stringResource(text), style = MaterialTheme.typography.labelLargeEmphasized, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp))
+}
+
+/** A whole-row switch: the label, not just the thumb, flips it. */
+@Composable
+private fun SwitchRow(label: String, icon: ImageVector, checked: Boolean, onChange: (Boolean) -> Unit, hint: String? = null) {
+    ListItem(
+        leadingContent = { Icon(icon, contentDescription = null) },
+        supportingContent = hint?.let { { Text(it) } },
+        trailingContent = { Switch(checked = checked, onCheckedChange = null) },
+        colors = ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
+        modifier = Modifier.toggleable(value = checked, role = Role.Switch, onValueChange = onChange),
+    ) { Text(label) }
 }

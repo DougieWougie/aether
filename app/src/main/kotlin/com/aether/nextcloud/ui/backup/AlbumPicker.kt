@@ -22,7 +22,6 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.SheetValue
@@ -32,27 +31,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.aether.nextcloud.data.MediaAlbum
 import com.aether.nextcloud.data.prefs.BackupAlbum
-import com.aether.nextcloud.ui.components.HeroShape
 
-/** Selected albums as chips; tapping anywhere on the card opens the picker. */
-@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3ExpressiveApi::class)
+/** Selected albums as a plain row of chips; any chip opens the picker. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun AlbumsCard(albums: List<BackupAlbum>?, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val colors = MaterialTheme.colorScheme
-    Surface(onClick = onClick, shape = HeroShape, color = colors.onTertiaryContainer.copy(alpha = 0.08f), contentColor = colors.onTertiaryContainer, modifier = modifier.fillMaxWidth()) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(stringResource(R.string.albums_title), style = MaterialTheme.typography.labelLargeEmphasized)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (albums == null) {
-                    AssistChip(onClick = onClick, label = { Text(stringResource(R.string.albums_all)) }, leadingIcon = { Icon(Icons.Outlined.PhotoLibrary, contentDescription = null) })
-                } else {
-                    albums.forEach { AssistChip(onClick = onClick, label = { Text(it.name) }) }
-                }
-            }
-            Text(
-                if (albums == null) stringResource(R.string.albums_all_summary) else stringResource(R.string.albums_some_summary),
-                style = MaterialTheme.typography.bodySmall,
-            )
+fun AlbumChips(albums: List<BackupAlbum>?, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    FlowRow(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (albums == null) {
+            AssistChip(onClick = onClick, label = { Text(stringResource(R.string.albums_all)) }, leadingIcon = { Icon(Icons.Outlined.PhotoLibrary, contentDescription = null) })
+        } else {
+            albums.forEach { AssistChip(onClick = onClick, label = { Text(it.name) }) }
         }
     }
 }

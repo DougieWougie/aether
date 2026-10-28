@@ -103,3 +103,11 @@ This supersedes the 2026-10-21 note on the "Open in System Files" FAB and the 20
 - **Pause lasts until the user resumes.** There is no timer, so a forgotten pause stays visible on the tile instead of quietly restarting.
 - **Resume uploads everything taken while paused**, since `backupSinceMillis` is untouched, and starts a scan straight away rather than waiting for the next trigger.
 - **How it shows.** The toolbar button reads "Resume backup" with a play icon while paused, and is disabled when backup is off. The tile's title becomes "Backup paused" and its badge stops being the spinning Sunny shape. Back up now while paused answers "Camera backup is paused" with a Resume action instead of overriding the pause.
+
+## Implementation notes: Camera tile layout (2026-10-28)
+
+- **The tile shows state; a bottom sheet holds settings.** The header carries the status title, a settings icon button and the on/off `Switch`. Settings open in a `ModalBottomSheet`, so the dashboard no longer reflows when they open. The sheet's open state is still hoisted to the dashboard so the Back up now snackbar's Set up action can open it.
+- **On/off is the switch.** Turning on asks for photo access first, and the switch only flips once it is granted. While backup is off, the sheet ends with a "Turn on backup" button, so setting up still finishes with one tap. Once on, the sheet closes itself. When backup is on but the photo permission was revoked, the tile shows an error banner with "Allow access".
+- **Settings are grouped by question:** what to back up (albums, include videos), where it goes (account, destination folder), when to back up (Wi-Fi only, charging only). The toggles are whole-row switches, not chips, because a chip row could not say "Videos" is a content choice and not a condition.
+- **The tile summarises the settings as plain text** (albums, then the Wi-Fi / charging / videos rules) rather than pill chips, so nothing on the tile looks tappable unless it is. The tile's "Open Photos" text button replaces the hidden tap-the-header gallery shortcut.
+- **The destination folder saves when the field loses focus or the sheet closes**, not only on the keyboard's Done.

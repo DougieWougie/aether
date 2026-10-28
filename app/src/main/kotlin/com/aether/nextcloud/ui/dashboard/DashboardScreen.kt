@@ -7,6 +7,7 @@ import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarHost
+import com.aether.nextcloud.ui.backup.CameraBackupViewModel
 import com.aether.nextcloud.ui.components.rememberNotificationPermissionRequest
 import android.content.ActivityNotFoundException
 import android.content.Intent
@@ -84,6 +85,7 @@ fun DashboardScreen(
     val resources = LocalResources.current
     // Hoisted from the Camera tile so the Back up now snackbar can open its settings.
     var cameraSettingsOpen by rememberSaveable { mutableStateOf(false) }
+    val cameraBackup: CameraBackupViewModel = hiltViewModel()
     val backUpNowMessages = mapOf(
         BackUpNowEvent.Started to stringResource(R.string.backup_now_started),
         BackUpNowEvent.NothingNew to stringResource(R.string.backup_nothing_new),
@@ -198,7 +200,7 @@ fun DashboardScreen(
                                     }
                                 },
                             )
-                            DashboardTab.Camera -> CameraSection(state, cameraSettingsOpen) { cameraSettingsOpen = it }
+                            DashboardTab.Camera -> CameraSection(state, cameraSettingsOpen, { cameraSettingsOpen = it }, cameraBackup::setEnabled)
                         }
                     }
                 }

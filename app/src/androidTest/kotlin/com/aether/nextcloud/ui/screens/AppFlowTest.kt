@@ -97,7 +97,7 @@ class AppFlowTest {
 
         compose.onNodeWithText(str(R.string.tab_camera)).performClick()
         waitForText(str(R.string.camera_off))
-        compose.onNodeWithText(str(R.string.action_set_up)).assertIsDisplayed()
+        compose.onNodeWithContentDescription(str(R.string.action_settings)).assertIsDisplayed()
 
         compose.onNodeWithText(str(R.string.tab_transfers)).performClick()
         waitForText(str(R.string.transfers_empty_title))

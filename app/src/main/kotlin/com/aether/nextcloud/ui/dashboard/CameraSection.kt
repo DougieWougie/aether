@@ -8,8 +8,8 @@ import com.aether.nextcloud.R
 import androidx.compose.ui.res.stringResource
 import android.text.format.Formatter
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.animation.AnimatedVisibility
-import com.aether.nextcloud.ui.backup.CameraBackupSettings
+import com.aether.nextcloud.ui.backup.CameraSettingsSheet
+import com.aether.nextcloud.ui.backup.rememberBackupToggle
 import com.aether.nextcloud.ui.backup.MediaSplit
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -17,10 +17,16 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.PhotoCamera
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Button
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -40,30 +46,19 @@ import androidx.compose.ui.unit.dp
 import com.aether.nextcloud.ui.components.HeroShapeAlt
 import com.aether.nextcloud.ui.components.MorphingShapeBadge
 import androidx.compose.animation.animateContentSize
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.clickable
-import androidx.compose.ui.draw.clip
 import android.content.ActivityNotFoundException
 import android.content.Intent
 
+/** The tile with its own settings sheet; the dashboard hoists that state instead, so Back up now can open it. */
 @Composable
-internal fun CameraChip(text: String) {
-    Surface(shape = CircleShape, color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.10f)) {
-        Text(text, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
-    }
-}
-
-/** The tile with its own settings fold; the dashboard hoists that state instead, so Back up now can open it. */
-@Composable
-internal fun CameraSection(state: DashboardUiState) {
+internal fun CameraSection(state: DashboardUiState, onBackupEnabledChange: (Boolean) -> Unit = {}) {
     var expanded by rememberSaveable { mutableStateOf(false) }
-    CameraSection(state, expanded) { expanded = it }
+    CameraSection(state, expanded, { expanded = it }, onBackupEnabledChange)
 }
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-internal fun CameraSection(state: DashboardUiState, expanded: Boolean, onExpandedChange: (Boolean) -> Unit) {
+internal fun CameraSection(state: DashboardUiState, expanded: Boolean, onExpandedChange: (Boolean) -> Unit, onBackupEnabledChange: (Boolean) -> Unit = {}) {
     // Turning backup on is the end of setting it up, so fold the settings away and let the tile show the result.
     var wasEnabled by remember { mutableStateOf(state.backup.enabled) }
     LaunchedEffect(state.backup.enabled) {
@@ -74,6 +69,9 @@ internal fun CameraSection(state: DashboardUiState, expanded: Boolean, onExpande
     val backup = state.backup
     val stats = state.backupStats
     val colors = MaterialTheme.colorScheme
+    val toggle = rememberBackupToggle(backup.enabled, onBackupEnabledChange)
+    val title = stringResource(R.string.camera_title)
+    if (expanded) CameraSettingsSheet(onDismiss = { onExpandedChange(false) })
     Surface(
         shape = HeroShapeAlt,
         color = colors.tertiaryContainer,
@@ -81,12 +79,30 @@ internal fun CameraSection(state: DashboardUiState, expanded: Boolean, onExpande
         modifier = Modifier.fillMaxWidth().animateContentSize(MaterialTheme.motionScheme.defaultSpatialSpec()),
     ) {
         Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = if (backup.enabled) Modifier.clip(MaterialTheme.shapes.large).clickable { openPhotos(context) } else Modifier,
-            ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    stringResource(if (!backup.enabled) R.string.camera_title else if (backup.paused) R.string.camera_paused else R.string.camera_backing_up),
+                    style = MaterialTheme.typography.labelLargeEmphasized,
+                    modifier = Modifier.weight(1f),
+                )
+                IconButton(onClick = { onExpandedChange(true) }) {
+                    Icon(Icons.Outlined.Settings, contentDescription = stringResource(R.string.action_settings))
+                }
+                Switch(
+                    checked = backup.enabled,
+                    onCheckedChange = toggle.onToggle,
+                    modifier = Modifier.semantics { contentDescription = title },
+                    colors = SwitchDefaults.colors(
+                        checkedTrackColor = colors.tertiary,
+                        checkedThumbColor = colors.onTertiary,
+                        uncheckedTrackColor = Color.Transparent,
+                        uncheckedThumbColor = colors.onTertiaryContainer.copy(alpha = 0.7f),
+                        uncheckedBorderColor = colors.onTertiaryContainer.copy(alpha = 0.7f),
+                    ),
+                )
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text(stringResource(if (!backup.enabled) R.string.camera_title else if (backup.paused) R.string.camera_paused else R.string.camera_backing_up), style = MaterialTheme.typography.labelLargeEmphasized)
                     if (backup.enabled) {
                         // The server's folder size also counts photos other devices put there; fall back to this phone's total until it arrives.
                         val shown = stats.serverBytes ?: stats.localBytes
@@ -119,29 +135,50 @@ internal fun CameraSection(state: DashboardUiState, expanded: Boolean, onExpande
                     Icon(Icons.Outlined.PhotoCamera, contentDescription = null, tint = colors.onTertiary, modifier = Modifier.size(34.dp))
                 }
             }
-            // The expanded settings show the album choice in full, so the summary chips would only repeat it.
-            if (backup.enabled && !expanded) {
-                val albums = backup.albums
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (albums == null) {
-                        CameraChip(stringResource(R.string.albums_all))
-                    } else {
-                        albums.take(3).forEach { CameraChip(it.name) }
-                        if (albums.size > 3) CameraChip("+${albums.size - 3}")
+            if (toggle.permissionDenied) {
+                Text(stringResource(R.string.backup_permission_needed), style = MaterialTheme.typography.bodyMedium, color = colors.error)
+            }
+            if (backup.enabled && !toggle.hasPermission) {
+                // Backup is on but the photo permission was taken away: without it every scan finds nothing.
+                Surface(shape = MaterialTheme.shapes.large, color = colors.errorContainer, contentColor = colors.onErrorContainer) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(stringResource(R.string.backup_no_permission_notice), style = MaterialTheme.typography.bodyMedium)
+                        Button(
+                            onClick = toggle.requestAccess,
+                            shapes = ButtonDefaults.shapes(),
+                            colors = ButtonDefaults.buttonColors(containerColor = colors.error, contentColor = colors.onError),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text(stringResource(R.string.backup_allow_access)) }
                     }
                 }
             }
-            if (backup.enabled && stats.totalCount > 0) {
-                MediaSplit(stats)
-            }
-            state.lastBackupAt?.takeIf { backup.enabled }?.let { Text(stringResource(R.string.camera_last_backup, relative(it)), style = MaterialTheme.typography.bodyMedium) }
-            AnimatedVisibility(expanded) { CameraBackupSettings() }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                Button(
-                    onClick = { onExpandedChange(!expanded) },
-                    shapes = ButtonDefaults.shapes(),
-                    colors = ButtonDefaults.buttonColors(containerColor = colors.tertiary, contentColor = colors.onTertiary),
-                ) { Text(if (expanded && !backup.enabled) stringResource(R.string.action_close) else if (expanded) stringResource(R.string.action_done) else if (backup.enabled) stringResource(R.string.action_settings) else stringResource(R.string.action_set_up)) }
+            if (backup.enabled) {
+                val albums = backup.albums
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        if (albums == null) stringResource(R.string.albums_all) else albums.take(3).joinToString(", ") { it.name } + if (albums.size > 3) " +${albums.size - 3}" else "",
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        listOf(
+                            stringResource(if (backup.unmeteredOnly) R.string.backup_wifi_only else R.string.backup_mobile_too),
+                            if (backup.chargingOnly) stringResource(R.string.backup_charging_only) else null,
+                            stringResource(if (backup.includeVideos) R.string.backup_videos_included else R.string.backup_photos_only),
+                        ).filterNotNull().joinToString(" · "),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+                if (stats.totalCount > 0) MediaSplit(stats)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        state.lastBackupAt?.let { stringResource(R.string.camera_last_backup, relative(it)) }.orEmpty(),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = { openPhotos(context) }) { Text(stringResource(R.string.camera_open_photos)) }
+                }
             }
         }
     }

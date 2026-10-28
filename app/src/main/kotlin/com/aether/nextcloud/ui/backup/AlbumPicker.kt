@@ -39,7 +39,7 @@ import com.aether.nextcloud.ui.components.HeroShape
 @Composable
 fun AlbumsCard(albums: List<BackupAlbum>?, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
-    Surface(onClick = onClick, shape = HeroShape, color = colors.onTertiaryContainer.copy(alpha = 0.08f), contentColor = colors.onTertiaryContainer, modifier = modifier.fillMaxWidth()) {
+    Surface(onClick = onClick, shape = HeroShape, color = colors.tertiaryContainer, contentColor = colors.onTertiaryContainer, modifier = modifier.fillMaxWidth()) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(stringResource(R.string.albums_title), style = MaterialTheme.typography.labelLargeEmphasized)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

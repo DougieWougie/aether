@@ -4,6 +4,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -237,7 +240,8 @@ class DashboardSectionsTest {
         compose.show { CameraSection(DashboardUiState()) }
 
         compose.onNodeWithText(str(R.string.camera_off)).assertIsDisplayed()
-        compose.onNodeWithText(str(R.string.action_set_up)).assertIsDisplayed()
+        compose.onNodeWithContentDescription(str(R.string.action_settings)).assertIsDisplayed()
+        compose.onNode(isToggleable() and hasContentDescription(str(R.string.camera_title))).assertIsOff()
     }
 
     @Test
@@ -251,11 +255,12 @@ class DashboardSectionsTest {
 
         compose.onNodeWithText(str(R.string.camera_backing_up)).assertIsDisplayed()
         compose.onNodeWithText(str(R.string.camera_in_folder, "/Photos")).assertIsDisplayed()
-        compose.onNodeWithText("Camera").assertIsDisplayed()
-        compose.onNodeWithText("Screenshots").assertIsDisplayed()
+        compose.onNodeWithText("Camera, Screenshots").assertIsDisplayed()
+        compose.onNode(isToggleable() and hasContentDescription(str(R.string.camera_title))).assertIsOn()
         compose.onNodeWithText(context.resources.getQuantityString(R.plurals.backup_photos_legend, 3, 3, android.text.format.Formatter.formatShortFileSize(context, 3_000_000))).assertIsDisplayed()
         compose.onNodeWithText(context.resources.getQuantityString(R.plurals.backup_videos_legend, 1, 1, android.text.format.Formatter.formatShortFileSize(context, 9_000_000))).assertIsDisplayed()
-        compose.onNodeWithText(str(R.string.action_settings)).assertIsDisplayed()
+        compose.onNodeWithContentDescription(str(R.string.action_settings)).assertIsDisplayed()
+        compose.onNodeWithText(str(R.string.camera_open_photos)).assertIsDisplayed()
     }
 
     @Test
@@ -271,8 +276,7 @@ class DashboardSectionsTest {
         val albums = (1L..5L).map { BackupAlbum(it, "Album$it") }
         compose.show { CameraSection(DashboardUiState(backup = BackupSettings(enabled = true, accountName = alice.accountName, albums = albums))) }
 
-        compose.onNodeWithText("+2").assertIsDisplayed()
-        compose.onAllNodesWithText("Album4").assertCountEquals(0)
+        compose.onNodeWithText("Album1, Album2, Album3 +2").assertIsDisplayed()
     }
 
     // endregion

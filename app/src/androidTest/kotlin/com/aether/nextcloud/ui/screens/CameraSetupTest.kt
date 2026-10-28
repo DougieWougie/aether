@@ -3,6 +3,7 @@ package com.aether.nextcloud.ui.screens
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
@@ -34,27 +35,29 @@ class CameraSetupTest {
         scenario = ActivityScenario.launch(MainActivity::class.java)
         waitForText(str(R.string.tab_camera))
         compose.onNodeWithText(str(R.string.tab_camera)).performClick()
-        waitForText(str(R.string.action_set_up))
+        waitForText(str(R.string.camera_off))
 
-        compose.onNodeWithText(str(R.string.action_set_up)).performClick()
+        compose.onNodeWithContentDescription(str(R.string.action_settings)).performClick()
 
         waitForText(str(R.string.backup_turn_on))
         compose.onNodeWithText(str(R.string.backup_new_only)).assertIsDisplayed()
-        compose.onNodeWithText(str(R.string.action_done)).assertExists()
+        compose.onNodeWithText(str(R.string.backup_section_what)).assertExists()
+        compose.onNodeWithText(str(R.string.backup_section_where)).assertExists()
+        compose.onNodeWithText(str(R.string.backup_section_when)).assertExists()
     }
 
     @Test
-    fun doneFoldsTheSettingsAwayAgain() {
+    fun backClosesTheSettingsSheet() {
         scenario = ActivityScenario.launch(MainActivity::class.java)
         waitForText(str(R.string.tab_camera))
         compose.onNodeWithText(str(R.string.tab_camera)).performClick()
-        waitForText(str(R.string.action_set_up))
-        compose.onNodeWithText(str(R.string.action_set_up)).performClick()
-        waitForText(str(R.string.action_done))
+        waitForText(str(R.string.camera_off))
+        compose.onNodeWithContentDescription(str(R.string.action_settings)).performClick()
+        waitForText(str(R.string.backup_turn_on))
 
-        compose.onNodeWithText(str(R.string.action_done)).performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        androidx.test.espresso.Espresso.pressBack()
 
-        waitForText(str(R.string.action_set_up))
-        compose.onNodeWithText(str(R.string.action_done)).assertDoesNotExist()
+        compose.waitUntil(10_000) { compose.onAllNodesWithText(str(R.string.backup_turn_on)).fetchSemanticsNodes().isEmpty() }
+        compose.onNodeWithText(str(R.string.camera_off)).assertIsDisplayed()
     }
 }

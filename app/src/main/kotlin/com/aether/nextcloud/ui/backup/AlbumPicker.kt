@@ -28,6 +28,7 @@ import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.aether.nextcloud.data.MediaAlbum
 import com.aether.nextcloud.data.prefs.BackupAlbum
@@ -44,6 +45,9 @@ fun AlbumChips(albums: List<BackupAlbum>?, onClick: () -> Unit, modifier: Modifi
         }
     }
 }
+
+/** Lets tests scroll the lazy list to an album. */
+internal const val ALBUM_LIST_TAG = "albumList"
 
 /** Chooses which albums to back up. "All albums" stores no list so albums created later are included. */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
@@ -71,7 +75,7 @@ fun AlbumSheet(
             when {
                 available == null -> Text(stringResource(R.string.albums_loading), modifier = Modifier.padding(24.dp))
                 available.isEmpty() -> Text(stringResource(R.string.albums_none), modifier = Modifier.padding(24.dp))
-                else -> LazyColumn {
+                else -> LazyColumn(Modifier.testTag(ALBUM_LIST_TAG)) {
                     items(available, key = { it.id }) { album ->
                         val checked = selected == null || selected.any { it.id == album.id }
                         val onlyOne = selected != null && selected.size == 1 && checked

@@ -1,19 +1,24 @@
 package com.aether.nextcloud.ui.screens
 
-import androidx.compose.ui.test.assertIsEnabled
-import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasAnySibling
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.isEnabled
+import androidx.compose.ui.test.isNotEnabled
+import androidx.compose.ui.test.isOn
 import androidx.compose.ui.test.isToggleable
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.test.core.app.ActivityScenario
@@ -27,6 +32,7 @@ import com.aether.nextcloud.data.prefs.SettingsRepository
 import com.aether.nextcloud.support.AetherTestRule
 import com.aether.nextcloud.support.MediaStoreFixtures
 import com.aether.nextcloud.support.awaitTrue
+import com.aether.nextcloud.ui.backup.ALBUM_LIST_TAG
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -73,7 +79,7 @@ class CameraSettingsFlowTest {
         scenario = ActivityScenario.launch(MainActivity::class.java)
         compose.waitForText(str(R.string.tab_camera))
         compose.onNodeWithText(str(R.string.tab_camera)).performClick()
-        compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription(str(R.string.action_settings)).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(10_000) { runCatching { compose.onAllNodesWithContentDescription(str(R.string.action_settings)).fetchSemanticsNodes().isNotEmpty() }.getOrDefault(false) }
     }
 
     private fun openSettings() {
@@ -84,6 +90,19 @@ class CameraSettingsFlowTest {
 
     /** The sheet's "All albums" switch; the settings sheet and the tile hold toggles of their own. */
     private fun allAlbumsSwitch() = compose.onNode(isToggleable() and hasAnySibling(hasText(str(R.string.albums_all_hint))), useUnmergedTree = true)
+
+    /** The picker is lazy, so on a phone with many real albums a test album is only composed once scrolled to. */
+    private fun scrollToAlbum(name: String) {
+        compose.waitUntil(10_000) { runCatching { compose.onAllNodesWithTag(ALBUM_LIST_TAG).fetchSemanticsNodes().isNotEmpty() }.getOrDefault(false) }
+        compose.onNodeWithTag(ALBUM_LIST_TAG).performScrollToNode(hasText(name))
+    }
+
+    /** The settings reach the store before the sheet redraws, so wait for the checkbox itself to reach [enabled]. */
+    private fun awaitAlbumCheckbox(album: String, enabled: Boolean) {
+        val state = if (enabled) isEnabled() else isNotEnabled()
+        val checkbox = isToggleable() and hasAnySibling(hasText(album)) and state
+        compose.waitUntil(10_000) { runCatching { compose.onAllNodes(checkbox, useUnmergedTree = true).fetchSemanticsNodes().size == 1 }.getOrDefault(false) }
+    }
 
     private fun tileSwitch() = compose.onNode(isToggleable() and hasContentDescription(str(R.string.camera_title)))
 
@@ -161,8 +180,8 @@ class CameraSettingsFlowTest {
 
         compose.onNodeWithText(str(R.string.albums_all)).performSemanticsAction(SemanticsActions.OnClick)
         compose.waitForText(str(R.string.albums_picker_title))
-        compose.waitForText("AetherSheetBig")
-        compose.onNodeWithText(str(R.string.album_on_phone, 2)).assertExists()
+        scrollToAlbum("AetherSheetBig")
+        compose.onNode(hasText("AetherSheetBig") and hasText(str(R.string.album_on_phone, 2))).assertExists()
 
         // "All albums" off: every album is selected explicitly.
         allAlbumsSwitch().performClick()
@@ -172,11 +191,14 @@ class CameraSettingsFlowTest {
         // Untick everything but one; that last one is locked so the list never goes empty.
         val names = backup().albums!!.map { it.name }
         names.filter { it != "AetherSheetBig" }.forEach { name ->
-            compose.onNode(isToggleable() and hasAnySibling(hasText(name)), useUnmergedTree = true).performSemanticsAction(SemanticsActions.OnClick)
+            scrollToAlbum(name)
+            // Two albums can share a name (a phone's own Screenshots folders), so tick off whichever is still on.
+            compose.onAllNodes(isToggleable() and isOn() and hasAnySibling(hasText(name)), useUnmergedTree = true).onFirst().performSemanticsAction(SemanticsActions.OnClick)
         }
         awaitTrue("one album left") { backup().albums?.map { it.name } == listOf("AetherSheetBig") }
-        compose.onNode(isToggleable() and hasAnySibling(hasText("AetherSheetBig")), useUnmergedTree = true).assertIsNotEnabled()
-        compose.onNodeWithText("${str(R.string.album_on_phone, 2)} · ${str(R.string.album_keep_one)}").assertExists()
+        scrollToAlbum("AetherSheetBig")
+        awaitAlbumCheckbox("AetherSheetBig", enabled = false)
+        compose.waitForText("${str(R.string.album_on_phone, 2)} · ${str(R.string.album_keep_one)}")
 
         // Back to every album, including ones created later.
         allAlbumsSwitch().performClick()
@@ -189,13 +211,13 @@ class CameraSettingsFlowTest {
         media.photo("b1.jpg", ByteArray(16) { 3 }, album = "AetherSheetTwo")
         openSettings()
         compose.onNodeWithText(str(R.string.albums_all)).performSemanticsAction(SemanticsActions.OnClick)
-        compose.waitForText("AetherSheetOne")
+        scrollToAlbum("AetherSheetOne")
         allAlbumsSwitch().performClick()
         awaitTrue("an explicit album list") { backup().albums != null }
 
         compose.onNode(isToggleable() and hasAnySibling(hasText("AetherSheetOne")), useUnmergedTree = true).performSemanticsAction(SemanticsActions.OnClick)
         awaitTrue("the album to be unticked") { backup().albums!!.none { it.name == "AetherSheetOne" } }
-        compose.onNode(isToggleable() and hasAnySibling(hasText("AetherSheetOne")), useUnmergedTree = true).assertIsEnabled()
+        awaitAlbumCheckbox("AetherSheetOne", enabled = true)
         compose.onNode(isToggleable() and hasAnySibling(hasText("AetherSheetOne")), useUnmergedTree = true).performSemanticsAction(SemanticsActions.OnClick)
 
         awaitTrue("the album to be ticked again") { backup().albums!!.any { it.name == "AetherSheetOne" } }

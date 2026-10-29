@@ -12,6 +12,7 @@ import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ActivityScenario
@@ -74,7 +75,12 @@ class DashboardActionsTest {
         compose.waitForText(str(R.string.pinned_empty_title))
     }
 
-    private fun tap(label: Int) = compose.onNodeWithContentDescription(str(label)).performClick()
+    /** The toolbar can lag the screen's text on a slow device, so wait for the button before pressing it. */
+    private fun tap(label: Int) {
+        val description = str(label)
+        compose.waitUntil(10_000) { runCatching { compose.onAllNodesWithContentDescription(description).fetchSemanticsNodes().isNotEmpty() }.getOrDefault(false) }
+        compose.onNodeWithContentDescription(description).performClick()
+    }
 
     @Test
     fun pinningAFileFromThePickerListsItAndStartsTheSync() {

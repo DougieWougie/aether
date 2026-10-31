@@ -36,6 +36,12 @@
     <string name="pick_prompt_pin">Pin</string>
     <string name="sync_now">Sync now</string>
     <string name="action_files">Files</string>
+    <string name="action_take_photo">Take photo</string>
+    <string name="capture_queued">Uploading your photo</string>
+    <string name="capture_no_account">Sign in to upload photos</string>
+    <string name="capture_unreadable">Couldn\'t read the photo from the camera</string>
+    <string name="capture_failed">Couldn\'t get ready to take a photo</string>
+    <string name="capture_no_camera">No camera app found</string>
     <string name="backup_now">Back up now</string>
     <string name="backup_now_started">Backing up now</string>
     <string name="backup_nothing_new">Nothing new to back up</string>

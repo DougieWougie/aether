@@ -12,6 +12,7 @@ import android.net.Uri
 import androidx.compose.material.icons.outlined.ClearAll
 import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.Pause
+import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Replay
 import androidx.annotation.StringRes
@@ -66,8 +67,9 @@ import kotlinx.coroutines.withContext
 import com.aether.nextcloud.AetherConstants
 
 /**
- * The dashboard's floating toolbar: "Files" is the FAB on every tab and the actions beside it belong to the tab showing.
- * On the Camera tab the pause button turns into Resume while backup is paused.
+ * The dashboard's floating toolbar: "Files" is the FAB on the Pinned and Transfers tabs, "Take photo" on Camera (where Files
+ * becomes one of the actions beside it). The actions beside the FAB belong to the tab showing; on Camera the pause button
+ * turns into Resume while backup is paused.
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -87,13 +89,17 @@ internal fun DashboardToolbar(
     onRetryFailed: () -> Unit,
     onClearFinished: () -> Unit,
     onOpenFiles: () -> Unit,
+    onTakePhoto: () -> Unit,
 ) {
     HorizontalFloatingToolbar(
         expanded = true,
         floatingActionButton = {
-            ToolbarTooltip(stringResource(R.string.action_files)) {
-                FloatingToolbarDefaults.VibrantFloatingActionButton(onClick = onOpenFiles) {
-                    Icon(Icons.Outlined.FolderOpen, contentDescription = stringResource(R.string.action_files))
+            // Camera's main action is taking a photo; Files moves in beside the other Camera actions.
+            val camera = tab == DashboardTab.Camera
+            val label = stringResource(if (camera) R.string.action_take_photo else R.string.action_files)
+            ToolbarTooltip(label) {
+                FloatingToolbarDefaults.VibrantFloatingActionButton(onClick = if (camera) onTakePhoto else onOpenFiles) {
+                    Icon(if (camera) Icons.Outlined.PhotoCamera else Icons.Outlined.FolderOpen, contentDescription = label)
                 }
             }
         },
@@ -113,6 +119,7 @@ internal fun DashboardToolbar(
                     onTogglePauseBackup,
                     enabled = canPauseBackup,
                 )
+                ToolbarAction(R.string.action_files, Icons.Outlined.FolderOpen, onOpenFiles)
             }
             DashboardTab.Transfers -> {
                 ToolbarAction(R.string.transfers_retry_failed, Icons.Outlined.Replay, onRetryFailed, enabled = canRetryFailed)

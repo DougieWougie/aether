@@ -1,6 +1,13 @@
 package com.aether.nextcloud.ui.dashboard
 
 import android.content.res.Resources
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
 import com.aether.nextcloud.sync.RetryOutcome
 import androidx.compose.ui.semantics.semantics
 import com.aether.nextcloud.R
@@ -166,7 +173,20 @@ internal fun TransferRow(transfer: TransferEntity, shape: androidx.compose.ui.gr
     val upload = transfer.direction == TransferDirection.UPLOAD
     Surface(shape = shape, color = if (highlighted) colors.secondaryContainer else colors.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
         Row(Modifier.padding(16.dp).semantics(mergeDescendants = true) {}, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            MorphingShapeBadge(
+            // Pictures show themselves; everything else (and any picture that can't be read) keeps the direction badge.
+            // Keyed by what changes the picture, not by progress, so it is not reloaded on every update.
+            val thumbnail by produceState<ImageBitmap?>(null, transfer.id, transfer.state, transfer.sourcePath, transfer.remotePath) {
+                value = loadTransferThumbnail(context, transfer, THUMBNAIL_PX)
+            }
+            val direction = stringResource(if (upload) R.string.transfer_upload else R.string.transfer_download)
+            thumbnail?.let {
+                Image(
+                    it,
+                    contentDescription = direction,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.size(48.dp).clip(RoundedCornerShape(14.dp)).testTag(TRANSFER_THUMBNAIL_TAG),
+                )
+            } ?: MorphingShapeBadge(
                 shape = when {
                     failed -> MaterialShapes.Pentagon
                     upload -> MaterialShapes.Cookie4Sided
@@ -178,7 +198,7 @@ internal fun TransferRow(transfer: TransferEntity, shape: androidx.compose.ui.gr
             ) {
                 Icon(
                     if (upload) Icons.Outlined.CloudUpload else Icons.Outlined.CloudDownload,
-                    contentDescription = stringResource(if (upload) R.string.transfer_upload else R.string.transfer_download),
+                    contentDescription = direction,
                     tint = if (failed) colors.onErrorContainer else colors.onTertiaryContainer,
                     modifier = Modifier.size(22.dp),
                 )
@@ -214,6 +234,9 @@ internal fun TransferRow(transfer: TransferEntity, shape: androidx.compose.ui.gr
         }
     }
 }
+
+private const val THUMBNAIL_PX = 192
+internal const val TRANSFER_THUMBNAIL_TAG = "transfer-thumbnail"
 
 /** "Retrying 3 transfers", plus a second sentence when some could not be queued again. */
 internal fun retryMessage(resources: Resources, outcome: RetryOutcome): String = listOfNotNull(

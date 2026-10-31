@@ -9,7 +9,6 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarHost
 import com.aether.nextcloud.ui.backup.CameraBackupViewModel
 import com.aether.nextcloud.ui.components.rememberNotificationPermissionRequest
-import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.provider.DocumentsContract
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -17,6 +16,10 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import android.content.ActivityNotFoundException
+import android.net.Uri
+import androidx.activity.result.contract.ActivityResultContracts
+import com.aether.nextcloud.sync.CaptureOutcome
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -96,6 +99,52 @@ fun DashboardScreen(
     val setUpLabel = stringResource(R.string.action_set_up)
     val resumeLabel = stringResource(R.string.action_resume)
 
+    // The camera app writes into this file; saved so a photo survives this process being killed while the camera is open.
+    var captureUri by rememberSaveable { mutableStateOf<Uri?>(null) }
+    val captureMessages = mapOf(
+        CaptureOutcome.NoAccount to stringResource(R.string.capture_no_account),
+        CaptureOutcome.Unreadable to stringResource(R.string.capture_unreadable),
+    )
+    val capturedMessage = stringResource(R.string.capture_queued)
+    val viewLabel = stringResource(R.string.camera_failed_view)
+    val noCameraMessage = stringResource(R.string.capture_no_camera)
+    val captureFailedMessage = stringResource(R.string.capture_failed)
+    fun showMessage(message: String, action: String? = null, onAction: () -> Unit = {}) {
+        scope.launch {
+            snackbars.currentSnackbarData?.dismiss()
+            if (snackbars.showSnackbar(message, actionLabel = action, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) onAction()
+        }
+    }
+    val takePicture = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
+        val uri = captureUri
+        captureUri = null
+        if (uri != null) {
+            viewModel.finishCapture(uri, saved) { outcome ->
+                when (outcome) {
+                    null -> Unit
+                    is CaptureOutcome.Queued -> showMessage(capturedMessage, viewLabel) { viewModel.selectTab(DashboardTab.Transfers) }
+                    else -> showMessage(captureMessages.getValue(outcome))
+                }
+            }
+        }
+    }
+    val takePhoto = {
+        viewModel.startCapture { uri ->
+            if (uri == null) {
+                showMessage(captureFailedMessage)
+            } else {
+                captureUri = uri
+                try {
+                    takePicture.launch(uri)
+                } catch (_: ActivityNotFoundException) {
+                    captureUri = null
+                    viewModel.finishCapture(uri, saved = false) {}
+                    showMessage(noCameraMessage)
+                }
+            }
+        }
+    }
+
     val tabs = DashboardTab.entries
     val pagerState = rememberPagerState(initialPage = tabs.indexOf(state.tab)) { tabs.size }
     val listStates = tabs.map { rememberLazyListState() }
@@ -160,6 +209,7 @@ fun DashboardScreen(
                     onTogglePauseBackup = { viewModel.setBackupPaused(!state.backup.paused) },
                     onClearFinished = viewModel::clearFinishedTransfers,
                     onOpenFiles = openFiles,
+                    onTakePhoto = takePhoto,
                 )
             }
         },

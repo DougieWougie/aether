@@ -17,6 +17,8 @@ import com.aether.nextcloud.core.describe
 import com.aether.nextcloud.data.AvatarRepository
 import com.aether.nextcloud.data.BackupStats
 import com.aether.nextcloud.sync.BackupProgress
+import com.aether.nextcloud.sync.CaptureOutcome
+import com.aether.nextcloud.sync.CapturePhotoUploader
 import com.aether.nextcloud.data.CameraBackupStatsRepository
 import com.aether.nextcloud.data.DocumentRepository
 import com.aether.nextcloud.data.QuotaRepository
@@ -94,6 +96,7 @@ class DashboardViewModel @Inject constructor(
     private val cameraStats: CameraBackupStatsRepository,
     private val scheduler: SyncScheduler,
     private val retrier: TransferRetrier,
+    private val capture: CapturePhotoUploader,
     authIssues: AuthIssues,
     database: AetherDatabase,
 ) : ViewModel() {
@@ -237,6 +240,26 @@ class DashboardViewModel @Inject constructor(
                     onEvent(BackUpNowEvent.Started)
                     if (scheduler.backUpNowAndCount() == 0) onEvent(BackUpNowEvent.NothingNew)
                 }
+            }
+        }
+    }
+
+    /** Reserves the file the camera app will write the photo to; [onReady] gets null if that failed. */
+    fun startCapture(onReady: (Uri?) -> Unit) {
+        viewModelScope.launch { onReady(capture.newCaptureUri()) }
+    }
+
+    /**
+     * The camera app has returned. A photo that was taken is queued for upload (to camera backup's account, else the selected
+     * one); a cancelled one just releases the reserved file. [onResult] gets null in the cancelled case.
+     */
+    fun finishCapture(uri: Uri, saved: Boolean, onResult: (CaptureOutcome?) -> Unit) {
+        viewModelScope.launch {
+            if (!saved) {
+                capture.discard(uri)
+                onResult(null)
+            } else {
+                onResult(capture.upload(uri, state.value.selected?.accountName))
             }
         }
     }

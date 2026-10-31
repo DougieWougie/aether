@@ -37,7 +37,7 @@ class TransferRetrier @Inject constructor(
                 row.mediaKey != null -> scanCamera = true
                 staged != null && staged.isFile -> {
                     // Enqueue first: if the process dies in between, the row is still there to retry again.
-                    UploadDocumentWorker.enqueue(context, UploadRequest(accountName, row.remotePath, staged, row.mimeType, row.ifMatchEtag))
+                    UploadDocumentWorker.enqueue(context, UploadRequest(accountName, row.remotePath, staged, row.mimeType, row.ifMatchEtag, createParents = row.ifMatchEtag == null))
                 }
                 row.direction == TransferDirection.DOWNLOAD -> syncPins = true
                 else -> { skipped++; continue }

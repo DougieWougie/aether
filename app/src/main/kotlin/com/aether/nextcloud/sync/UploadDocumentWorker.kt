@@ -49,6 +49,8 @@ data class UploadRequest(
     val mimeType: String?,
     /** ETag the edit was based on (`If-Match`); null for brand-new files, which then must not overwrite anything. */
     val ifMatchEtag: String?,
+    /** Create any missing parent folders first (`MKCOL`), for destinations like `<folder>/2026/10/` that may not exist yet. */
+    val createParents: Boolean = false,
 )
 
 /**
@@ -84,8 +86,8 @@ class UploadDocumentWorker @AssistedInject constructor(
         val total = source.length()
 
         val transferId = withContext(Dispatchers.IO) {
-            // A retry continues the row the previous attempt left QUEUED rather than adding a second one.
-            val previous = if (runAttemptCount > 0) transfers.queuedUploadFor(source.absolutePath) else null
+            // A retry, or an upload whose row was queued when it was requested (a photo just taken), continues that row.
+            val previous = transfers.queuedUploadFor(source.absolutePath)
             if (previous != null) {
                 transfers.setState(previous, TransferState.RUNNING, null, System.currentTimeMillis())
                 previous
@@ -111,6 +113,9 @@ class UploadDocumentWorker @AssistedInject constructor(
         val progress = ThrottledProgress(transferId, total, large)
         return try {
             val dav = davFactory.forAccount(credentials)
+            if (inputData.getBoolean(KEY_CREATE_PARENTS, false)) {
+                (createParents(dav, credentials, target) as? AetherResult.Failure)?.let { return failed(it.error, transferId) }
+            }
             val first = upload(dav, credentials, target, source, mimeType, ifMatch, total, progress)
             when {
                 first is AetherResult.Success -> finish(credentials, target, source, first.value, transferId, TransferState.COMPLETED)
@@ -123,6 +128,15 @@ class UploadDocumentWorker @AssistedInject constructor(
             withContext(kotlinx.coroutines.NonCancellable) { setTransferState(transferId, TransferState.FAILED, "Cancelled") }
             throw e
         }
+    }
+
+    /** `MKCOL` each missing folder above [target], shallowest first; 405 is what a folder that already exists answers. */
+    private suspend fun createParents(dav: WebDavClient, credentials: AetherCredentials, target: DocumentId): AetherResult<Unit> {
+        for (directory in BackupPaths.directoriesFor(target.path)) {
+            val made = dav.mkcol(credentials.fileUrl("$directory/"))
+            if (made is AetherResult.Failure && !(made.error is AetherError.Http && made.error.code == 405)) return made
+        }
+        return AetherResult.Success(Unit)
     }
 
     private suspend fun upload(
@@ -229,6 +243,7 @@ class UploadDocumentWorker @AssistedInject constructor(
         const val KEY_SOURCE_PATH = "source_path"
         const val KEY_MIME_TYPE = "mime_type"
         const val KEY_IF_MATCH_ETAG = "if_match_etag"
+        const val KEY_CREATE_PARENTS = "create_parents"
         private const val MAX_ATTEMPTS = 5
         private const val MIN_UPDATE_INTERVAL_MS = 500L
 
@@ -238,6 +253,7 @@ class UploadDocumentWorker @AssistedInject constructor(
             KEY_SOURCE_PATH to request.sourceFile.absolutePath,
             KEY_MIME_TYPE to request.mimeType,
             KEY_IF_MATCH_ETAG to request.ifMatchEtag,
+            KEY_CREATE_PARENTS to request.createParents,
         )
 
         private fun accountTag(accountName: String) = "upload-account:$accountName"

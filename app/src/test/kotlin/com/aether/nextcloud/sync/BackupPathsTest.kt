@@ -14,6 +14,12 @@ class BackupPathsTest {
     }
 
     @Test
+    fun `a captured photo is named by when it was taken`() {
+        assertEquals("AETHER_20261020_081500.jpg", BackupPaths.captureName(oct2026, utc))
+        assertEquals("AETHER_20261020_171500.jpg", BackupPaths.captureName(oct2026, ZoneId.of("Asia/Tokyo")))
+    }
+
+    @Test
     fun `folder input is normalised`() {
         assertEquals("/Photos/2026/10/a.jpg", BackupPaths.remotePath("Photos/", oct2026, "a.jpg", utc))
         assertEquals("/2026/10/a.jpg", BackupPaths.remotePath("/", oct2026, "a.jpg", utc))

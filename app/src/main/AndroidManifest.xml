@@ -66,6 +66,17 @@
                 tools:node="remove" />
         </provider>
 
+        <!-- The file a camera app writes a photo taken from the Camera tab into. Per-URI grants only. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.captures"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/capture_paths" />
+        </provider>
+
         <provider
             android:name=".provider.AetherDocumentsProvider"
             android:authorities="com.aether.nextcloud.documents"

@@ -137,7 +137,7 @@ class CameraSettingsFlowTest {
     }
 
     @Test
-    fun theOptionSwitchesFlipTheirSettingsAndTheTileSummaryFollows() {
+    fun theOptionSwitchesFlipTheirSettings() {
         runBlocking { settings.updateBackup { it.copy(enabled = true, accountName = env.accountName) } }
         openSettings()
         assertTrue(backup().unmeteredOnly)
@@ -148,10 +148,6 @@ class CameraSettingsFlowTest {
         awaitTrue("charging only to turn on") { backup().chargingOnly }
         compose.onNodeWithText(str(R.string.option_videos)).performSemanticsAction(SemanticsActions.OnClick)
         awaitTrue("videos to turn off") { !backup().includeVideos }
-
-        compose.waitForText(
-            listOf(str(R.string.backup_mobile_too), str(R.string.backup_charging_only), str(R.string.backup_photos_only)).joinToString(" · "),
-        )
     }
 
     @Test

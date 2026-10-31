@@ -139,3 +139,8 @@ The tile was a tall card (a 96sp storage figure, a spinning badge, album and rul
 - **Where the picture comes from.** A row that still has its staged file (queued, running, or failed and waiting for Retry failed) is thumbnailed from that file with `ThumbnailUtils`. A completed transfer asks the system provider (`ContentResolver.loadThumbnail` on its document URI), which serves the cached copy or the server's preview, the same way the Pinned tab does. Conflict rows are skipped: their path is the original, not the conflict copy that was saved.
 - **Loaded once per row, not per progress tick.** The load is keyed on the row, its state, its staged path and its remote path, so the byte counter updating does not reload it.
 - **Direction is still announced.** The thumbnail carries the same "Upload"/"Download" content description the icon had.
+
+## Implementation notes: Sync now on Transfers, undo for Clear finished (2026-10-31)
+
+- **The Transfers tab's main action is Sync now.** The toolbar FAB there starts a pinned-files sync (if anything is pinned) and a camera backup scan (if backup is on, not paused and allowed to read photos), then says so in a snackbar, or says there was nothing to sync. Open in System Files is now the FAB only on Pinned; on Camera and Transfers it sits beside the tab's other actions, so the toolbar keeps its width.
+- **Clear finished can be undone.** The view model reads the account's completed rows before deleting them and hands them to the screen, which shows "Cleared N finished transfers" with Undo. Undo re-inserts the same rows (same ids, so the Recent order is unchanged). Staged files are not touched by Clear, so there is nothing else to restore. Dismissing the snackbar or leaving the tab makes the clear final.

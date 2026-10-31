@@ -214,9 +214,34 @@ class DashboardViewModel @Inject constructor(
     fun syncPinsNow() = scheduler.syncPinsNow()
 
     /** Removes the selected account's completed transfers from the Recent list. Failed and conflict rows stay: they still need action. */
-    fun clearFinishedTransfers() {
+    fun clearFinishedTransfers(onCleared: (List<TransferEntity>) -> Unit = {}) {
         val account = state.value.selected?.accountName ?: return
-        viewModelScope.launch { withContext(Dispatchers.IO) { transferDao.clearCompleted(account) } }
+        viewModelScope.launch {
+            val cleared = withContext(Dispatchers.IO) {
+                transferDao.completed(account).also { transferDao.clearCompleted(account) }
+            }
+            if (cleared.isNotEmpty()) onCleared(cleared)
+        }
+    }
+
+    /** Undoes [clearFinishedTransfers]: puts the cleared rows back, with their original ids and order. */
+    fun restoreTransfers(rows: List<TransferEntity>) {
+        viewModelScope.launch { withContext(Dispatchers.IO) { transferDao.restore(rows) } }
+    }
+
+    /**
+     * Syncs everything that can be synced from the Transfers tab: pinned files, and a camera backup scan when backup is on, not
+     * paused and allowed to read photos. [onResult] is false when there was nothing to start.
+     */
+    fun syncNow(onResult: (started: Boolean) -> Unit) {
+        viewModelScope.launch {
+            val pins = state.value.pinned.isNotEmpty()
+            val backup = settings.backup.first()
+            val backingUp = backup.enabled && !backup.paused && scheduler.canReadMedia()
+            if (pins) scheduler.syncPinsNow()
+            if (backingUp) scheduler.backUpNow()
+            onResult(pins || backingUp)
+        }
     }
 
     /** Queues the selected account's failed transfers again (see [TransferRetrier]) and reports what happened to [onResult]. */

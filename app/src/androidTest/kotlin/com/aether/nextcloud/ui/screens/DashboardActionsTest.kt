@@ -344,4 +344,42 @@ class DashboardActionsTest {
             transfers.deleteAccount(other)
         }
     }
+
+    @Test
+    fun clearFinishedOffersUndoAndTheTransfersComeBack() {
+        val transfers = env.graph.database().transferDao()
+        fun mine() = runBlocking { transfers.observeRecent(100).first() }.filter { it.accountName == env.accountName }
+        transfers.insert(transfer("/done.txt", TransferState.COMPLETED, TransferDirection.DOWNLOAD).copy(accountName = env.accountName))
+        launch()
+        compose.onNodeWithText(str(R.string.tab_transfers)).performClick()
+        compose.waitUntil(10_000) { runCatching { compose.onNodeWithContentDescription(str(R.string.transfers_clear_finished)).assertIsEnabled() }.isSuccess }
+
+        tap(R.string.transfers_clear_finished)
+        awaitTrue("the completed transfer to be removed") { mine().isEmpty() }
+        compose.waitForText(str(R.string.action_undo))
+        compose.onNodeWithText(str(R.string.action_undo)).performClick()
+
+        awaitTrue("the transfer to come back") { mine().map { it.remotePath } == listOf("/done.txt") }
+    }
+
+    @Test
+    fun theTransfersTabSyncsNowAndKeepsFilesInTheToolbar() {
+        env.nextcloud.putFile("/notes.txt", "hello")
+        runBlocking {
+            val credentials = env.graph.accounts().credentials(env.accountName)!!
+            env.graph.documents().refreshChildren(credentials, DocumentId.root(env.accountName))
+            env.graph.documents().setPinned(DocumentId(env.accountName, "/notes.txt"), true)
+        }
+        scenario = ActivityScenario.launch(MainActivity::class.java)
+        compose.waitForText("notes.txt")
+        compose.onNodeWithText(str(R.string.tab_transfers)).performClick()
+        compose.onNodeWithContentDescription(str(R.string.action_files)).assertIsDisplayed()
+
+        tap(R.string.sync_now)
+
+        compose.waitForText(str(R.string.transfers_sync_started))
+        awaitTrue("the pinned file to be downloaded", timeoutMs = 30_000) {
+            env.graph.documents().cached(DocumentId(env.accountName, "/notes.txt"))?.localCachePath != null
+        }
+    }
 }

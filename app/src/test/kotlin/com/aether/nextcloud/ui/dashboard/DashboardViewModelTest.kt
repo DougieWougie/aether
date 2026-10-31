@@ -24,6 +24,7 @@ import com.aether.nextcloud.data.local.dao.TransferDao
 import com.aether.nextcloud.data.local.entity.DocumentEntity
 import com.aether.nextcloud.data.local.entity.TransferDirection
 import com.aether.nextcloud.data.local.entity.TransferEntity
+import com.aether.nextcloud.data.local.entity.TransferState
 import com.aether.nextcloud.data.prefs.BackupSettings
 import com.aether.nextcloud.data.prefs.SettingsRepository
 import com.aether.nextcloud.dav.UserInfo
@@ -115,6 +116,8 @@ class DashboardViewModelTest {
         every { observeRecent(any()) } returns recent
         every { observeFailedBackupCount(any()) } returns flowOf(0)
         every { clearCompleted(any()) } returns Unit
+        every { completed(any()) } returns emptyList()
+        every { restore(any()) } returns Unit
     }
 
     private fun database(): AetherDatabase {
@@ -317,6 +320,60 @@ class DashboardViewModelTest {
 
         verify(timeout = 2_000) { transferDao.clearCompleted("bob@h") }
         verify(exactly = 0) { transferDao.clearCompleted("alice@h") }
+    }
+
+    @Test
+    fun `clearing finished transfers hands back what it removed so it can be restored`() = runTest(dispatcher) {
+        val done = TransferEntity(id = 7, accountName = "bob@h", direction = TransferDirection.DOWNLOAD, remotePath = "/a.txt", state = TransferState.COMPLETED, createdAt = 1, updatedAt = 2)
+        every { transferDao.completed("bob@h") } returns listOf(done)
+        val vm = subscribed(viewModel())
+        vm.selectAccount("bob@h")
+        var cleared: List<TransferEntity>? = null
+
+        vm.clearFinishedTransfers { cleared = it }
+        verify(timeout = 2_000) { transferDao.clearCompleted("bob@h") }
+        vm.restoreTransfers(cleared!!)
+
+        assertEquals(listOf(done), cleared)
+        verify(timeout = 2_000) { transferDao.restore(listOf(done)) }
+    }
+
+    @Test
+    fun `clearing with nothing finished reports nothing`() = runTest(dispatcher) {
+        every { transferDao.completed("bob@h") } returns emptyList()
+        val vm = subscribed(viewModel())
+        vm.selectAccount("bob@h")
+        var called = false
+
+        vm.clearFinishedTransfers { called = true }
+
+        verify(timeout = 2_000) { transferDao.clearCompleted("bob@h") }
+        assertEquals(false, called)
+    }
+
+    @Test
+    fun `sync now starts a backup scan when backup is on and reports it`() = runTest(dispatcher) {
+        every { settings.backup } returns flowOf(BackupSettings(enabled = true, accountName = "alice@h"))
+        every { scheduler.canReadMedia() } returns true
+        val vm = subscribed(viewModel())
+        var started: Boolean? = null
+
+        vm.syncNow { started = it }
+
+        assertEquals(true, started)
+        verify { scheduler.backUpNow() }
+    }
+
+    @Test
+    fun `sync now says there was nothing to sync when nothing is pinned and backup is off`() = runTest(dispatcher) {
+        val vm = subscribed(viewModel())
+        var started: Boolean? = null
+
+        vm.syncNow { started = it }
+
+        assertEquals(false, started)
+        verify(exactly = 0) { scheduler.backUpNow() }
+        verify(exactly = 0) { scheduler.syncPinsNow() }
     }
 
     @Test

@@ -63,6 +63,12 @@
         <item quantity="other">%1$d can\'t be retried because their files are gone</item>
     </plurals>
     <string name="transfers_clear_finished">Clear finished</string>
+    <plurals name="transfers_cleared">
+        <item quantity="one">Cleared %d finished transfer</item>
+        <item quantity="other">Cleared %d finished transfers</item>
+    </plurals>
+    <string name="transfers_sync_started">Syncing pinned files and camera uploads</string>
+    <string name="transfers_nothing_to_sync">Nothing to sync. Pin some files or turn on camera backup.</string>
     <string name="action_unpin">Unpin</string>
     <string name="pinned_empty_title">Nothing pinned yet</string>
     <string name="pinned_empty_body">Tap the pin button to keep files and folders on this device. They stay up to date.</string>

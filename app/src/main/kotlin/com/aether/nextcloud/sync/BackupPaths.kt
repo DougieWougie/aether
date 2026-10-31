@@ -24,6 +24,11 @@ object BackupPaths {
         return if (dot > 0) fileName.substring(0, dot) + "_$mediaId" + fileName.substring(dot) else "${fileName}_$mediaId"
     }
 
+    /** `AETHER_20261031_175742.jpg`: the name of a photo taken from the Camera tab. */
+    fun captureName(takenAtMillis: Long, zone: ZoneId = ZoneId.systemDefault()): String =
+        "AETHER_${CAPTURE_STAMP.format(Instant.ofEpochMilli(takenAtMillis).atZone(zone))}.jpg"
+
+    private val CAPTURE_STAMP = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss")
     private val YEAR = DateTimeFormatter.ofPattern("yyyy")
     private val MONTH = DateTimeFormatter.ofPattern("MM")
 }

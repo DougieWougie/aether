@@ -29,6 +29,8 @@ import com.aether.nextcloud.data.prefs.SettingsRepository
 import com.aether.nextcloud.dav.UserInfo
 import com.aether.nextcloud.provider.DocumentId
 import com.aether.nextcloud.sync.RetryOutcome
+import com.aether.nextcloud.sync.CaptureOutcome
+import com.aether.nextcloud.sync.CapturePhotoUploader
 import com.aether.nextcloud.sync.SyncScheduler
 import com.aether.nextcloud.sync.TransferRetrier
 import io.mockk.coEvery
@@ -73,6 +75,7 @@ class DashboardViewModelTest {
     private val cameraStats = mockk<CameraBackupStatsRepository>(relaxed = true)
     private val scheduler = mockk<SyncScheduler>(relaxed = true)
     private val retrier = mockk<TransferRetrier>()
+    private val capture = mockk<CapturePhotoUploader>(relaxed = true)
     private val authIssues = mockk<AuthIssues>()
 
     private val active = MutableStateFlow<List<TransferEntity>>(emptyList())
@@ -128,7 +131,7 @@ class DashboardViewModelTest {
     }
 
     private fun viewModel(saved: SavedStateHandle = SavedStateHandle()) =
-        DashboardViewModel(context, saved, accountRepository, cleaner, quotas, avatars, documents, diskCache, settings, cameraStats, scheduler, retrier, authIssues, database())
+        DashboardViewModel(context, saved, accountRepository, cleaner, quotas, avatars, documents, diskCache, settings, cameraStats, scheduler, retrier, capture, authIssues, database())
 
     private fun TestScope.subscribed(vm: DashboardViewModel) = vm.also { backgroundScope.launch(dispatcher) { it.state.collect {} } }
 
@@ -327,6 +330,42 @@ class DashboardViewModelTest {
 
         assertEquals(RetryOutcome(2, 1), outcome)
         coVerify(exactly = 0) { retrier.retryFailed("alice@h") }
+    }
+
+    @Test
+    fun `start capture hands back the file the camera should write to`() = runTest(dispatcher) {
+        val target = mockk<Uri>()
+        coEvery { capture.newCaptureUri(any()) } returns target
+        var ready: Uri? = null
+
+        subscribed(viewModel()).startCapture { ready = it }
+
+        assertEquals(target, ready)
+    }
+
+    @Test
+    fun `a cancelled photo releases its file and reports nothing`() = runTest(dispatcher) {
+        val target = mockk<Uri>()
+        val outcomes = mutableListOf<CaptureOutcome?>()
+
+        subscribed(viewModel()).finishCapture(target, saved = false) { outcomes += it }
+
+        assertEquals(listOf<CaptureOutcome?>(null), outcomes)
+        coVerify { capture.discard(target) }
+        coVerify(exactly = 0) { capture.upload(any(), any(), any()) }
+    }
+
+    @Test
+    fun `a taken photo is uploaded for the selected account`() = runTest(dispatcher) {
+        val target = mockk<Uri>()
+        coEvery { capture.upload(target, "bob@h", any()) } returns CaptureOutcome.Queued("/Photos/2026/10/a.jpg")
+        val vm = subscribed(viewModel()).also { it.selectAccount("bob@h") }
+        val outcomes = mutableListOf<CaptureOutcome?>()
+
+        vm.finishCapture(target, saved = true) { outcomes += it }
+
+        assertEquals(listOf<CaptureOutcome?>(CaptureOutcome.Queued("/Photos/2026/10/a.jpg")), outcomes)
+        coVerify(exactly = 0) { capture.discard(any()) }
     }
 
     private fun backUpNowEvents(vm: DashboardViewModel) = mutableListOf<BackUpNowEvent>().also { events -> vm.backUpNow { events += it } }

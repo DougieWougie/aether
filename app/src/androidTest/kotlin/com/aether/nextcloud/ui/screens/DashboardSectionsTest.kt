@@ -9,7 +9,9 @@ import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -167,6 +169,66 @@ class DashboardSectionsTest {
         compose.show { TransfersSection(emptyList(), emptyList()) }
 
         compose.onNodeWithText(str(R.string.transfers_empty_title)).assertIsDisplayed()
+    }
+
+    /** A real JPEG on disk, as an upload's staged copy would be. */
+    private fun stagedPicture(name: String): java.io.File = java.io.File(context.cacheDir, name).also { file ->
+        val bitmap = android.graphics.Bitmap.createBitmap(64, 64, android.graphics.Bitmap.Config.ARGB_8888).apply { eraseColor(android.graphics.Color.MAGENTA) }
+        file.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, it) }
+    }
+
+    private fun openActiveGroup(rows: List<com.aether.nextcloud.data.local.entity.TransferEntity>) {
+        compose.show { TransfersSection(active = rows, recent = emptyList()) }
+        compose.onNodeWithText(context.resources.getQuantityString(R.plurals.transfers_active, rows.size, rows.size)).performClick()
+    }
+
+    @Test
+    fun anImageUploadShowsItsThumbnailInsteadOfTheIcon() {
+        val picture = stagedPicture("thumb_test.jpg")
+        try {
+            openActiveGroup(listOf(transfer("/Photos/shot.jpg", TransferState.QUEUED, sourcePath = picture.absolutePath, mimeType = "image/jpeg")))
+
+            compose.waitUntil(10_000) { compose.onAllNodesWithTag("transfer-thumbnail", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithTag("transfer-thumbnail", useUnmergedTree = true).assertIsDisplayed()
+            compose.onNodeWithText("shot.jpg").assertIsDisplayed()
+        } finally {
+            picture.delete()
+        }
+    }
+
+    @Test
+    fun aFileThatIsNotAnImageKeepsTheDirectionIcon() {
+        val text = java.io.File(context.cacheDir, "notes.txt").apply { writeText("hello") }
+        try {
+            openActiveGroup(listOf(transfer("/notes.txt", TransferState.QUEUED, sourcePath = text.absolutePath, mimeType = "text/plain")))
+
+            compose.onNodeWithText("notes.txt").assertIsDisplayed()
+            compose.onNodeWithContentDescription(str(R.string.transfer_upload)).assertIsDisplayed()
+            compose.onAllNodesWithTag("transfer-thumbnail", useUnmergedTree = true).assertCountEquals(0)
+        } finally {
+            text.delete()
+        }
+    }
+
+    @Test
+    fun anImageWhoseFileIsGoneFallsBackToTheIcon() {
+        openActiveGroup(listOf(transfer("/Photos/lost.jpg", TransferState.QUEUED, sourcePath = "/nonexistent/lost.jpg", mimeType = "image/jpeg")))
+
+        compose.onNodeWithText("lost.jpg").assertIsDisplayed()
+        compose.onNodeWithContentDescription(str(R.string.transfer_upload)).assertIsDisplayed()
+        compose.onAllNodesWithTag("transfer-thumbnail", useUnmergedTree = true).assertCountEquals(0)
+    }
+
+    @Test
+    fun anImageIsRecognisedByItsNameWhenTheTypeWasNotRecorded() {
+        val picture = stagedPicture("by_name.png")
+        try {
+            openActiveGroup(listOf(transfer("/Pictures/by_name.png", TransferState.QUEUED, sourcePath = picture.absolutePath)))
+
+            compose.waitUntil(10_000) { compose.onAllNodesWithTag("transfer-thumbnail", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+        } finally {
+            picture.delete()
+        }
     }
 
     @Test

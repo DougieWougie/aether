@@ -6,6 +6,7 @@ import android.content.Intent
 import android.net.Uri
 import java.io.File
 import android.provider.DocumentsContract
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
@@ -173,6 +174,79 @@ class DashboardActionsTest {
         launch()
         compose.onNodeWithText(str(R.string.tab_camera)).performClick()
         compose.waitUntil(10_000) { runCatching { compose.onNodeWithContentDescription(str(R.string.backup_now)).assertIsEnabled() }.isSuccess }
+    }
+
+    /** Plays the camera app: writes [photo] where it was asked to and answers OK, or answers cancelled when [photo] is null. */
+    private fun stubCamera(photo: ByteArray?) {
+        Intents.intending(hasAction(android.provider.MediaStore.ACTION_IMAGE_CAPTURE)).respondWithFunction { intent ->
+            if (photo == null) {
+                Instrumentation.ActivityResult(Activity.RESULT_CANCELED, null)
+            } else {
+                val target = androidx.core.content.IntentCompat.getParcelableExtra(intent, android.provider.MediaStore.EXTRA_OUTPUT, Uri::class.java)!!
+                context.contentResolver.openOutputStream(target)!!.use { it.write(photo) }
+                Instrumentation.ActivityResult(Activity.RESULT_OK, null)
+            }
+        }
+    }
+
+    private fun capturedRows() = context.contentResolver.query(
+        android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, arrayOf(android.provider.MediaStore.MediaColumns._ID),
+        "${android.provider.MediaStore.MediaColumns.DISPLAY_NAME} LIKE 'AETHER_%'", null, null,
+    )!!.use { it.count }
+
+    private fun removeCapturedRows() {
+        context.contentResolver.delete(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, "${android.provider.MediaStore.MediaColumns.DISPLAY_NAME} LIKE 'AETHER_%'", null)
+    }
+
+    @Test
+    fun theCameraTabsMainActionIsTakingAPhotoAndFilesStaysOneTapAway() {
+        launch()
+        compose.onNodeWithContentDescription(str(R.string.action_files)).assertIsDisplayed()
+        assertTrue(compose.onAllNodesWithContentDescription(str(R.string.action_take_photo)).fetchSemanticsNodes().isEmpty())
+
+        compose.onNodeWithText(str(R.string.tab_camera)).performClick()
+
+        compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription(str(R.string.action_take_photo)).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithContentDescription(str(R.string.action_files)).assertIsDisplayed()
+    }
+
+    @Test
+    fun takingAPhotoUploadsItToTheBackupFolder() {
+        val photo = ByteArray(3000) { (it * 11).toByte() }
+        stubCamera(photo)
+        try {
+            openCameraTab()
+
+            tap(R.string.action_take_photo)
+
+            compose.waitForText(str(R.string.capture_queued))
+            awaitTrue("the photo to reach the server", timeoutMs = 30_000) {
+                env.nextcloud.paths().any { it.startsWith("/Photos/Camera Uploads/") && it.endsWith(".jpg") }
+            }
+            val path = env.nextcloud.paths().single { it.startsWith("/Photos/Camera Uploads/") && it.endsWith(".jpg") }
+            assertTrue(env.nextcloud.bytes(path)!!.contentEquals(photo))
+        } finally {
+            removeCapturedRows()
+        }
+    }
+
+    @Test
+    fun cancellingTheCameraUploadsNothingAndLeavesNoPhotoBehind() {
+        stubCamera(null)
+        try {
+            openCameraTab()
+
+            tap(R.string.action_take_photo)
+
+            // The camera is launched once the photo's file has been reserved, a moment after the tap.
+            compose.waitUntil(10_000) { runCatching { Intents.intended(hasAction(android.provider.MediaStore.ACTION_IMAGE_CAPTURE)) }.isSuccess }
+            awaitTrue("the camera's empty file to be removed") { java.io.File(context.cacheDir, "captures").listFiles().orEmpty().isEmpty() }
+            assertEquals("no gallery copy either", 0, capturedRows())
+            Thread.sleep(1_000)
+            assertTrue(env.nextcloud.paths().none { it.endsWith(".jpg") })
+        } finally {
+            removeCapturedRows()
+        }
     }
 
     @Test

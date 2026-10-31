@@ -41,9 +41,11 @@ fun transfer(
     done: Long = 0,
     total: Long = -1,
     error: String? = null,
+    sourcePath: String? = null,
+    mimeType: String? = null,
 ) = TransferEntity(
     accountName = "alice@cloud.example.com", remotePath = path, direction = direction, state = state,
-    bytesTransferred = done, totalBytes = total, error = error, createdAt = System.currentTimeMillis(),
+    bytesTransferred = done, totalBytes = total, error = error, createdAt = System.currentTimeMillis(), sourcePath = sourcePath, mimeType = mimeType,
 )
 
 /**

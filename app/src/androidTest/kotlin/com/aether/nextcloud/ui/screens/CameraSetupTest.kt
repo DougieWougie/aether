@@ -35,7 +35,7 @@ class CameraSetupTest {
         scenario = ActivityScenario.launch(MainActivity::class.java)
         waitForText(str(R.string.tab_camera))
         compose.onNodeWithText(str(R.string.tab_camera)).performClick()
-        waitForText(str(R.string.camera_off))
+        waitForText(str(R.string.camera_off_body))
 
         compose.onNodeWithContentDescription(str(R.string.action_settings)).performClick()
 
@@ -51,13 +51,13 @@ class CameraSetupTest {
         scenario = ActivityScenario.launch(MainActivity::class.java)
         waitForText(str(R.string.tab_camera))
         compose.onNodeWithText(str(R.string.tab_camera)).performClick()
-        waitForText(str(R.string.camera_off))
+        waitForText(str(R.string.camera_off_body))
         compose.onNodeWithContentDescription(str(R.string.action_settings)).performClick()
         waitForText(str(R.string.backup_turn_on))
 
         androidx.test.espresso.Espresso.pressBack()
 
         compose.waitUntil(10_000) { compose.onAllNodesWithText(str(R.string.backup_turn_on)).fetchSemanticsNodes().isEmpty() }
-        compose.onNodeWithText(str(R.string.camera_off)).assertIsDisplayed()
+        compose.onNodeWithText(str(R.string.camera_off_body)).assertIsDisplayed()
     }
 }

@@ -16,6 +16,7 @@ import com.aether.nextcloud.core.AetherResult
 import com.aether.nextcloud.core.describe
 import com.aether.nextcloud.data.AvatarRepository
 import com.aether.nextcloud.data.BackupStats
+import com.aether.nextcloud.sync.BackupProgress
 import com.aether.nextcloud.data.CameraBackupStatsRepository
 import com.aether.nextcloud.data.DocumentRepository
 import com.aether.nextcloud.data.QuotaRepository
@@ -69,6 +70,8 @@ data class DashboardUiState(
     val lastBackupAt: Long? = null,
     val backupStats: BackupStats = BackupStats(),
     val backupRunning: Boolean = false,
+    val backupProgress: BackupProgress? = null,
+    val backupFailedCount: Int = 0,
     val storage: StorageUsage = StorageUsage(),
     val avatar: ImageBitmap? = null,
     /** Accounts the server rejected; the user has to sign in to them again. */
@@ -119,7 +122,8 @@ class DashboardViewModel @Inject constructor(
                 database.backedUpMediaDao().observeLastBackupAt(account.accountName),
                 settings.backup,
                 cameraStats.observe(account.accountName),
-            ) { count, last, backup, stats -> BackupData(count, last, backup, stats) }
+                database.transferDao().observeFailedBackupCount(account.accountName),
+            ) { count, last, backup, stats, failed -> BackupData(count, last, backup, stats, failed) }
         }
     }
 
@@ -143,12 +147,15 @@ class DashboardViewModel @Inject constructor(
             backedUpCount = backupData.count,
             lastBackupAt = backupData.lastBackupAt,
             backupStats = backupData.stats,
+            backupFailedCount = backupData.failed,
             backupRunning = extras.backupRunning,
             storage = extras.usage,
             avatar = extras.avatar?.takeIf { it.first == account?.accountName }?.second,
         )
     }.combine(authIssues.accounts) { ui, issues ->
         ui.copy(needsSignIn = ui.accounts.filter { it.accountName in issues })
+    }.combine(scheduler.observeBackupProgress()) { ui, progress ->
+        ui.copy(backupProgress = progress)
     }.combine(settings.directShareEnabled) { ui, directShare ->
         ui.copy(directShareEnabled = directShare)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DashboardUiState())
@@ -295,6 +302,7 @@ class DashboardViewModel @Inject constructor(
         val lastBackupAt: Long? = null,
         val backup: BackupSettings = BackupSettings(),
         val stats: BackupStats = BackupStats(),
+        val failed: Int = 0,
     )
 
     private class Extras(

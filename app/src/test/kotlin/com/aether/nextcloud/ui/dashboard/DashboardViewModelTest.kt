@@ -95,6 +95,7 @@ class DashboardViewModelTest {
         every { settings.recentFolders } returns flowOf(emptyList())
         every { cameraStats.observe(any()) } returns flowOf(BackupStats())
         every { scheduler.observeBackupRunning() } returns flowOf(false)
+        every { scheduler.observeBackupProgress() } returns flowOf(null)
         every { authIssues.accounts } returns issues
         every { diskCache.cacheSizeBytes() } returns 100
         every { diskCache.pinnedSizeBytes() } returns 200
@@ -109,6 +110,7 @@ class DashboardViewModelTest {
     private val transferDao = mockk<TransferDao> {
         every { observeActive() } returns active
         every { observeRecent(any()) } returns recent
+        every { observeFailedBackupCount(any()) } returns flowOf(0)
         every { clearCompleted(any()) } returns Unit
     }
 

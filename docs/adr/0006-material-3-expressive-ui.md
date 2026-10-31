@@ -111,3 +111,14 @@ This supersedes the 2026-10-21 note on the "Open in System Files" FAB and the 20
 - **Settings are grouped by question:** what to back up (albums, include videos), where it goes (account, destination folder), when to back up (Wi-Fi only, charging only). The toggles are whole-row switches, not chips, because a chip row could not say "Videos" is a content choice and not a condition.
 - **The tile summarises the settings as plain text** (albums, then the Wi-Fi / charging / videos rules) rather than pill chips, so nothing on the tile looks tappable unless it is. The tile's "Open Photos" text button replaces the hidden tap-the-header gallery shortcut.
 - **The destination folder saves when the field loses focus or the sheet closes**, not only on the keyboard's Done.
+
+## Implementation notes: Compact Camera tile (2026-10-31)
+
+The tile was a tall card (a 96sp storage figure, a spinning badge, album and rule summaries, the photos/videos split, a last-backup line) that mostly repeated the Storage hero and the settings sheet. It is now one status row.
+
+- **One row, about 72dp:** a small camera icon, the title, one status line and the switch (the settings icon button stays). Tapping the title area opens the settings sheet. The surface uses `shapes.extraLarge` rather than the hero shape, which only suits a tall card.
+- **The status line says what backup is doing:** "Back up new photos and videos automatically." (off), "Backup paused", "Backing up 4 of 12", "Up to date · 2 min ago", or "Waiting for new photos" before the first upload.
+- **Progress is real.** `CameraBackupWorker` counts the items it will upload (those not yet in the backed-up log) and calls `setProgress` after each one, finished or failed. `SyncScheduler.observeBackupProgress` exposes it, and the tile draws a determinate `LinearProgressIndicator` while a run is going (indeterminate until the count arrives). Runs with nothing to upload no longer start a foreground service.
+- **Problems show only when there is one, each with its action:** the missing photo permission ("Allow access to photos and videos") and failed items ("N items couldn't be backed up" → View, which switches to the Transfers tab where Retry failed lives). The failed count is `TransferDao.observeFailedBackupCount`, camera-backup rows only.
+- **Details moved into the settings sheet:** a "Details" card at the top (folder size on the server, the photos/videos split, Open Photos). Album and Wi-Fi/charging/video summaries left the tile, since the sheet already shows them.
+- **Not done:** a "Waiting for Wi-Fi / charging" reason. WorkManager keeps the content-trigger job enqueued while idle, so there is no signal that distinguishes "blocked by a constraint" from "nothing to upload".

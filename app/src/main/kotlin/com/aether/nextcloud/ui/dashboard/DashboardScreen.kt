@@ -200,7 +200,7 @@ fun DashboardScreen(
                                     }
                                 },
                             )
-                            DashboardTab.Camera -> CameraSection(state, cameraSettingsOpen, { cameraSettingsOpen = it }, cameraBackup::setEnabled)
+                            DashboardTab.Camera -> CameraSection(state, cameraSettingsOpen, { cameraSettingsOpen = it }, cameraBackup::setEnabled, { viewModel.selectTab(DashboardTab.Transfers) })
                         }
                     }
                 }

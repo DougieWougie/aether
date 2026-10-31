@@ -96,7 +96,7 @@ class AppFlowTest {
         waitForText(str(R.string.pinned_empty_title))
 
         compose.onNodeWithText(str(R.string.tab_camera)).performClick()
-        waitForText(str(R.string.camera_off))
+        waitForText(str(R.string.camera_off_body))
         compose.onNodeWithContentDescription(str(R.string.action_settings)).assertIsDisplayed()
 
         compose.onNodeWithText(str(R.string.tab_transfers)).performClick()
@@ -115,7 +115,7 @@ class AppFlowTest {
         compose.onNodeWithText(str(R.string.pinned_empty_title)).assertIsDisplayed()
 
         compose.onRoot().performTouchInput { swipeLeft() }
-        waitForText(str(R.string.camera_off))
+        waitForText(str(R.string.camera_off_body))
 
         compose.onRoot().performTouchInput { swipeLeft() }
         waitForText(str(R.string.transfers_empty_title))
@@ -124,7 +124,7 @@ class AppFlowTest {
         compose.onNodeWithText(str(R.string.transfers_empty_title)).assertIsDisplayed()
 
         compose.onRoot().performTouchInput { swipeRight() }
-        waitForText(str(R.string.camera_off))
+        waitForText(str(R.string.camera_off_body))
     }
 
     @Test

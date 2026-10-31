@@ -41,6 +41,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SheetValue
+import androidx.compose.material3.Surface
+import androidx.compose.material3.TextButton
+import android.text.format.Formatter
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberBottomSheetState
@@ -136,6 +140,7 @@ fun CameraBackupSettings(modifier: Modifier = Modifier, viewModel: CameraBackupV
     val availableAlbums by viewModel.albums.collectAsStateWithLifecycle()
     val colors = MaterialTheme.colorScheme
     val toggle = rememberBackupToggle(settings.enabled, viewModel::setEnabled)
+    val context = LocalContext.current
 
     if (showAlbums) {
         AlbumSheet(
@@ -157,6 +162,8 @@ fun CameraBackupSettings(modifier: Modifier = Modifier, viewModel: CameraBackupV
         if (toggle.permissionDenied) {
             Text(stringResource(R.string.backup_permission_needed), style = MaterialTheme.typography.bodyMedium, color = colors.error)
         }
+
+        if (settings.enabled) BackupDetails(state, onOpenPhotos = { openPhotos(context) })
 
         SectionTitle(R.string.backup_section_what)
         AlbumChips(settings.albums, onClick = { viewModel.loadAlbums(); showAlbums = true })
@@ -235,4 +242,27 @@ private fun SwitchRow(label: String, icon: ImageVector, checked: Boolean, onChan
         colors = ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
         modifier = Modifier.toggleable(value = checked, role = Role.Switch, onValueChange = onChange),
     ) { Text(label) }
+}
+
+/** What has been backed up: the folder's size on the server, the photos/videos split and a way to see the photos. */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun BackupDetails(state: CameraBackupUiState, onOpenPhotos: () -> Unit) {
+    val context = LocalContext.current
+    val colors = MaterialTheme.colorScheme
+    val stats = state.stats
+    Surface(shape = MaterialTheme.shapes.extraLarge, color = colors.tertiaryContainer, contentColor = colors.onTertiaryContainer, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(stringResource(R.string.backup_details_title), style = MaterialTheme.typography.labelLargeEmphasized)
+            // The server's folder size also counts photos other devices put there; fall back to this phone's total until it arrives.
+            Text(Formatter.formatShortFileSize(context, stats.serverBytes ?: stats.localBytes), style = MaterialTheme.typography.headlineMediumEmphasized)
+            Text(
+                if (stats.serverBytes != null) stringResource(R.string.camera_in_folder, state.settings.remoteFolder)
+                else pluralStringResource(R.plurals.camera_items_on_phone, stats.totalCount, stats.totalCount),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            if (stats.totalCount > 0) MediaSplit(stats)
+            TextButton(onClick = onOpenPhotos) { Text(stringResource(R.string.camera_open_photos)) }
+        }
+    }
 }

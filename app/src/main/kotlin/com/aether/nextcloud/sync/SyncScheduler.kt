@@ -25,6 +25,9 @@ class SyncScheduler @Inject constructor(@ApplicationContext private val context:
     /** Emits true only while a camera backup run is executing, not merely while backup is enabled. */
     fun observeBackupRunning(): Flow<Boolean> = CameraBackupWorker.observeRunning(context)
 
+    /** How far the running backup is; null when idle or before it has counted what to upload. */
+    fun observeBackupProgress(): Flow<BackupProgress?> = CameraBackupWorker.observeProgress(context)
+
     fun applyPinnedSync(settings: SyncSettings) = PinnedSyncWorker.schedulePeriodic(context, settings.pinnedSyncUnmeteredOnly)
 
     fun backUpNow() {

@@ -18,9 +18,9 @@ import com.aether.nextcloud.data.BackupStats
 import com.aether.nextcloud.data.local.entity.DocumentEntity
 import com.aether.nextcloud.data.local.entity.TransferDirection
 import com.aether.nextcloud.data.local.entity.TransferState
-import com.aether.nextcloud.data.prefs.BackupAlbum
 import com.aether.nextcloud.data.prefs.BackupSettings
 import com.aether.nextcloud.dav.UserInfo
+import com.aether.nextcloud.sync.BackupProgress
 import com.aether.nextcloud.ui.dashboard.CameraSection
 import com.aether.nextcloud.ui.dashboard.DashboardUiState
 import com.aether.nextcloud.ui.dashboard.PinnedSection
@@ -28,6 +28,7 @@ import com.aether.nextcloud.ui.dashboard.StorageHero
 import com.aether.nextcloud.ui.dashboard.StorageUsage
 import com.aether.nextcloud.ui.dashboard.TransfersSection
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -239,28 +240,39 @@ class DashboardSectionsTest {
     fun cameraBackupThatIsOffInvitesSetup() {
         compose.show { CameraSection(DashboardUiState()) }
 
-        compose.onNodeWithText(str(R.string.camera_off)).assertIsDisplayed()
+        compose.onNodeWithText(str(R.string.camera_off_body)).assertIsDisplayed()
         compose.onNodeWithContentDescription(str(R.string.action_settings)).assertIsDisplayed()
         compose.onNode(isToggleable() and hasContentDescription(str(R.string.camera_title))).assertIsOff()
     }
 
     @Test
-    fun cameraBackupThatIsOnShowsProgressAlbumsAndTheSplit() {
+    fun cameraBackupThatIsOnIsOneStatusLine() {
         val state = DashboardUiState(
-            backup = BackupSettings(enabled = true, accountName = alice.accountName, remoteFolder = "/Photos", albums = listOf(BackupAlbum(1, "Camera"), BackupAlbum(2, "Screenshots"))),
-            backupStats = BackupStats(photoCount = 3, photoBytes = 3_000_000, videoCount = 1, videoBytes = 9_000_000, serverBytes = 20_000_000),
+            backup = BackupSettings(enabled = true, accountName = alice.accountName, remoteFolder = "/Photos"),
+            backupStats = BackupStats(photoCount = 3, photoBytes = 3_000_000, serverBytes = 20_000_000),
             lastBackupAt = System.currentTimeMillis() - 60_000,
         )
         compose.show { CameraSection(state) }
 
-        compose.onNodeWithText(str(R.string.camera_backing_up)).assertIsDisplayed()
-        compose.onNodeWithText(str(R.string.camera_in_folder, "/Photos")).assertIsDisplayed()
-        compose.onNodeWithText("Camera, Screenshots").assertIsDisplayed()
+        compose.onNodeWithText("Up to date", substring = true).assertIsDisplayed()
         compose.onNode(isToggleable() and hasContentDescription(str(R.string.camera_title))).assertIsOn()
-        compose.onNodeWithText(context.resources.getQuantityString(R.plurals.backup_photos_legend, 3, 3, android.text.format.Formatter.formatShortFileSize(context, 3_000_000))).assertIsDisplayed()
-        compose.onNodeWithText(context.resources.getQuantityString(R.plurals.backup_videos_legend, 1, 1, android.text.format.Formatter.formatShortFileSize(context, 9_000_000))).assertIsDisplayed()
         compose.onNodeWithContentDescription(str(R.string.action_settings)).assertIsDisplayed()
-        compose.onNodeWithText(str(R.string.camera_open_photos)).assertIsDisplayed()
+        // The numbers, albums and the split live in the settings sheet, not the tile.
+        compose.onNodeWithText(str(R.string.camera_in_folder, "/Photos")).assertDoesNotExist()
+        compose.onNodeWithText(str(R.string.albums_all)).assertDoesNotExist()
+        compose.onNodeWithText(str(R.string.camera_open_photos)).assertDoesNotExist()
+    }
+
+    @Test
+    fun aRunningBackupShowsHowFarItIs() {
+        val state = DashboardUiState(
+            backup = BackupSettings(enabled = true, accountName = alice.accountName),
+            backupRunning = true,
+            backupProgress = BackupProgress(done = 4, total = 12),
+        )
+        compose.show { CameraSection(state) }
+
+        compose.onNodeWithText(str(R.string.camera_progress, 4, 12)).assertIsDisplayed()
     }
 
     @Test
@@ -268,15 +280,31 @@ class DashboardSectionsTest {
         compose.show { CameraSection(DashboardUiState(backup = BackupSettings(enabled = true, accountName = alice.accountName))) }
 
         compose.onNodeWithText(str(R.string.camera_waiting)).assertIsDisplayed()
-        compose.onNodeWithText(str(R.string.albums_all)).assertIsDisplayed()
     }
 
     @Test
-    fun moreThanThreeAlbumsAreSummarisedWithAPlusCount() {
-        val albums = (1L..5L).map { BackupAlbum(it, "Album$it") }
-        compose.show { CameraSection(DashboardUiState(backup = BackupSettings(enabled = true, accountName = alice.accountName, albums = albums))) }
+    fun aPausedBackupSaysSo() {
+        compose.show { CameraSection(DashboardUiState(backup = BackupSettings(enabled = true, accountName = alice.accountName, paused = true))) }
 
-        compose.onNodeWithText("Album1, Album2, Album3 +2").assertIsDisplayed()
+        compose.onNodeWithText(str(R.string.camera_paused)).assertIsDisplayed()
+    }
+
+    @Test
+    fun failedItemsGetARowThatLeadsToTransfers() {
+        var shown = false
+        val state = DashboardUiState(backup = BackupSettings(enabled = true, accountName = alice.accountName), backupFailedCount = 3)
+        compose.show { CameraSection(state, onShowTransfers = { shown = true }) }
+
+        compose.onNodeWithText(context.resources.getQuantityString(R.plurals.camera_failed, 3, 3)).assertIsDisplayed()
+        compose.onNodeWithText(str(R.string.camera_failed_view)).performClick()
+        assertTrue(shown)
+    }
+
+    @Test
+    fun noFailureRowWhenNothingFailed() {
+        compose.show { CameraSection(DashboardUiState(backup = BackupSettings(enabled = true, accountName = alice.accountName))) }
+
+        compose.onNodeWithText(str(R.string.camera_failed_view)).assertDoesNotExist()
     }
 
     // endregion

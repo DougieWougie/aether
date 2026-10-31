@@ -55,6 +55,9 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
+/** A running camera backup's progress: [done] of [total] items finished. */
+data class BackupProgress(val done: Int, val total: Int)
+
 /**
  * Uploads new photos and videos from MediaStore to `<folder>/YYYY/MM/`. Woken by `ContentUriTriggers` (and a periodic
  * safety net); each run scans for items added since backup was enabled that are not yet in [BackedUpMediaEntity].
@@ -102,15 +105,17 @@ class CameraBackupWorker @AssistedInject constructor(
     }
 
     private suspend fun backUpNewMedia(settings: BackupSettings, credentials: AetherCredentials): Result {
-        val items = withContext(Dispatchers.IO) { queryNewMedia(settings) }
+        val items = withContext(Dispatchers.IO) {
+            queryNewMedia(settings).filter { database.backedUpMediaDao().find(credentials.accountName, it.id, it.isVideo) == null }
+        }
         if (items.isEmpty()) return Result.success(workDataOf(KEY_ATTEMPTED to 0))
         runCatching { setForeground(getForegroundInfo()) } // not allowed for background-started runs; best effort
+        setProgress(workDataOf(KEY_DONE to 0, KEY_TOTAL to items.size))
 
         val dav = davFactory.forAccount(credentials)
         val createdDirectories = HashSet<String>()
         var attempted = 0
         for (item in items) {
-            if (database.backedUpMediaDao().find(credentials.accountName, item.id, item.isVideo) != null) continue
             attempted++
             when (val outcome = backUp(item, dav, credentials, settings, createdDirectories)) {
                 is AetherResult.Success -> Unit
@@ -125,6 +130,7 @@ class CameraBackupWorker @AssistedInject constructor(
                     else -> recordFailure(credentials, item, settings, error)
                 }
             }
+            setProgress(workDataOf(KEY_DONE to attempted, KEY_TOTAL to items.size))
         }
         return Result.success(workDataOf(KEY_ATTEMPTED to attempted))
     }
@@ -273,6 +279,9 @@ class CameraBackupWorker @AssistedInject constructor(
         private const val NOW_NAME = "camera-backup-now"
         /** Output of a run: how many items it tried to upload (not counting ones already backed up). */
         private const val KEY_ATTEMPTED = "attempted"
+        /** Progress of a run: items finished (uploaded or failed) out of the items it found to upload. */
+        private const val KEY_DONE = "done"
+        private const val KEY_TOTAL = "total"
 
         fun hasMediaPermission(context: Context): Boolean {
             val permissions = when {
@@ -346,6 +355,21 @@ class CameraBackupWorker @AssistedInject constructor(
                 manager.getWorkInfosForUniqueWorkFlow(PERIODIC_NAME),
                 manager.getWorkInfosForUniqueWorkFlow(NOW_NAME),
             ) { trigger, periodic, now -> (trigger + periodic + now).any { it.state == WorkInfo.State.RUNNING } }.distinctUntilChanged()
+        }
+
+        /** How far the running backup is, or null when none is running or it has not counted its items yet. */
+        fun observeProgress(context: Context): Flow<BackupProgress?> {
+            val manager = WorkManager.getInstance(context)
+            return combine(
+                manager.getWorkInfosForUniqueWorkFlow(TRIGGER_NAME),
+                manager.getWorkInfosForUniqueWorkFlow(PERIODIC_NAME),
+                manager.getWorkInfosForUniqueWorkFlow(NOW_NAME),
+            ) { trigger, periodic, now ->
+                (trigger + periodic + now).firstOrNull { it.state == WorkInfo.State.RUNNING }?.progress?.let { data ->
+                    val total = data.getInt(KEY_TOTAL, 0)
+                    if (total > 0) BackupProgress(data.getInt(KEY_DONE, 0), total) else null
+                }
+            }.distinctUntilChanged()
         }
 
         fun cancel(context: Context) {

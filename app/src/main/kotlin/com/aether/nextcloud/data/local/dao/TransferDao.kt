@@ -44,6 +44,10 @@ interface TransferDao {
     @Query("DELETE FROM transfers WHERE (state = 'FAILED' AND updatedAt < :failedBefore) OR (state NOT IN ('QUEUED', 'RUNNING', 'FAILED') AND updatedAt < :finishedBefore)")
     fun pruneFinished(finishedBefore: Long, failedBefore: Long)
 
+    /** Camera backup items that failed to upload; they stay until a retry gets them up. */
+    @Query("SELECT COUNT(*) FROM transfers WHERE accountName = :account AND state = 'FAILED' AND mediaKey IS NOT NULL")
+    fun observeFailedBackupCount(account: String): Flow<Int>
+
     @Query("DELETE FROM transfers WHERE accountName = :account AND mediaKey = :mediaKey")
     fun deleteForMedia(account: String, mediaKey: String)
 

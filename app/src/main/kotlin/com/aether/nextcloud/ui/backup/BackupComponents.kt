@@ -22,6 +22,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
+import android.widget.Toast
 import com.aether.nextcloud.data.BackupStats
 
 /** Photos against videos as uploaded from this phone, with a legend so the split never relies on colour alone. */
@@ -52,5 +56,15 @@ private fun Legend(swatch: Color, text: String) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Box(Modifier.size(10.dp).clip(CircleShape).background(swatch))
         Text(text, style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+/** Opens the phone's default gallery app, so the photos being backed up are one tap away. */
+fun openPhotos(context: Context) {
+    val intent = Intent.makeMainSelectorActivity(Intent.ACTION_MAIN, Intent.CATEGORY_APP_GALLERY).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    try {
+        context.startActivity(intent)
+    } catch (_: ActivityNotFoundException) {
+        Toast.makeText(context, R.string.camera_no_gallery, Toast.LENGTH_SHORT).show()
     }
 }

@@ -104,6 +104,10 @@ class CameraSettingsFlowTest {
         compose.waitUntil(10_000) { runCatching { compose.onAllNodes(checkbox, useUnmergedTree = true).fetchSemanticsNodes().size == 1 }.getOrDefault(false) }
     }
 
+    private fun awaitSwitchOn() = compose.waitUntil(10_000) {
+        compose.onAllNodes(isToggleable() and hasContentDescription(str(R.string.camera_title)) and isOn()).fetchSemanticsNodes().isNotEmpty()
+    }
+
     private fun tileSwitch() = compose.onNode(isToggleable() and hasContentDescription(str(R.string.camera_title)))
 
     @Test
@@ -114,11 +118,11 @@ class CameraSettingsFlowTest {
         awaitTrue("backup to turn on") { backup().enabled }
         assertEquals(env.accountName, backup().accountName)
 
-        compose.waitForText(str(R.string.camera_backing_up))
+        awaitSwitchOn()
         tileSwitch().performSemanticsAction(SemanticsActions.OnClick)
 
         awaitTrue("backup to turn off") { !backup().enabled }
-        compose.waitForText(str(R.string.camera_off))
+        compose.waitForText(str(R.string.camera_off_body))
     }
 
     @Test
@@ -129,7 +133,7 @@ class CameraSettingsFlowTest {
 
         awaitTrue("backup to turn on") { backup().enabled }
         compose.waitUntil(10_000) { compose.onAllNodesWithText(str(R.string.backup_settings_title)).fetchSemanticsNodes().isEmpty() }
-        compose.waitForText(str(R.string.camera_backing_up))
+        awaitSwitchOn()
     }
 
     @Test

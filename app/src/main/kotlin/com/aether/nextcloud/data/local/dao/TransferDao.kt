@@ -2,6 +2,7 @@ package com.aether.nextcloud.data.local.dao
 
 import androidx.room.Dao
 import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import com.aether.nextcloud.data.local.entity.TransferEntity
 import com.aether.nextcloud.data.local.entity.TransferState
@@ -50,6 +51,13 @@ interface TransferDao {
 
     @Query("DELETE FROM transfers WHERE accountName = :account AND mediaKey = :mediaKey")
     fun deleteForMedia(account: String, mediaKey: String)
+
+    @Query("SELECT * FROM transfers WHERE accountName = :account AND state = 'COMPLETED'")
+    fun completed(account: String): List<TransferEntity>
+
+    /** Puts back rows removed by [clearCompleted]. */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun restore(rows: List<TransferEntity>)
 
     @Query("DELETE FROM transfers WHERE accountName = :account AND state = 'COMPLETED'")
     fun clearCompleted(account: String)

@@ -178,7 +178,7 @@ com.aether.nextcloud/
 - Always annotate composables using expressive APIs with `@OptIn(ExperimentalMaterial3ExpressiveApi::class)`.
 - Use `MaterialTheme.motionScheme.defaultSpatialSpec()` / `fastSpatialSpec()` for layout, expansion, and shape morphing animations—**never** use hardcoded `tween()` where a spring spec belongs.
 - Use `LoadingIndicator` / `ContainedLoadingIndicator` instead of legacy `CircularProgressIndicator` where appropriate.
-- Include an **"Open in System Files"** primary action on the Dashboard, as the FAB of a `HorizontalFloatingToolbar` (always expanded; the tab's own actions sit beside it, and section navigation lives in a `ShortNavigationBar`). On the Camera tab the FAB is **Take photo** instead, and Open in System Files moves in beside the other Camera actions. The Files FAB launches `Intent(Intent.ACTION_VIEW)` with `DocumentsContract.buildRootUri(AUTHORITY, accountRootId)`.
+- Include an **"Open in System Files"** primary action on the Dashboard, as the FAB of a `HorizontalFloatingToolbar` (always expanded; the tab's own actions sit beside it, and section navigation lives in a `ShortNavigationBar`). On the Camera tab the FAB is **Take photo** instead, and on the Transfers tab it is **Sync now**; on both, Open in System Files moves in beside the tab's other actions. The Files FAB launches `Intent(Intent.ACTION_VIEW)` with `DocumentsContract.buildRootUri(AUTHORITY, accountRootId)`.
 
 ---
 

@@ -109,6 +109,8 @@ fun DashboardScreen(
     val viewLabel = stringResource(R.string.camera_failed_view)
     val noCameraMessage = stringResource(R.string.capture_no_camera)
     val captureFailedMessage = stringResource(R.string.capture_failed)
+    val syncStartedMessage = stringResource(R.string.transfers_sync_started)
+    val nothingToSyncMessage = stringResource(R.string.transfers_nothing_to_sync)
     fun showMessage(message: String, action: String? = null, onAction: () -> Unit = {}) {
         scope.launch {
             snackbars.currentSnackbarData?.dismiss()
@@ -207,7 +209,16 @@ fun DashboardScreen(
                         }
                     },
                     onTogglePauseBackup = { viewModel.setBackupPaused(!state.backup.paused) },
-                    onClearFinished = viewModel::clearFinishedTransfers,
+                    onClearFinished = {
+                        viewModel.clearFinishedTransfers { cleared ->
+                            showMessage(resources.getQuantityString(R.plurals.transfers_cleared, cleared.size, cleared.size), undoLabel) {
+                                viewModel.restoreTransfers(cleared)
+                            }
+                        }
+                    },
+                    onSyncTransfers = {
+                        viewModel.syncNow { started -> showMessage(if (started) syncStartedMessage else nothingToSyncMessage) }
+                    },
                     onOpenFiles = openFiles,
                     onTakePhoto = takePhoto,
                 )

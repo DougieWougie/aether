@@ -67,7 +67,7 @@ import kotlinx.coroutines.withContext
 import com.aether.nextcloud.AetherConstants
 
 /**
- * The dashboard's floating toolbar: "Files" is the FAB on the Pinned and Transfers tabs, "Take photo" on Camera (where Files
+ * The dashboard's floating toolbar: "Files" is the FAB on the Pinned tab, "Take photo" on Camera and "Sync now" on Transfers (where Files
  * becomes one of the actions beside it). The actions beside the FAB belong to the tab showing; on Camera the pause button
  * turns into Resume while backup is paused.
  */
@@ -90,16 +90,21 @@ internal fun DashboardToolbar(
     onClearFinished: () -> Unit,
     onOpenFiles: () -> Unit,
     onTakePhoto: () -> Unit,
+    onSyncTransfers: () -> Unit,
 ) {
     HorizontalFloatingToolbar(
         expanded = true,
         floatingActionButton = {
-            // Camera's main action is taking a photo; Files moves in beside the other Camera actions.
-            val camera = tab == DashboardTab.Camera
-            val label = stringResource(if (camera) R.string.action_take_photo else R.string.action_files)
-            ToolbarTooltip(label) {
-                FloatingToolbarDefaults.VibrantFloatingActionButton(onClick = if (camera) onTakePhoto else onOpenFiles) {
-                    Icon(if (camera) Icons.Outlined.PhotoCamera else Icons.Outlined.FolderOpen, contentDescription = label)
+            // Camera's main action is taking a photo and Transfers' is syncing; Files moves in beside those tabs' other actions.
+            val (label, icon, onClick) = when (tab) {
+                DashboardTab.Camera -> Triple(R.string.action_take_photo, Icons.Outlined.PhotoCamera, onTakePhoto)
+                DashboardTab.Transfers -> Triple(R.string.sync_now, Icons.Outlined.Sync, onSyncTransfers)
+                DashboardTab.Pinned -> Triple(R.string.action_files, Icons.Outlined.FolderOpen, onOpenFiles)
+            }
+            val text = stringResource(label)
+            ToolbarTooltip(text) {
+                FloatingToolbarDefaults.VibrantFloatingActionButton(onClick = onClick) {
+                    Icon(icon, contentDescription = text)
                 }
             }
         },
@@ -124,6 +129,7 @@ internal fun DashboardToolbar(
             DashboardTab.Transfers -> {
                 ToolbarAction(R.string.transfers_retry_failed, Icons.Outlined.Replay, onRetryFailed, enabled = canRetryFailed)
                 ToolbarAction(R.string.transfers_clear_finished, Icons.Outlined.ClearAll, onClearFinished, enabled = canClearFinished)
+                ToolbarAction(R.string.action_files, Icons.Outlined.FolderOpen, onOpenFiles)
             }
         }
     }

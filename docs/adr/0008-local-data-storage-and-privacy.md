@@ -36,3 +36,11 @@ Signing out removes all of the above for that account (ADR-0003, implementation 
 - **Positive:** No key management; a smaller dependency set; one clear statement of what is on the device.
 - **Negative:** A device with file-based encryption defeated (unlocked device, rooted device, or a forensic image taken while unlocked) exposes file names, album names and cached content. Users who need more should rely on device encryption and a screen lock.
 - **Negative:** App-password entries in Nextcloud lose the phone model.
+
+## Implementation notes: photo location in camera backup (2026-11-14)
+
+MediaStore redacts EXIF GPS location (it zeroes the tags) from every photo and video it hands to an app that does not own the file, unless the app holds `ACCESS_MEDIA_LOCATION` and opens the item with `MediaStore.setRequireOriginal`. Camera backup had neither, so every backed-up photo from the camera app arrived on the server without its location. Reproduced on an API 36 emulator: the uploaded latitude read `0/1,0/1,0/1`.
+
+- **Permission.** `ACCESS_MEDIA_LOCATION` is declared and requested in the same prompt as the photo permission (`rememberBackupToggle`). Only the photo permissions decide whether backup can run; being denied the location permission does not stop or disable backup.
+- **Opening.** `ContentUriUploadSource` opens MediaStore items with `setRequireOriginal` first. If that is refused (`UnsupportedOperationException` or `SecurityException`, i.e. the permission was not granted) it falls back to the plain, redacted stream, so the photo still uploads, just without its location, as before. The redacted and original streams have the same length, so the size and SHA-1 checks are unaffected.
+- **Privacy note.** Backing up the original means the server now receives the user's photo locations. That is what a backup is for and matches what the camera app wrote, and the permission is requested explicitly. Aether reads the location only to copy the bytes; it does not parse or store it.

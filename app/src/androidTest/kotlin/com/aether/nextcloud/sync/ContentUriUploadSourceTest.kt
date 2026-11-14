@@ -45,6 +45,19 @@ class ContentUriUploadSourceTest {
         stream.close()
     }
 
+    /** Without ACCESS_MEDIA_LOCATION the resolver refuses the original; the item must still upload, from the redacted stream. */
+    @Test
+    fun whenTheOriginalIsRefusedItFallsBackToTheRedactedBytes() {
+        val item = media.photo("fallback.jpg", bytes)
+        var asked = 0
+        val refusing = { _: android.net.Uri -> asked++; throw UnsupportedOperationException("Caller must hold ACCESS_MEDIA_LOCATION") }
+
+        val read = ContentUriUploadSource(context.contentResolver, item.uri, bytes.size.toLong(), null, requireOriginal = refusing).open(0).use { it.readBytes() }
+
+        assertArrayEquals(bytes, read)
+        assertEquals("the original was asked for first", 1, asked)
+    }
+
     @Test
     fun anItemThatIsGoneCannotBeOpened() {
         val item = media.photo("gone.jpg", bytes)

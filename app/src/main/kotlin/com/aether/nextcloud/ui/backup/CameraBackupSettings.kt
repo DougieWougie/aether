@@ -79,6 +79,9 @@ private val mediaPermissions: Array<String> = when {
     else -> arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
 }
 
+/** Asked together with the photo permission so backed-up photos keep their location; only the photo permissions decide whether backup can run. */
+private val requestedPermissions: Array<String> = mediaPermissions + Manifest.permission.ACCESS_MEDIA_LOCATION
+
 private fun hasMediaPermission(context: Context) = mediaPermissions.any { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }
 
 /** The camera backup on/off switch and the photo-permission flow behind it, shared by the tile and the settings sheet. */
@@ -101,7 +104,7 @@ fun rememberBackupToggle(enabled: Boolean, onSetEnabled: (Boolean) -> Unit): Bac
     val setEnabled by rememberUpdatedState(onSetEnabled)
     val request = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted ->
         // Partial photo access ("selected photos") still counts: backup then uploads what the user shared with Aether.
-        val ok = granted.values.any { it }
+        val ok = mediaPermissions.any { granted[it] == true }
         denied = !ok
         hasPermission = ok
         if (ok) {
@@ -112,8 +115,8 @@ fun rememberBackupToggle(enabled: Boolean, onSetEnabled: (Boolean) -> Unit): Bac
     return BackupToggle(
         hasPermission = hasPermission,
         permissionDenied = denied,
-        onToggle = { on -> if (on) request.launch(mediaPermissions) else { denied = false; setEnabled(false) } },
-        requestAccess = { request.launch(mediaPermissions) },
+        onToggle = { on -> if (on) request.launch(requestedPermissions) else { denied = false; setEnabled(false) } },
+        requestAccess = { request.launch(requestedPermissions) },
     )
 }
 

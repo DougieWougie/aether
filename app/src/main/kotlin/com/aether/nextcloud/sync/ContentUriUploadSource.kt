@@ -2,6 +2,8 @@ package com.aether.nextcloud.sync
 
 import android.content.ContentResolver
 import android.net.Uri
+import android.os.ParcelFileDescriptor
+import android.provider.MediaStore
 import com.aether.nextcloud.dav.Checksums
 import com.aether.nextcloud.dav.UploadSource
 import com.aether.nextcloud.dav.skipFully
@@ -18,9 +20,11 @@ class ContentUriUploadSource(
     override val length: Long,
     override val lastModified: Long?,
     override val checksum: String? = null,
+    /** Turns the item into one that is not redacted; fails when ACCESS_MEDIA_LOCATION is missing. Replaceable so tests can refuse. */
+    private val requireOriginal: (Uri) -> Uri = MediaStore::setRequireOriginal,
 ) : UploadSource {
     override fun open(offset: Long): InputStream {
-        val descriptor = resolver.openFileDescriptor(uri, "r") ?: throw FileNotFoundException("Cannot open $uri")
+        val descriptor = openOriginal() ?: resolver.openFileDescriptor(uri, "r") ?: throw FileNotFoundException("Cannot open $uri")
         try {
             val input = FileInputStream(descriptor.fileDescriptor)
             if (offset > 0) {
@@ -45,6 +49,21 @@ class ContentUriUploadSource(
         }
     }
 
+    /**
+     * MediaStore items are redacted (GPS location is zeroed) unless the caller holds ACCESS_MEDIA_LOCATION and asks for the
+     * original. Null when this is not a MediaStore item or the permission is missing, so the caller falls back to the redacted bytes.
+     */
+    private fun openOriginal(): ParcelFileDescriptor? {
+        if (uri.authority != MediaStore.AUTHORITY) return null
+        return try {
+            resolver.openFileDescriptor(requireOriginal(uri), "r")
+        } catch (_: UnsupportedOperationException) {
+            null
+        } catch (_: SecurityException) {
+            null
+        }
+    }
+
     /** Reads the whole item to hash it; run off the main thread. */
-    fun withChecksum(): ContentUriUploadSource = ContentUriUploadSource(resolver, uri, length, lastModified, open(0).use(Checksums::sha1))
+    fun withChecksum(): ContentUriUploadSource = ContentUriUploadSource(resolver, uri, length, lastModified, open(0).use(Checksums::sha1), requireOriginal)
 }

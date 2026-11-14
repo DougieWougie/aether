@@ -14,6 +14,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -59,6 +60,50 @@ class CameraBackupWorkerTest {
     private fun uploaded(): List<String> = env.nextcloud.paths().filter { it.startsWith("$folder/") && it.count { c -> c == '/' } == 5 }
 
     private fun bytes(seed: Int, size: Int = 2048) = ByteArray(size) { (it * seed).toByte() }
+
+    /** A small JPEG tagged with a GPS position, as a camera app would write it. */
+    private fun geotaggedJpeg(): ByteArray {
+        val file = java.io.File.createTempFile("geo", ".jpg", app.cacheDir)
+        try {
+            file.outputStream().use { out ->
+                android.graphics.Bitmap.createBitmap(64, 64, android.graphics.Bitmap.Config.ARGB_8888).compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, out)
+            }
+            android.media.ExifInterface(file.absolutePath).apply {
+                setAttribute(android.media.ExifInterface.TAG_GPS_LATITUDE, "51/1,30/1,0/1")
+                setAttribute(android.media.ExifInterface.TAG_GPS_LATITUDE_REF, "N")
+                setAttribute(android.media.ExifInterface.TAG_GPS_LONGITUDE, "0/1,7/1,0/1")
+                setAttribute(android.media.ExifInterface.TAG_GPS_LONGITUDE_REF, "W")
+                saveAttributes()
+            }
+            return file.readBytes()
+        } finally {
+            file.delete()
+        }
+    }
+
+    private fun gpsLatitudeOf(bytes: ByteArray): String? {
+        val file = java.io.File.createTempFile("served", ".jpg", app.cacheDir)
+        try {
+            file.writeBytes(bytes)
+            return android.media.ExifInterface(file.absolutePath).getAttribute(android.media.ExifInterface.TAG_GPS_LATITUDE)
+        } finally {
+            file.delete()
+        }
+    }
+
+    @Test
+    fun aGeotaggedPhotoKeepsItsLocationOnTheServer() {
+        val original = geotaggedJpeg()
+        assertEquals("the fixture itself must carry a location", "51/1,30/1,0/1", gpsLatitudeOf(original))
+        enableBackup()
+        media.photoFromAnotherApp("geo_one.jpg", original)
+
+        assertEquals(ListenableWorker.Result.success(), runWorker())
+
+        val stored = env.nextcloud.bytes(uploaded().single())!!
+        assertEquals("the upload must carry the original bytes", original.size, stored.size)
+        assertEquals("GPS location must survive the upload", "51/1,30/1,0/1", gpsLatitudeOf(stored))
+    }
 
     @Test
     fun newPhotosGoIntoYearAndMonthFoldersWithAChecksum() {

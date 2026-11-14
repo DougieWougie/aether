@@ -188,7 +188,8 @@ class AetherDocumentsProviderEdgeCasesTest {
         val download = java.util.concurrent.Executors.newSingleThreadExecutor().submit {
             kotlinx.coroutines.runBlocking { env.graph.ocs().downloadPreview(credentials, "100", target, 256) }
         }
-        Thread.sleep(700)
+        // The throttled body keeps the download in flight; once its .part file exists, bytes are on disk but not at the final path.
+        awaitTrue("the download to start writing") { target.parentFile?.listFiles().orEmpty().any { it.name.endsWith(".part") } }
         val midway = target.exists()
         download.get()
 

@@ -57,6 +57,13 @@ interface DocumentDao {
     )
     fun observePinnedRoots(): Flow<List<DocumentEntity>>
 
+    /** One-shot version of [observePinnedRoots], for sync. */
+    @Query(
+        "SELECT * FROM documents WHERE isPinned = 1 " +
+            "AND (parentId IS NULL OR parentId NOT IN (SELECT documentId FROM documents WHERE isPinned = 1)) ORDER BY accountName, path",
+    )
+    fun pinnedRoots(): List<DocumentEntity>
+
     @Query("UPDATE documents SET isPinned = :pinned WHERE documentId = :id")
     fun setPinned(id: String, pinned: Boolean)
 

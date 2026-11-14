@@ -66,6 +66,18 @@ class DocumentDiskCache(
     /** Same for thumbnails, against [maxThumbnailBytes]; they are separate so previews never push out file copies. */
     fun trimThumbnails(protect: Set<File> = emptySet()): List<File> = evictOldest(thumbnailsDir, maxThumbnailBytes, protect)
 
+    private val thumbnailBytesSinceTrim = java.util.concurrent.atomic.AtomicLong()
+
+    /**
+     * Call after storing [justStored]: trims the thumbnail directory only once about an eighth of its budget in new
+     * thumbnails has piled up, instead of walking the whole directory after every one. Returns what was deleted.
+     */
+    fun trimThumbnailsWhenDue(justStored: File): List<File> {
+        if (thumbnailBytesSinceTrim.addAndGet(justStored.length()) < maxThumbnailBytes / THUMBNAIL_TRIM_DIVISOR) return emptyList()
+        thumbnailBytesSinceTrim.set(0)
+        return trimThumbnails(protect = setOf(justStored))
+    }
+
     private fun evictOldest(dir: File, limit: Long, protect: Set<File>): List<File> {
         val files = dir.walkTopDown().filter { it.isFile && !it.name.endsWith(PART_SUFFIX) }.toList()
         var total = files.sumOf { it.length() }
@@ -107,6 +119,7 @@ class DocumentDiskCache(
         const val DEFAULT_MAX_CACHE_BYTES = 512L * 1024 * 1024
         const val DEFAULT_MAX_THUMBNAIL_BYTES = 32L * 1024 * 1024
         private const val PART_SUFFIX = ".part"
+        private const val THUMBNAIL_TRIM_DIVISOR = 8
         private const val UNKNOWN_ACCOUNT = "-"
 
         /** `<accountName>` of a document id such as `alice@host:/Docs/a.txt`; ids from elsewhere share one bucket. */

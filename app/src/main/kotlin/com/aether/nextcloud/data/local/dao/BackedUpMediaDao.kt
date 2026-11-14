@@ -10,11 +10,18 @@ import kotlinx.coroutines.flow.Flow
 /** Backed-up items of one kind (photos or videos) and their combined size. */
 data class MediaTotals(val isVideo: Boolean, val count: Int, val bytes: Long)
 
+/** The identity of one backed-up MediaStore item. */
+data class BackedUpKey(val mediaId: Long, val isVideo: Boolean)
+
 /** Items uploaded from one album. */
 data class AlbumUploads(val bucketId: Long, val count: Int)
 
 @Dao
 interface BackedUpMediaDao {
+    /** Every item already backed up for [account], as one query instead of one lookup per MediaStore item on each scan. */
+    @Query("SELECT mediaId, isVideo FROM backed_up_media WHERE accountName = :account")
+    fun backedUpKeys(account: String): List<BackedUpKey>
+
     @Query("SELECT * FROM backed_up_media WHERE accountName = :account AND mediaId = :mediaId AND isVideo = :isVideo")
     fun find(account: String, mediaId: Long, isVideo: Boolean): BackedUpMediaEntity?
 

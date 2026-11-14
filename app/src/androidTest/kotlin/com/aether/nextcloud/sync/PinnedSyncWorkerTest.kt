@@ -112,6 +112,34 @@ class PinnedSyncWorkerTest {
     }
 
     @Test
+    fun syncingATreeDoesNotAskAgainForWhatTheListingJustReturned() {
+        env.nextcloud.putFile("/Docs/a.txt", "a")
+        env.nextcloud.putFile("/Docs/one/b.txt", "b")
+        env.nextcloud.putFile("/Docs/two/c.txt", "c")
+        pin("/Docs")
+
+        runWorker()
+
+        assertEquals("c", pinnedBytes("/Docs/two/c.txt")?.decodeToString())
+        val single = env.nextcloud.requestsMatching("PROPFIND").filter { it.getHeader("Depth") == "0" }.map { it.path }
+        // Only the pinned root needs its own look (for its ETag); every folder and file below came back in a listing.
+        assertEquals("Depth: 0 requests were $single", 1, single.size)
+    }
+
+    @Test
+    fun aPinnedFolderAndItsPinnedContentsAreOneSyncRoot() {
+        env.nextcloud.putFile("/Docs/a.txt", "a")
+        env.nextcloud.putFile("/Other/b.txt", "b")
+        pin("/Docs")
+        pin("/Other")
+        runWorker()
+
+        val roots = runBlocking { env.graph.documents().pinnedRoots() }.map { it.path }
+
+        assertEquals("pinned children belong to their pinned parent", listOf("/Docs", "/Other"), roots)
+    }
+
+    @Test
     fun filesAddedToAPinnedFolderLaterArePickedUp() {
         env.nextcloud.putFile("/Docs/a.txt", "a")
         pin("/Docs")

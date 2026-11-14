@@ -67,10 +67,7 @@ class PinnedSyncWorker @AssistedInject constructor(
             // Only expedited runs may start a foreground service from the background; periodic runs go without.
             runCatching { setForeground(getForegroundInfo()) }
         }
-        val pinned = documents.pinnedDocuments()
-        val roots = pinned.filter { doc -> pinned.none { other -> other.accountName == doc.accountName && DocumentId.parse(other.documentId).isAncestorOf(DocumentId.parse(doc.documentId)) } }
-
-        for (root in roots) {
+        for (root in documents.pinnedRoots()) {
             val credentials = accounts.credentials(root.accountName) ?: continue
             syncNode(credentials, DocumentId.parse(root.documentId))
         }
@@ -84,9 +81,11 @@ class PinnedSyncWorker @AssistedInject constructor(
         return if (retryNeeded) Result.retry() else Result.success()
     }
 
-    private suspend fun syncNode(credentials: AetherCredentials, id: DocumentId) {
-        val before = documents.cached(id)
-        val node = when (val refreshed = documents.refreshDocument(credentials, id)) {
+    /** [listed] is the entry this folder just came back as in its parent's listing, so it is not asked for again. */
+    private suspend fun syncNode(credentials: AetherCredentials, id: DocumentId, listed: DocumentEntity? = null) {
+        // A listing keeps the local state (including the ETag the subtree was last synced at), so [listed] doubles as "before".
+        val before = listed ?: documents.cached(id)
+        val node = listed ?: when (val refreshed = documents.refreshDocument(credentials, id)) {
             is AetherResult.Success -> refreshed.value
             is AetherResult.Failure -> return noteFailure(credentials, refreshed.error)
         }
@@ -103,7 +102,7 @@ class PinnedSyncWorker @AssistedInject constructor(
         val failuresBefore = failures
         for (child in documents.cachedChildren(id)) {
             val childId = DocumentId.parse(child.documentId)
-            if (child.isDirectory) syncNode(credentials, childId) else syncFile(credentials, child.copy(isPinned = true))
+            if (child.isDirectory) syncNode(credentials, childId, child) else syncFile(credentials, child.copy(isPinned = true))
         }
         if (failures == failuresBefore) documents.markSubtreeSynced(id, listed.etag)
     }
@@ -127,7 +126,7 @@ class PinnedSyncWorker @AssistedInject constructor(
         }
         var lastReport = 0L
         try {
-            val result = documents.ensurePinnedCopy(credentials, id) { done, total ->
+            val result = documents.ensurePinnedCopy(credentials, id, justListed = current) { done, total ->
                 val now = System.currentTimeMillis()
                 if (now - lastReport > PROGRESS_INTERVAL_MS) {
                     lastReport = now

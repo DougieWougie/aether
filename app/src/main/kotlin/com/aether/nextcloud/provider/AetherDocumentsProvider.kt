@@ -348,7 +348,7 @@ class AetherDocumentsProvider : DocumentsProvider() {
         } else {
             blocking(signal) { deps.ocs().downloadPreview(credentials, fileId, thumbnail, size).orThrow(credentials.accountName) }
             diskCache.removeOutdatedThumbnails(thumbnail)
-            diskCache.trimThumbnails(protect = setOf(thumbnail))
+            diskCache.trimThumbnailsWhenDue(thumbnail)
         }
         return AssetFileDescriptor(pipes.openForRead(thumbnail), 0, AssetFileDescriptor.UNKNOWN_LENGTH)
     }

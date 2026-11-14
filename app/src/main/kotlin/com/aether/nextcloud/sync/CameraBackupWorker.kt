@@ -32,6 +32,7 @@ import com.aether.nextcloud.core.AetherError
 import com.aether.nextcloud.core.AetherResult
 import com.aether.nextcloud.core.describe
 import com.aether.nextcloud.data.local.AetherDatabase
+import com.aether.nextcloud.data.local.dao.BackedUpKey
 import com.aether.nextcloud.data.local.entity.BackedUpMediaEntity
 import com.aether.nextcloud.data.local.entity.TransferDirection
 import com.aether.nextcloud.data.local.entity.TransferEntity
@@ -106,7 +107,8 @@ class CameraBackupWorker @AssistedInject constructor(
 
     private suspend fun backUpNewMedia(settings: BackupSettings, credentials: AetherCredentials): Result {
         val items = withContext(Dispatchers.IO) {
-            queryNewMedia(settings).filter { database.backedUpMediaDao().find(credentials.accountName, it.id, it.isVideo) == null }
+            val done = database.backedUpMediaDao().backedUpKeys(credentials.accountName).toHashSet()
+            queryNewMedia(settings).filter { BackedUpKey(it.id, it.isVideo) !in done }
         }
         if (items.isEmpty()) return Result.success(workDataOf(KEY_ATTEMPTED to 0))
         runCatching { setForeground(getForegroundInfo()) } // not allowed for background-started runs; best effort

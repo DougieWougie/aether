@@ -96,6 +96,7 @@ class DocumentRepository @Inject constructor(
                 val keep = children.mapTo(HashSet()) { it.documentId }
                 existing.values.filter { it.documentId !in keep }.forEach { removeLocal(it) }
                 dao.upsertAll(children)
+                children.forEach { markFresh(it.documentId) }
                 val folder = self.withLocalStateOf(dao.get(self.documentId)).copy(childrenSyncedAt = now)
                 dao.upsert(folder)
                 AetherResult.Success(folder)
@@ -116,8 +117,23 @@ class DocumentRepository @Inject constructor(
                 .let { it.copy(documentId = id.toString(), path = id.path, name = id.name, parentId = id.parent?.toString()) }
                 .withLocalStateOf(dao.get(id.toString()))
             dao.upsert(fresh)
+            markFresh(fresh.documentId)
             AetherResult.Success(fresh)
         }
+    }
+
+    /** When (nanoTime) each document's metadata last came from the server, for [freshnessWindowMs]; bounded, least recently used out. */
+    private val refreshedAt = object : LinkedHashMap<String, Long>(64, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Long>) = size > FRESHNESS_ENTRIES
+    }
+
+    private fun markFresh(documentId: String) = synchronized(refreshedAt) { refreshedAt[documentId] = System.nanoTime() }
+
+    private fun isFresh(documentId: String): Boolean {
+        val window = freshnessWindowMs
+        if (window <= 0) return false
+        val at = synchronized(refreshedAt) { refreshedAt[documentId] } ?: return false
+        return (System.nanoTime() - at) / 1_000_000 < window
     }
 
     /**
@@ -127,8 +143,9 @@ class DocumentRepository @Inject constructor(
     suspend fun ensureLocalFile(
         credentials: AetherCredentials,
         id: DocumentId,
+        justListed: DocumentEntity? = null,
         onProgress: ProgressListener = { _, _ -> },
-    ): AetherResult<File> = lockFor(id).withLock { fetchLocalFile(credentials, id, onProgress) }
+    ): AetherResult<File> = lockFor(id).withLock { fetchLocalFile(credentials, id, onProgress, justListed) }
 
     /** One lock per document, so simultaneous opens share one download instead of racing on the same `.part` file. */
     private val fileLocks = ConcurrentHashMap<String, Mutex>()
@@ -139,9 +156,13 @@ class DocumentRepository @Inject constructor(
         credentials: AetherCredentials,
         id: DocumentId,
         onProgress: ProgressListener,
+        justListed: DocumentEntity? = null,
     ): AetherResult<File> {
         val known = withContext(Dispatchers.IO) { dao.get(id.toString()) }
-        val entity = when (val refreshed = refreshDocument(credentials, id)) {
+        // A caller that has just had this document in a listing passes it, and a copy checked moments ago is trusted: both
+        // spare a PROPFIND that would return what the cache already holds.
+        val current = justListed ?: known?.takeIf { isFresh(it.documentId) }
+        val entity = if (current != null) current else when (val refreshed = refreshDocument(credentials, id)) {
             is AetherResult.Success -> refreshed.value
             is AetherResult.Failure -> {
                 val offlineCopy = known?.localCachePath?.let(::File)?.takeIf(File::isFile)
@@ -185,11 +206,15 @@ class DocumentRepository @Inject constructor(
         diskCache.validCopy(entity)?.let(diskCache::isPinnedFile) ?: false
 
     /** Makes sure a pinned document's bytes live in persistent storage (migrating an existing cache copy). */
-    suspend fun ensurePinnedCopy(credentials: AetherCredentials, id: DocumentId, onProgress: ProgressListener = { _, _ -> }): AetherResult<File> =
-        lockFor(id).withLock { pinLocked(credentials, id, onProgress) }
+    suspend fun ensurePinnedCopy(
+        credentials: AetherCredentials,
+        id: DocumentId,
+        justListed: DocumentEntity? = null,
+        onProgress: ProgressListener = { _, _ -> },
+    ): AetherResult<File> = lockFor(id).withLock { pinLocked(credentials, id, onProgress, justListed) }
 
-    private suspend fun pinLocked(credentials: AetherCredentials, id: DocumentId, onProgress: ProgressListener): AetherResult<File> {
-        val file = when (val local = fetchLocalFile(credentials, id, onProgress)) {
+    private suspend fun pinLocked(credentials: AetherCredentials, id: DocumentId, onProgress: ProgressListener, justListed: DocumentEntity?): AetherResult<File> {
+        val file = when (val local = fetchLocalFile(credentials, id, onProgress, justListed)) {
             is AetherResult.Success -> local.value
             is AetherResult.Failure -> return local
         }
@@ -334,10 +359,20 @@ class DocumentRepository @Inject constructor(
 
     suspend fun pinnedDocuments(): List<DocumentEntity> = withContext(Dispatchers.IO) { dao.pinned() }
 
+    /** Pinned items the user chose directly; what a pinned folder contains is synced as part of it. */
+    suspend fun pinnedRoots(): List<DocumentEntity> = withContext(Dispatchers.IO) { dao.pinnedRoots() }
+
+    /**
+     * How long after [ensureLocalFile] last looked at the server for a document it may serve a valid local copy without
+     * asking again. Opening a file is often several calls in a row (a viewer reads, seeks and reads again).
+     */
+    @Volatile var freshnessWindowMs: Long = DEFAULT_FRESHNESS_WINDOW_MS
+
     /** Removes [id] and everything below it from the cache, deleting their local bytes. */
     suspend fun forget(id: DocumentId) = withContext(Dispatchers.IO) {
         database.withTransaction {
             val rows = dao.subtree(id.accountName, id.path, subtreeLikePattern(id.path))
+            rows.forEach { synchronized(refreshedAt) { refreshedAt.remove(it.documentId) } }
             rows.forEach { diskCache.delete(it.localCachePath?.let(::File)) }
             dao.deleteAll(rows.map { it.documentId })
         }
@@ -388,6 +423,8 @@ class DocumentRepository @Inject constructor(
 
     private companion object {
         const val MAX_NAME_ATTEMPTS = 100
+        const val DEFAULT_FRESHNESS_WINDOW_MS = 3_000L
+        const val FRESHNESS_ENTRIES = 512
         const val CACHED_SEARCH_LIMIT = 100
     }
 }

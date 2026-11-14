@@ -29,6 +29,9 @@ import com.aether.nextcloud.data.MimeTypes
 import com.aether.nextcloud.data.QuotaRepository
 import com.aether.nextcloud.data.cache.DocumentDiskCache
 import com.aether.nextcloud.data.local.entity.DocumentEntity
+import com.aether.nextcloud.data.local.entity.TransferDirection
+import com.aether.nextcloud.data.local.entity.TransferEntity
+import com.aether.nextcloud.data.local.entity.TransferState
 import com.aether.nextcloud.dav.NextcloudOcsClient
 import com.aether.nextcloud.dav.SearchQuery
 import com.aether.nextcloud.di.ApplicationScope
@@ -291,7 +294,7 @@ class AetherDocumentsProvider : DocumentsProvider() {
         val id = parseId(documentId)
         val credentials = credentialsFor(id)
         return if (StreamingPipeHelper.isWriteMode(mode)) openForWrite(id, credentials, mode, signal)
-        else pipes.openForRead(blocking(signal) { documents.ensureLocalFile(credentials, id).orThrow(id.accountName) })
+        else pipes.openForRead(blocking(signal) { documents.pendingUploadFile(id) ?: documents.ensureLocalFile(credentials, id).orThrow(id.accountName) })
     }
 
     private fun openForWrite(id: DocumentId, credentials: AetherCredentials, mode: String, signal: CancellationSignal?): ParcelFileDescriptor {
@@ -300,7 +303,8 @@ class AetherDocumentsProvider : DocumentsProvider() {
         val mimeType: String
         if (StreamingPipeHelper.needsExistingContent(mode)) {
             // Seed the staging file with the current bytes; this also refreshes the ETag we will send as If-Match.
-            val local = blocking(signal) { documents.ensureLocalFile(credentials, id).orThrow(id.accountName) }
+            // An earlier save that has not uploaded yet is newer than anything on the server.
+            val local = blocking(signal) { documents.pendingUploadFile(id) ?: documents.ensureLocalFile(credentials, id).orThrow(id.accountName) }
             local.copyTo(staging, overwrite = true)
         }
         val entity = documents.cached(id) ?: blocking(signal) { documents.refreshDocument(credentials, id).orThrow(id.accountName) }
@@ -319,6 +323,13 @@ class AetherDocumentsProvider : DocumentsProvider() {
             if (error != null || unchanged) {
                 staging.delete()
             } else {
+                // Row first, so a read or append that comes before the worker starts already finds this save.
+                deps.database().transferDao().insert(
+                    TransferEntity(
+                        accountName = id.accountName, remotePath = id.path, direction = TransferDirection.UPLOAD, state = TransferState.QUEUED,
+                        totalBytes = staging.length(), createdAt = System.currentTimeMillis(), sourcePath = staging.absolutePath, mimeType = mimeType, ifMatchEtag = etag,
+                    ),
+                )
                 UploadDocumentWorker.enqueue(appContext, UploadRequest(id.accountName, id.path, staging, mimeType, etag))
             }
         }

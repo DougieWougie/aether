@@ -5,6 +5,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.aether.nextcloud.support.AetherTestRule
 import com.aether.nextcloud.support.Smoke
 import com.aether.nextcloud.support.awaitTrue
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -73,5 +74,26 @@ class UploadDocumentWorkerTest {
         Thread.sleep(3_000)
         assertEquals("507 is not retried", 1, env.nextcloud.requestsMatching("PUT", "/doc.txt").size)
         assertEquals("small", env.nextcloud.text("/doc.txt"))
+    }
+
+    @Test
+    fun savingTwiceBeforeTheFirstUploadFinishesKeepsTheSecondWithoutAConflictCopy() {
+        env.nextcloud.putFile("/doc.txt", "original")
+        listed("/", "doc.txt")
+        env.nextcloud.putDelayMs = 2_500
+
+        env.resolver.openOutputStream(env.documentUri("/doc.txt"), "wt")!!.use { it.write("first".toByteArray()) }
+        // The provider records a save when its descriptor's close callback runs, which is asynchronous.
+        awaitTrue("the first save to be recorded as pending") {
+            runBlocking { env.graph.database().transferDao().pendingUploads(env.accountName, "/doc.txt") }.isNotEmpty()
+        }
+        // The first upload is still in flight: a read must see the first save, not the server's old bytes.
+        val between = env.resolver.openInputStream(env.documentUri("/doc.txt"))!!.use { it.readBytes().decodeToString() }
+        // Appending seeds from the pending save too, and the second upload must not 412 against the old ETag.
+        env.resolver.openOutputStream(env.documentUri("/doc.txt"), "wa")!!.use { it.write(" second".toByteArray()) }
+
+        awaitTrue("the second save to land", timeoutMs = 40_000) { env.nextcloud.text("/doc.txt") == "first second" }
+        assertEquals("a read between the saves returns the first save", "first", between)
+        assertEquals("no conflict copy of the user's own edit", setOf("/doc.txt"), env.nextcloud.paths())
     }
 }

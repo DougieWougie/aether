@@ -186,6 +186,30 @@ class PinnedSyncWorkerTest {
     }
 
     @Test
+    fun pruningNeverDeletesAStagedFileThatStillHasPendingWork() {
+        val dao = env.graph.database().transferDao()
+        val staged = File.createTempFile("pending", ".tmp", env.context.cacheDir).apply { writeText("unsent edit") }
+        val eightDaysAgo = System.currentTimeMillis() - 8L * 24 * 60 * 60 * 1000
+        fun row(state: TransferState, at: Long) = com.aether.nextcloud.data.local.entity.TransferEntity(
+            accountName = env.accountName, remotePath = "/doc.txt", direction = TransferDirection.UPLOAD, state = state,
+            createdAt = at, sourcePath = staged.absolutePath,
+        )
+        // An old failed row and a newer queued row (the rerun of the same upload) point at one staged file.
+        dao.insert(row(TransferState.FAILED, eightDaysAgo))
+        val queuedId = dao.insert(row(TransferState.QUEUED, System.currentTimeMillis()))
+
+        try {
+            runWorker()
+
+            assertTrue("the queued upload still needs this file", staged.isFile)
+            assertEquals(TransferState.QUEUED, dao.get(queuedId)!!.state)
+        } finally {
+            staged.delete()
+            dao.delete(queuedId)
+        }
+    }
+
+    @Test
     fun aFailedDownloadIsRecordedAsFailedWithAReason() {
         env.nextcloud.putFile("/notes.txt", "hello")
         pin("/notes.txt")

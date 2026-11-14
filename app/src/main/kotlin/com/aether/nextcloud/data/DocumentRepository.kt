@@ -170,6 +170,14 @@ class DocumentRepository @Inject constructor(
         }
     }
 
+    /**
+     * The newest staged file of an upload of [id] that is still queued or running: the user's latest save, which the
+     * server does not have yet. Reads and appends must start from it, not from the server's older bytes.
+     */
+    suspend fun pendingUploadFile(id: DocumentId): File? = withContext(Dispatchers.IO) {
+        database.transferDao().pendingUploads(id.accountName, id.path).firstNotNullOfOrNull { row -> row.sourcePath?.let(::File)?.takeIf(File::isFile) }
+    }
+
     /** True when [entity]'s bytes are in persistent pinned storage and match the server's current ETag. */
     fun hasCurrentPinnedCopy(entity: DocumentEntity): Boolean =
         diskCache.validCopy(entity)?.let(diskCache::isPinnedFile) ?: false

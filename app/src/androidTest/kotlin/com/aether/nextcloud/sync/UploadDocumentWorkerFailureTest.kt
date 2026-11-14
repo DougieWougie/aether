@@ -13,7 +13,9 @@ import com.aether.nextcloud.data.local.entity.TransferState
 import com.aether.nextcloud.support.AetherTestRule
 import com.aether.nextcloud.support.awaitTrue
 import java.io.File
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -49,6 +51,9 @@ class UploadDocumentWorkerFailureTest {
         TestListenableWorkerBuilder<UploadDocumentWorker>(app).setWorkerFactory(app.workerFactory).setInputData(data).setRunAttemptCount(attempt).build().doWork()
     }
 
+    /** A finished upload hands its ETag on as output data, so success is compared by type, not by equality. */
+    private fun assertSucceeded(result: ListenableWorker.Result) = assertTrue("expected success but was $result", result is ListenableWorker.Result.Success)
+
     private fun transfers() = runBlocking { env.graph.database().transferDao().observeRecent(50).first() }.filter { it.accountName == env.accountName }
 
     private fun queued() = runBlocking { env.graph.database().transferDao().observeActive().first() }.filter { it.accountName == env.accountName }
@@ -57,7 +62,7 @@ class UploadDocumentWorkerFailureTest {
     fun anUploadReachesTheServerAndCleansUpAfterItself() {
         val file = stage("hello")
 
-        assertEquals(ListenableWorker.Result.success(), run(input(file)))
+        assertSucceeded(run(input(file)))
 
         assertEquals("hello", env.nextcloud.text("/doc.txt"))
         assertFalse("the staged copy is deleted", file.exists())
@@ -122,6 +127,30 @@ class UploadDocumentWorkerFailureTest {
     }
 
     @Test
+    fun anUploadStoppedByWorkManagerIsRequeuedAndTheRerunCompletesTheSameRow() {
+        val file = stage("payload")
+        env.nextcloud.holdPuts = true
+        val worker = TestListenableWorkerBuilder<UploadDocumentWorker>(app).setWorkerFactory(app.workerFactory).setInputData(input(file)).build()
+        val running = kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) { worker.doWork() }
+        awaitTrue("the PUT to reach the server") { env.nextcloud.requestsMatching("PUT", "/doc.txt").isNotEmpty() }
+
+        // WorkManager stopping a worker (a lost constraint) cancels it; it will be run again.
+        runBlocking { running.cancelAndJoin() }
+        env.nextcloud.holdPuts = false
+
+        assertEquals("a stopped upload waits to run again; it did not fail", TransferState.QUEUED, queued().single().state)
+        assertTrue("its staged bytes must stay", file.exists())
+        env.nextcloud.requests.clear()
+
+        assertSucceeded(run(input(file), attempt = 1))
+
+        val row = transfers().single()
+        assertEquals(TransferState.COMPLETED, row.state)
+        assertTrue(queued().isEmpty())
+        assertEquals("payload", env.nextcloud.text("/doc.txt"))
+    }
+
+    @Test
     fun aRetryContinuesTheQueuedRowInsteadOfAddingAnother() {
         val file = stage()
         env.nextcloud.forcedStatus = 503
@@ -132,7 +161,7 @@ class UploadDocumentWorkerFailureTest {
         assertEquals(first.id, queued().single().id)
 
         env.nextcloud.forcedStatus = null
-        assertEquals(ListenableWorker.Result.success(), run(input(file), attempt = 2))
+        assertSucceeded(run(input(file), attempt = 2))
 
         assertTrue(queued().isEmpty())
         val row = transfers().single()
@@ -191,7 +220,7 @@ class UploadDocumentWorkerFailureTest {
         val file = stage("mine")
         env.nextcloud.putFile("/doc.txt", "theirs")
 
-        assertEquals(ListenableWorker.Result.success(), run(input(file, ifMatch = "stale-etag")))
+        assertSucceeded(run(input(file, ifMatch = "stale-etag")))
 
         assertEquals("theirs", env.nextcloud.text("/doc.txt"))
         val copy = env.nextcloud.paths().single { it.contains("(Conflict ") }
@@ -204,7 +233,7 @@ class UploadDocumentWorkerFailureTest {
         val file = stage("mine")
         env.nextcloud.putFile("/top.txt", "theirs")
 
-        assertEquals(ListenableWorker.Result.success(), run(input(file, path = "/top.txt", ifMatch = "stale-etag")))
+        assertSucceeded(run(input(file, path = "/top.txt", ifMatch = "stale-etag")))
 
         assertTrue(env.nextcloud.paths().any { it.startsWith("/top (Conflict ") })
     }
@@ -213,7 +242,7 @@ class UploadDocumentWorkerFailureTest {
     fun aLargeUploadRunsAsAForegroundTransfer() {
         val file = stage("x").also { it.writeBytes(ByteArray(11 * 1024 * 1024) { i -> (i % 251).toByte() }) }
 
-        assertEquals(ListenableWorker.Result.success(), run(input(file, path = "/big.bin")))
+        assertSucceeded(run(input(file, path = "/big.bin")))
 
         assertEquals(11 * 1024 * 1024, env.nextcloud.bytes("/big.bin")?.size)
     }

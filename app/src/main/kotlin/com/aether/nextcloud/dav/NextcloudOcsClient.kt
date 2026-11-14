@@ -108,11 +108,13 @@ class NextcloudOcsClient(
 
     suspend fun downloadPreview(credentials: AetherCredentials, fileId: String, target: File, size: Int = PREVIEW_SIZE): AetherResult<Unit> {
         val request = request(credentials, previewUrl(credentials, fileId, size)).get().build()
+        // Written to a unique `.part` sibling and renamed, so a concurrent reader never sees a half-written thumbnail.
+        val partial = File(target.parentFile, "${target.name}.${java.util.UUID.randomUUID()}.part")
         return client.execute(request) { response ->
             if (!response.isSuccessful) return@execute AetherResult.Failure(response.toError())
             try {
                 target.parentFile?.mkdirs()
-                target.outputStream().use { out ->
+                partial.outputStream().use { out ->
                     val buffer = ByteArray(COPY_BUFFER_BYTES)
                     val body = response.body.byteStream()
                     while (true) {
@@ -122,12 +124,13 @@ class NextcloudOcsClient(
                         out.write(buffer, 0, read)
                     }
                 }
+                if (!partial.renameTo(target)) throw IOException("Cannot move ${partial.name} into place")
                 AetherResult.Success(Unit)
             } catch (e: IOException) {
-                target.delete()
+                partial.delete()
                 AetherResult.Failure(AetherError.Network(e))
             } catch (e: CancellationException) {
-                target.delete()
+                partial.delete()
                 throw e
             }
         }

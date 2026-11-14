@@ -20,6 +20,10 @@ interface TransferDao {
     @Query("SELECT id FROM transfers WHERE direction = 'UPLOAD' AND state = 'QUEUED' AND sourcePath = :sourcePath ORDER BY id DESC LIMIT 1")
     fun queuedUploadFor(sourcePath: String): Long?
 
+    /** Uploads of [remotePath] that are waiting or running, newest first; their staged files hold edits the server does not have yet. */
+    @Query("SELECT * FROM transfers WHERE accountName = :account AND remotePath = :remotePath AND direction = 'UPLOAD' AND state IN ('QUEUED', 'RUNNING') AND sourcePath IS NOT NULL ORDER BY id DESC")
+    fun pendingUploads(account: String, remotePath: String): List<TransferEntity>
+
     @Query("UPDATE transfers SET state = :state, error = :error, updatedAt = :now WHERE id = :id")
     fun setState(id: Long, state: TransferState, error: String?, now: Long)
 
@@ -38,8 +42,8 @@ interface TransferDao {
     @Query("DELETE FROM transfers WHERE id = :id")
     fun delete(id: Long)
 
-    /** Failed rows outlive other finished ones so there is time to retry them; their staged files go with them. */
-    @Query("SELECT sourcePath FROM transfers WHERE sourcePath IS NOT NULL AND ((state = 'FAILED' AND updatedAt < :failedBefore) OR (state NOT IN ('QUEUED', 'RUNNING', 'FAILED') AND updatedAt < :finishedBefore))")
+    /** Failed rows outlive other finished ones so there is time to retry them; their staged files go with them, unless another row still has that file queued or running. */
+    @Query("SELECT sourcePath FROM transfers WHERE sourcePath IS NOT NULL AND sourcePath NOT IN (SELECT sourcePath FROM transfers WHERE state IN ('QUEUED', 'RUNNING') AND sourcePath IS NOT NULL) AND ((state = 'FAILED' AND updatedAt < :failedBefore) OR (state NOT IN ('QUEUED', 'RUNNING', 'FAILED') AND updatedAt < :finishedBefore))")
     fun prunableSources(finishedBefore: Long, failedBefore: Long): List<String>
 
     @Query("DELETE FROM transfers WHERE (state = 'FAILED' AND updatedAt < :failedBefore) OR (state NOT IN ('QUEUED', 'RUNNING', 'FAILED') AND updatedAt < :finishedBefore)")

@@ -79,7 +79,9 @@ class UploadDocumentWorker @AssistedInject constructor(
         val remotePath = inputData.getString(KEY_REMOTE_PATH) ?: return Result.failure()
         val source = inputData.getString(KEY_SOURCE_PATH)?.let(::File) ?: return Result.failure()
         val mimeType = inputData.getString(KEY_MIME_TYPE)
-        val ifMatch = inputData.getString(KEY_IF_MATCH_ETAG)
+        // When this upload was queued behind another save of the same file, the previous upload's result ETag (merged in by
+        // WorkManager) is what the server holds now; the ETag captured when the file was opened is already out of date.
+        val ifMatch = inputData.getString(KEY_PREVIOUS_UPLOAD_ETAG) ?: inputData.getString(KEY_IF_MATCH_ETAG)
         if (!source.isFile) return Result.failure()
         val credentials = accounts.credentials(accountName) ?: run { source.delete(); return Result.failure() }
         val target = DocumentId(accountName, DocumentId.normalizePath(remotePath))
@@ -125,7 +127,12 @@ class UploadDocumentWorker @AssistedInject constructor(
                 else -> Result.failure()
             }
         } catch (e: CancellationException) {
-            withContext(kotlinx.coroutines.NonCancellable) { setTransferState(transferId, TransferState.FAILED, "Cancelled") }
+            withContext(kotlinx.coroutines.NonCancellable) {
+                // Only an account that was removed is a real cancellation. Otherwise WorkManager stopped us (a lost constraint, a
+                // timeout) and will run this again, which continues this same row.
+                if (accounts.credentials(accountName) == null) setTransferState(transferId, TransferState.FAILED, "Cancelled")
+                else setTransferState(transferId, TransferState.QUEUED, null)
+            }
             throw e
         }
     }
@@ -192,7 +199,9 @@ class UploadDocumentWorker @AssistedInject constructor(
         source.delete()
         setTransferState(transferId, state, null)
         uploaded.parent?.let { notifyChildrenChanged(it) }
-        return Result.success()
+        // Only a plain overwrite hands its ETag on: a conflict copy leaves the original changed by someone else.
+        val etag = result.etag.takeIf { state == TransferState.COMPLETED }
+        return if (etag != null) Result.success(workDataOf(KEY_PREVIOUS_UPLOAD_ETAG to etag)) else Result.success()
     }
 
     private suspend fun failed(error: AetherError, transferId: Long): Result {
@@ -244,6 +253,8 @@ class UploadDocumentWorker @AssistedInject constructor(
         const val KEY_MIME_TYPE = "mime_type"
         const val KEY_IF_MATCH_ETAG = "if_match_etag"
         const val KEY_CREATE_PARENTS = "create_parents"
+        /** Output of a finished upload, merged into the input of the next one queued for the same file. */
+        const val KEY_PREVIOUS_UPLOAD_ETAG = "previous_upload_etag"
         private const val MAX_ATTEMPTS = 5
         private const val MIN_UPDATE_INTERVAL_MS = 500L
 

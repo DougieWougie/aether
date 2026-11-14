@@ -55,6 +55,15 @@ class FakeNextcloud(val user: String = "alice") : AutoCloseable {
     /** Extra latency applied to every PUT, to make races observable. */
     @Volatile var putDelayMs = 0L
 
+    /** Delay before every file GET answers, to make concurrent downloads overlap. */
+    @Volatile var getDelayMs = 0L
+
+    /** Throttles preview bodies to this many bytes per second (0 = unthrottled), so a download stays in flight. */
+    @Volatile var previewBytesPerSecond = 0L
+
+    /** While true a PUT waits instead of answering; once released, every PUT that was held is dropped without being stored. */
+    @Volatile var holdPuts = false
+
     val baseUrl: String get() = server.url("/").toString().removeSuffix("/")
 
     init {
@@ -133,7 +142,7 @@ class FakeNextcloud(val user: String = "alice") : AutoCloseable {
             path == "/remote.php/dav/" && request.method == "SEARCH" -> search(request)
             path == "/index.php/core/preview" -> {
                 val fileId = request.requestUrl?.queryParameter("fileId")
-                if (files.values.any { it.fileId.toString() == fileId && it.preview }) MockResponse().setHeader("Content-Type", "image/png").setBody("PREVIEW-$fileId") else MockResponse().setResponseCode(404)
+                if (files.values.any { it.fileId.toString() == fileId && it.preview }) MockResponse().setHeader("Content-Type", "image/png").setBody("PREVIEW-$fileId".padEnd(PREVIEW_BYTES, 'x')).also { if (previewBytesPerSecond > 0) it.throttleBody(previewBytesPerSecond, 1, java.util.concurrent.TimeUnit.SECONDS) } else MockResponse().setResponseCode(404)
             }
             path == "/ocs/v2.php/cloud/user" -> MockResponse().setHeader("Content-Type", "application/json").setBody(
                 """{"ocs":{"meta":{"status":"ok"},"data":{"id":"$user","display-name":"$displayName","quota":{"used":$quotaUsed,"free":${quotaTotal?.let { it - quotaUsed } ?: -3},"total":${quotaTotal ?: 0},"quota":${quotaTotal ?: "\"none\""}}}}}""",
@@ -154,7 +163,7 @@ class FakeNextcloud(val user: String = "alice") : AutoCloseable {
     private fun files(request: RecordedRequest, path: String): MockResponse = when (request.method) {
         "PROPFIND" -> if (failListings && request.getHeader("Depth") == "1") MockResponse().setResponseCode(500) else propfind(request, path)
         "GET" -> if (failDownloads) MockResponse().setResponseCode(500) else files[path]?.takeUnless { it.dir }?.let {
-            MockResponse().setBody(Buffer().write(it.bytes)).setHeader("ETag", "\"${it.etag}\"").setHeader("Content-Type", it.mime)
+            MockResponse().setBody(Buffer().write(it.bytes)).setHeader("ETag", "\"${it.etag}\"").setHeader("Content-Type", it.mime).setHeadersDelay(getDelayMs, java.util.concurrent.TimeUnit.MILLISECONDS)
         } ?: MockResponse().setResponseCode(404)
         "PUT" -> put(request, path)
         "MKCOL" -> when {
@@ -174,6 +183,10 @@ class FakeNextcloud(val user: String = "alice") : AutoCloseable {
     private fun parentMissing(path: String) = !files.containsKey(path.substringBeforeLast('/').ifEmpty { "/" })
 
     private fun put(request: RecordedRequest, path: String): MockResponse {
+        if (holdPuts) {
+            while (holdPuts) Thread.sleep(20)
+            return MockResponse().setResponseCode(503)
+        }
         if (putDelayMs > 0) Thread.sleep(putDelayMs)
         putScript.poll()?.let { return MockResponse().setResponseCode(it) }
         if (quotaFull) return MockResponse().setResponseCode(507)
@@ -272,5 +285,6 @@ class FakeNextcloud(val user: String = "alice") : AutoCloseable {
 
     private companion object {
         const val NOW = 1_704_067_200_000L
+        const val PREVIEW_BYTES = 600
     }
 }

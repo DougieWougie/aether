@@ -16,7 +16,10 @@ import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Single entry point for document metadata and bytes, shared by the SAF provider, the workers and the UI.
@@ -123,6 +126,17 @@ class DocumentRepository @Inject constructor(
         credentials: AetherCredentials,
         id: DocumentId,
         onProgress: ProgressListener = { _, _ -> },
+    ): AetherResult<File> = lockFor(id).withLock { fetchLocalFile(credentials, id, onProgress) }
+
+    /** One lock per document, so simultaneous opens share one download instead of racing on the same `.part` file. */
+    private val fileLocks = ConcurrentHashMap<String, Mutex>()
+    private fun lockFor(id: DocumentId): Mutex = fileLocks.getOrPut(id.toString()) { Mutex() }
+
+    /** The body of [ensureLocalFile]; callers must hold [lockFor]. A caller that waited finds the first one's copy valid. */
+    private suspend fun fetchLocalFile(
+        credentials: AetherCredentials,
+        id: DocumentId,
+        onProgress: ProgressListener,
     ): AetherResult<File> {
         val known = withContext(Dispatchers.IO) { dao.get(id.toString()) }
         val entity = when (val refreshed = refreshDocument(credentials, id)) {
@@ -161,8 +175,11 @@ class DocumentRepository @Inject constructor(
         diskCache.validCopy(entity)?.let(diskCache::isPinnedFile) ?: false
 
     /** Makes sure a pinned document's bytes live in persistent storage (migrating an existing cache copy). */
-    suspend fun ensurePinnedCopy(credentials: AetherCredentials, id: DocumentId, onProgress: ProgressListener = { _, _ -> }): AetherResult<File> {
-        val file = when (val local = ensureLocalFile(credentials, id, onProgress)) {
+    suspend fun ensurePinnedCopy(credentials: AetherCredentials, id: DocumentId, onProgress: ProgressListener = { _, _ -> }): AetherResult<File> =
+        lockFor(id).withLock { pinLocked(credentials, id, onProgress) }
+
+    private suspend fun pinLocked(credentials: AetherCredentials, id: DocumentId, onProgress: ProgressListener): AetherResult<File> {
+        val file = when (val local = fetchLocalFile(credentials, id, onProgress)) {
             is AetherResult.Success -> local.value
             is AetherResult.Failure -> return local
         }
@@ -177,9 +194,9 @@ class DocumentRepository @Inject constructor(
     }
 
     /** Adopts [file] (just uploaded; [etag] is the server's ETag for those bytes) as the local copy so reads skip a download. */
-    suspend fun adoptUploadedFile(credentials: AetherCredentials, id: DocumentId, file: File, etag: String?) {
+    suspend fun adoptUploadedFile(credentials: AetherCredentials, id: DocumentId, file: File, etag: String?) = lockFor(id).withLock {
         val refreshed = refreshDocument(credentials, id).getOrNull()
-        if (refreshed == null || etag == null || refreshed.etag != etag) return
+        if (refreshed == null || etag == null || refreshed.etag != etag) return@withLock
         withContext(Dispatchers.IO) {
             val target = if (refreshed.isPinned) diskCache.pinnedFileFor(id.toString()) else diskCache.cacheFileFor(id.toString())
             file.copyTo(target, overwrite = true)

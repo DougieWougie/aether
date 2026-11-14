@@ -5,10 +5,13 @@ import com.aether.nextcloud.core.AetherError
 import com.aether.nextcloud.core.AetherResult
 import java.io.File
 import java.util.Base64
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
+import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.RecordedRequest
 import okio.Buffer
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
@@ -40,6 +43,31 @@ class WebDavClientTest {
     fun tearDown() = server.shutdown()
 
     private fun url(path: String) = credentials.fileUrl(path)
+
+    /**
+     * Answers a chunked upload by what is asked (the verb and the chunk's number) instead of by arrival order. OkHttp silently
+     * replays a request when a pooled connection turns out to be dead; with a queue of canned responses one replay shifts every
+     * later answer, and the MOVE then waits on an empty queue until the read timeout. Chunk PUTs are idempotent, so a replay is harmless.
+     */
+    private fun answerChunkedUpload(
+        chunk: (String) -> MockResponse = { MockResponse().setResponseCode(201) },
+        move: () -> MockResponse = { MockResponse().setResponseCode(201).setHeader("OC-ETag", "\"assembled\"") },
+    ) {
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse = when (request.method) {
+                "PUT" -> chunk(request.path!!.substringAfterLast('/'))
+                "MOVE" -> move()
+                "DELETE" -> MockResponse().setResponseCode(204)
+                else -> MockResponse().setResponseCode(201) // MKCOL
+            }
+        }
+    }
+
+    /** Every request the server saw, in order, once each: a replayed request is the same request. */
+    private fun requestsSeen(): List<RecordedRequest> {
+        val all = generateSequence { server.takeRequest(100, TimeUnit.MILLISECONDS) }.toList()
+        return all.distinctBy { it.method to it.path }
+    }
 
     private fun fixture(name: String) = javaClass.getResourceAsStream("/fixtures/$name")!!.readBytes().decodeToString()
 
@@ -190,30 +218,30 @@ class WebDavClientTest {
     fun `chunked upload v2 creates the dir, puts ordered chunks and assembles with move`() = runBlocking {
         val data = "0123456789".toByteArray() // 10 bytes, chunk size 4 -> 4 + 4 + 2
         val file = tmp.newFile("big.bin").apply { writeBytes(data) }
-        server.enqueue(MockResponse().setResponseCode(201)) // MKCOL
-        repeat(3) { server.enqueue(MockResponse().setResponseCode(201)) } // chunks
-        server.enqueue(MockResponse().setResponseCode(201).setHeader("OC-ETag", "\"assembled\"")) // MOVE
+        answerChunkedUpload()
         val progress = mutableListOf<Long>()
 
         val result = dav.uploadChunkedV2(file, "/Videos/big.bin") { done, total ->
             assertEquals(10L, total)
-            progress += done
+            synchronized(progress) { progress += done }
         }
 
+        assertTrue("the upload should succeed but was $result", result is AetherResult.Success)
         assertEquals("assembled", (result as AetherResult.Success).value.etag)
-        val mkcol = server.takeRequest()
+        val seen = requestsSeen()
+        val mkcol = seen.first()
         assertEquals("MKCOL", mkcol.method)
         assertTrue(mkcol.path!!.startsWith("/remote.php/dav/uploads/alice/"))
         assertEquals("10", mkcol.getHeader("OC-Total-Length"))
         val uploadDir = mkcol.path!!
 
-        val chunks = List(3) { server.takeRequest() }
+        val chunks = seen.filter { it.method == "PUT" }
         assertEquals(listOf("$uploadDir/00001", "$uploadDir/00002", "$uploadDir/00003"), chunks.map { it.path })
-        assertTrue(chunks.all { it.method == "PUT" && it.getHeader("OC-Total-Length") == "10" })
+        assertTrue(chunks.all { it.getHeader("OC-Total-Length") == "10" })
         val reassembled = Buffer().also { out -> chunks.forEach { out.write(it.body, it.body.size) } }.readByteArray()
         assertArrayEquals(data, reassembled)
 
-        val move = server.takeRequest()
+        val move = seen.last()
         assertEquals("MOVE", move.method)
         assertEquals("$uploadDir/.file", move.path)
         assertEquals(credentials.fileUrl("/Videos/big.bin"), move.getHeader("Destination"))
@@ -225,16 +253,14 @@ class WebDavClientTest {
     @Test
     fun `chunked upload cleans up the upload dir when a chunk fails`() = runBlocking {
         val file = tmp.newFile("big2.bin").apply { writeBytes(ByteArray(10)) }
-        server.enqueue(MockResponse().setResponseCode(201)) // MKCOL
-        server.enqueue(MockResponse().setResponseCode(201)) // chunk 1
-        server.enqueue(MockResponse().setResponseCode(507)) // chunk 2: insufficient storage
-        server.enqueue(MockResponse().setResponseCode(204)) // DELETE
+        answerChunkedUpload(chunk = { index -> MockResponse().setResponseCode(if (index == "00002") 507 else 201) }) // insufficient storage
 
         val result = dav.uploadChunkedV2(file, "/big2.bin")
 
         assertEquals(AetherResult.Failure(AetherError.InsufficientStorage), result)
-        repeat(3) { server.takeRequest() }
-        val cleanup = server.takeRequest()
+        val seen = requestsSeen()
+        assertTrue("chunk 3 is never sent", seen.none { it.path!!.endsWith("/00003") })
+        val cleanup = seen.last()
         assertEquals("DELETE", cleanup.method)
         assertTrue(cleanup.path!!.startsWith("/remote.php/dav/uploads/alice/"))
     }
@@ -242,15 +268,13 @@ class WebDavClientTest {
     @Test
     fun `chunked upload surfaces a 412 from the final move`() = runBlocking {
         val file = tmp.newFile("big3.bin").apply { writeBytes(ByteArray(3)) }
-        repeat(2) { server.enqueue(MockResponse().setResponseCode(201)) }
-        server.enqueue(MockResponse().setResponseCode(412))
-        server.enqueue(MockResponse().setResponseCode(204))
+        answerChunkedUpload(move = { MockResponse().setResponseCode(412) })
 
         val result = dav.uploadChunkedV2(file, "/big3.bin", ifMatchEtag = "old")
 
         assertEquals(AetherResult.Failure(AetherError.PreconditionFailed), result)
-        repeat(2) { server.takeRequest() }
-        assertEquals("\"old\"", server.takeRequest().getHeader("If-Match"))
+        val move = requestsSeen().first { it.method == "MOVE" }
+        assertEquals("\"old\"", move.getHeader("If-Match"))
     }
 
     @Test

@@ -141,8 +141,10 @@ class WebDavXmlParser {
             null
         }
 
+        private val STATUS_CODE = Regex("""\s(\d{3})\b""")
+
         private fun isSuccess(status: String): Boolean =
-            Regex("""\s(\d{3})\b""").find(status)?.groupValues?.get(1)?.startsWith("2") ?: false
+            STATUS_CODE.find(status)?.groupValues?.get(1)?.startsWith("2") ?: false
     }
 }
 

@@ -28,6 +28,9 @@ class AetherTestRule : ExternalResource() {
 
     override fun before() {
         removeLeftovers()
+        // The repository skips the freshness check for a few seconds in production; tests that edit the server behind the
+        // app's back expect every open to look, so the window is off unless a test turns it on.
+        graph.documents().freshnessWindowMs = 0
         nextcloud = FakeNextcloud()
         accountName = AccountRepository.accountNameFor(nextcloud.user, nextcloud.baseUrl)!!
         val userData = android.os.Bundle().apply {

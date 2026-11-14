@@ -180,6 +180,22 @@ class DocumentDiskCacheTest {
         assertTrue(listOf(current, otherSize, otherFile, otherAccount).all { it.exists() })
     }
 
+    @Test
+    fun `thumbnails are only trimmed once enough new bytes have piled up`() {
+        val small = DocumentDiskCache(File(tmp.root, "c2"), File(tmp.root, "p2"), File(tmp.root, "s2"), thumbnailsDir = File(tmp.root, "t2"), maxThumbnailBytes = 100)
+        repeat(20) { write(File(tmp.root, "t2/acct/old$it"), 10) }
+        val first = write(File(tmp.root, "t2/acct/new1"), 5)
+        val second = write(File(tmp.root, "t2/acct/new2"), 10)
+
+        val notYet = small.trimThumbnailsWhenDue(first)
+        val due = small.trimThumbnailsWhenDue(second)
+
+        assertTrue("5 new bytes is below the threshold: no walk, nothing deleted", notYet.isEmpty())
+        assertTrue("15 new bytes crosses it: the directory is trimmed to its budget", due.isNotEmpty())
+        assertTrue(File(tmp.root, "t2").walkTopDown().filter { it.isFile }.sumOf { it.length() } <= 100)
+        assertTrue("the thumbnail just stored survives", second.isFile)
+    }
+
     private fun write(file: File, bytes: Int = 10): File = file.apply { parentFile!!.mkdirs(); writeBytes(ByteArray(bytes)) }
 
     @Test

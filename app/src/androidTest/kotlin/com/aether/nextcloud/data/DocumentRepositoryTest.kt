@@ -74,6 +74,34 @@ class DocumentRepositoryTest {
     }
 
     @Test
+    fun aCopyServedMomentsAgoIsNotCheckedWithTheServerAgain() {
+        env.nextcloud.putFile("/a.txt", "a")
+        list()
+        documents.freshnessWindowMs = 5_000
+        runBlocking { ok(documents.ensureLocalFile(credentials, id("/a.txt"))) }
+        val checks = env.nextcloud.requestsMatching("PROPFIND", "/a.txt").size
+
+        val again = runBlocking { ok(documents.ensureLocalFile(credentials, id("/a.txt"))) }
+
+        assertEquals("a", again.readText())
+        assertEquals("no second PROPFIND inside the window", checks, env.nextcloud.requestsMatching("PROPFIND", "/a.txt").size)
+        assertEquals("and no second download", 1, env.nextcloud.requestsMatching("GET", "/a.txt").size)
+    }
+
+    @Test
+    fun withoutTheWindowEveryOpenChecksTheServerAndSeesRemoteEdits() {
+        env.nextcloud.putFile("/a.txt", "v1")
+        list()
+        documents.freshnessWindowMs = 0
+        runBlocking { ok(documents.ensureLocalFile(credentials, id("/a.txt"))) }
+
+        env.nextcloud.editRemotely("/a.txt", "v2")
+        val again = runBlocking { ok(documents.ensureLocalFile(credentials, id("/a.txt"))) }
+
+        assertEquals("v2", again.readText())
+    }
+
+    @Test
     fun aRefreshDropsChildrenThatDisappearedAndTheirLocalCopies() {
         env.nextcloud.putFile("/keep.txt", "k")
         env.nextcloud.putFile("/gone.txt", "g")

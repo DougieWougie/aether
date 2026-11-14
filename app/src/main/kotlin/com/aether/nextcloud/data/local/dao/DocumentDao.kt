@@ -64,6 +64,10 @@ interface DocumentDao {
     )
     fun pinnedRoots(): List<DocumentEntity>
 
+    /** The account's files (no folders) that changed most recently on the server, as far as the cache knows. */
+    @Query("SELECT * FROM documents WHERE accountName = :account AND isDirectory = 0 ORDER BY lastModified DESC LIMIT :limit")
+    fun recentFiles(account: String, limit: Int): List<DocumentEntity>
+
     @Query("UPDATE documents SET isPinned = :pinned WHERE documentId = :id")
     fun setPinned(id: String, pinned: Boolean)
 

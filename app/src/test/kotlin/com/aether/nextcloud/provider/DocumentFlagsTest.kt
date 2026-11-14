@@ -27,8 +27,16 @@ class DocumentFlagsTest {
     }
 
     @Test
-    fun `read only share`() {
-        assertEquals(0, doc("RG").safFlags())
+    fun `read only share can be copied but nothing else`() {
+        assertEquals(Document.FLAG_SUPPORTS_COPY, doc("RG").safFlags())
+    }
+
+    @Test
+    fun `files and folders that can be read can be copied, an account root cannot`() {
+        assertTrue(doc("RGDNVW").safFlags().has(Document.FLAG_SUPPORTS_COPY))
+        assertTrue(doc("RGDNVCK", dir = true).safFlags().has(Document.FLAG_SUPPORTS_COPY))
+        assertFalse("no read permission, no copy", doc("DNVW").safFlags().has(Document.FLAG_SUPPORTS_COPY))
+        assertFalse(doc("RGDNVCK", dir = true).copy(parentId = null).safFlags().has(Document.FLAG_SUPPORTS_COPY))
     }
 
     @Test

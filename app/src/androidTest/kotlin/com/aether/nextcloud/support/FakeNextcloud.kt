@@ -96,6 +96,7 @@ class FakeNextcloud(val user: String = "alice") : AutoCloseable {
     fun withPreview(path: String) { files.getValue(path).preview = true }
 
     /** Takes the write permission away from [path], as a share with read-only access does. */
+    fun setModified(path: String, millis: Long) { files.getValue(path).mtime = millis }
     fun makeReadOnly(path: String) { files.getValue(path).readOnly = true }
 
     fun mkdirs(path: String) {
@@ -180,6 +181,7 @@ class FakeNextcloud(val user: String = "alice") : AutoCloseable {
             else -> { files.keys.filter { it.startsWith("$path/") }.forEach(files::remove); MockResponse().setResponseCode(204) }
         }
         "MOVE" -> move(request, path)
+        "COPY" -> copy(request, path)
         else -> MockResponse().setResponseCode(405)
     }
 
@@ -212,6 +214,18 @@ class FakeNextcloud(val user: String = "alice") : AutoCloseable {
         val moved = files.keys.filter { it.startsWith("$path/") }.associateWith { files.remove(it)!! }
         files[destination] = node
         moved.forEach { (old, child) -> files[destination + old.removePrefix(path)] = child }
+        return MockResponse().setResponseCode(201)
+    }
+
+    private fun copy(request: RecordedRequest, path: String): MockResponse {
+        val destination = destinationOf(request) ?: return MockResponse().setResponseCode(400)
+        val overwrite = request.getHeader("Overwrite") != "F"
+        val source = files[path] ?: return MockResponse().setResponseCode(404)
+        if (!overwrite && files.containsKey(destination)) return MockResponse().setResponseCode(412)
+        if (parentMissing(destination)) return MockResponse().setResponseCode(409)
+        fun duplicate(node: Node) = Node(node.dir, node.bytes.copyOf(), nextId++, nextEtag(), node.mtime, node.mime, node.checksum, node.preview, node.readOnly)
+        files[destination] = duplicate(source)
+        files.keys.filter { it.startsWith("$path/") }.forEach { old -> files[destination + old.removePrefix(path)] = duplicate(files.getValue(old)) }
         return MockResponse().setResponseCode(201)
     }
 
@@ -273,9 +287,9 @@ class FakeNextcloud(val user: String = "alice") : AutoCloseable {
                 append("<d:response><d:href>$href</d:href><d:propstat><d:prop>")
                 append(if (n.dir) "<d:resourcetype><d:collection/></d:resourcetype>" else "<d:resourcetype/>")
                 if (!n.dir) append("<d:getcontentlength>${n.bytes.size}</d:getcontentlength><d:getcontenttype>${n.mime}</d:getcontenttype>")
-                append("<d:getlastmodified>Mon, 01 Jan 2024 00:00:00 GMT</d:getlastmodified>")
+                append("<d:getlastmodified>${java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME.format(java.time.Instant.ofEpochMilli(n.mtime).atOffset(java.time.ZoneOffset.UTC))}</d:getlastmodified>")
                 append("<d:getetag>&quot;${n.etag}&quot;</d:getetag>")
-                append("<oc:fileid>${n.fileId}</oc:fileid><oc:permissions>${if (n.dir) "RGDNVCK" else if (n.readOnly) "RGDNV" else "RGDNVW"}</oc:permissions>")
+                append("<oc:fileid>${n.fileId}</oc:fileid><oc:permissions>${if (n.dir) (if (n.readOnly) "RGDNV" else "RGDNVCK") else if (n.readOnly) "RGDNV" else "RGDNVW"}</oc:permissions>")
                 n.checksum?.let { append("<oc:checksums><oc:checksum>$it</oc:checksum></oc:checksums>") }
                 append("<oc:size>${if (n.dir) 0 else n.bytes.size}</oc:size><nc:has-preview>${n.preview}</nc:has-preview><oc:favorite>0</oc:favorite>")
                 append("</d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>")

@@ -53,6 +53,26 @@ class LoginFlowV2ClientTest {
     }
 
     @Test
+    fun `start refuses a poll endpoint on a different host or port than the server the user entered`() = runBlocking {
+        server.enqueue(MockResponse().setBody("""{"poll":{"token":"t","endpoint":"http://other.example.net/index.php/login/v2/poll"},"login":"${baseUrl()}/flow"}"""))
+        server.enqueue(MockResponse().setBody("""{"poll":{"token":"t","endpoint":"http://${server.hostName}:${server.port + 1}/poll"},"login":"${baseUrl()}/flow"}"""))
+
+        val otherHost = client.start(baseUrl())
+        val otherPort = client.start(baseUrl())
+
+        assertTrue((otherHost as AetherResult.Failure).error is AetherError.InvalidServer)
+        assertTrue((otherPort as AetherResult.Failure).error is AetherError.InvalidServer)
+    }
+
+    @Test
+    fun `poll never sends the token to an endpoint on a different host`() = runBlocking {
+        val result = client.poll("http://other.example.net/index.php/login/v2/poll", "tok123", baseUrl())
+
+        assertTrue((result as AetherResult.Failure).error is AetherError.InvalidServer)
+        assertEquals(0, server.requestCount)
+    }
+
+    @Test
     fun `start tolerates trailing slash and index php in server input`() = runBlocking {
         server.enqueue(MockResponse().setBody(initBody()))
 

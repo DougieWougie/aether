@@ -64,6 +64,9 @@ class FakeNextcloud(val user: String = "alice") : AutoCloseable {
     /** While true a PUT waits instead of answering; once released, every PUT that was held is dropped without being stored. */
     @Volatile var holdPuts = false
 
+    /** Paths whose next PROPFIND answers 404 although the file exists: another client creates it right after a name probe. */
+    val hiddenFromNextPropfind: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+
     val baseUrl: String get() = server.url("/").toString().removeSuffix("/")
 
     init {
@@ -243,6 +246,7 @@ class FakeNextcloud(val user: String = "alice") : AutoCloseable {
     }
 
     private fun propfind(request: RecordedRequest, path: String): MockResponse {
+        if (hiddenFromNextPropfind.remove(path)) return MockResponse().setResponseCode(404)
         val self = files[path] ?: return MockResponse().setResponseCode(404)
         val depth = request.getHeader("Depth") ?: "1"
         val entries = buildList {

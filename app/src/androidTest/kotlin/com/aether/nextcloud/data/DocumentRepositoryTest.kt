@@ -62,6 +62,18 @@ class DocumentRepositoryTest {
     }
 
     @Test
+    fun aFileCreatedBetweenTheNameProbeAndTheUploadIsNotOverwritten() {
+        env.nextcloud.putFile("/note.txt", "someone else's")
+        env.nextcloud.hiddenFromNextPropfind += "/note.txt"
+
+        val created = runBlocking { ok(documents.createEmptyFile(credentials, root, "note.txt", "text/plain")) }
+
+        assertEquals("the next free name is used", "/note (1).txt", created.path)
+        assertEquals("the other file is untouched", "someone else's", env.nextcloud.text("/note.txt"))
+        assertEquals("", env.nextcloud.text("/note (1).txt"))
+    }
+
+    @Test
     fun aRefreshDropsChildrenThatDisappearedAndTheirLocalCopies() {
         env.nextcloud.putFile("/keep.txt", "k")
         env.nextcloud.putFile("/gone.txt", "g")

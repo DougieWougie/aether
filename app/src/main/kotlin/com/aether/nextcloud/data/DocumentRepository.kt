@@ -5,9 +5,11 @@ import com.aether.nextcloud.auth.AetherCredentials
 import com.aether.nextcloud.core.AetherError
 import com.aether.nextcloud.core.AetherResult
 import com.aether.nextcloud.core.getOrNull
+import com.aether.nextcloud.core.map
 import com.aether.nextcloud.data.cache.DocumentDiskCache
 import com.aether.nextcloud.data.local.AetherDatabase
 import com.aether.nextcloud.data.local.entity.DocumentEntity
+import com.aether.nextcloud.dav.FileUploadSource
 import com.aether.nextcloud.dav.SearchQuery
 import com.aether.nextcloud.dav.WebDavClientFactory
 import com.aether.nextcloud.dav.ProgressListener
@@ -226,18 +228,26 @@ class DocumentRepository @Inject constructor(
         }
     }
 
-    /** Creates an empty file so SAF has a document id straight away; the caller then writes content via `openDocument`. */
+    /**
+     * Creates an empty file so SAF has a document id straight away; the caller then writes content via `openDocument`.
+     * The name was only probed as free, so the upload refuses to replace anything (`createOnly`): if another client
+     * created that name in between, the next free one is used.
+     */
     suspend fun createEmptyFile(credentials: AetherCredentials, parent: DocumentId, name: String, mimeType: String): AetherResult<DocumentEntity> {
-        val id = when (val free = uniqueChild(credentials, parent, name)) {
-            is AetherResult.Success -> free.value
-            is AetherResult.Failure -> return free
-        }
         val empty = withContext(Dispatchers.IO) { File.createTempFile("empty", ".tmp") }
         try {
-            return when (val put = davFactory.forAccount(credentials).uploadFile(credentials.fileUrl(id.path), empty, mimeType)) {
-                is AetherResult.Failure -> put
-                is AetherResult.Success -> refreshDocument(credentials, id).also { invalidate(parent) }
+            var attempt = 0
+            while (attempt <= MAX_NAME_ATTEMPTS) {
+                val (id, used) = when (val free = freeChild(credentials, parent, name, attempt)) {
+                    is AetherResult.Success -> free.value
+                    is AetherResult.Failure -> return free
+                }
+                when (val put = davFactory.forAccount(credentials).uploadFile(credentials.fileUrl(id.path), FileUploadSource(empty), mimeType, createOnly = true)) {
+                    is AetherResult.Success -> return refreshDocument(credentials, id).also { invalidate(parent) }
+                    is AetherResult.Failure -> if (put.error == AetherError.PreconditionFailed) attempt = used + 1 else return put
+                }
             }
+            return AetherResult.Failure(AetherError.Malformed("Could not find a free name for $name"))
         } finally {
             empty.delete()
         }
@@ -356,17 +366,21 @@ class DocumentRepository @Inject constructor(
         )
 
     /** Picks a free child id under [parent]. SAF expects a unique name when the requested one exists: "notes.md" → "notes (1).md". */
-    suspend fun uniqueChild(credentials: AetherCredentials, parent: DocumentId, name: String): AetherResult<DocumentId> {
+    suspend fun uniqueChild(credentials: AetherCredentials, parent: DocumentId, name: String): AetherResult<DocumentId> =
+        freeChild(credentials, parent, name, 0).map { it.first }
+
+    /** The first name from attempt [startAt] on that the server does not have, and the attempt number it came from. */
+    private suspend fun freeChild(credentials: AetherCredentials, parent: DocumentId, name: String, startAt: Int): AetherResult<Pair<DocumentId, Int>> {
         if (name.isEmpty() || '/' in name) return AetherResult.Failure(AetherError.Malformed("Invalid name: $name"))
         val dav = davFactory.forAccount(credentials)
         val dot = name.lastIndexOf('.')
         val base = if (dot > 0) name.substring(0, dot) else name
         val extension = if (dot > 0) name.substring(dot) else ""
-        for (attempt in 0..MAX_NAME_ATTEMPTS) {
+        for (attempt in startAt..MAX_NAME_ATTEMPTS) {
             val candidate = parent.child(if (attempt == 0) name else "$base ($attempt)$extension")
             when (val probe = dav.propfind(credentials.fileUrl(candidate.path), depth = 0)) {
                 is AetherResult.Success -> continue
-                is AetherResult.Failure -> return if (probe.error == AetherError.NotFound) AetherResult.Success(candidate) else probe
+                is AetherResult.Failure -> return if (probe.error == AetherError.NotFound) AetherResult.Success(candidate to attempt) else probe
             }
         }
         return AetherResult.Failure(AetherError.Malformed("Could not find a free name for $name"))

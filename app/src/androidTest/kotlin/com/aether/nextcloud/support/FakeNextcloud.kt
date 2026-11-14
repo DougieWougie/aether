@@ -61,6 +61,9 @@ class FakeNextcloud(val user: String = "alice") : AutoCloseable {
     /** Throttles preview bodies to this many bytes per second (0 = unthrottled), so a download stays in flight. */
     @Volatile var previewBytesPerSecond = 0L
 
+    /** While true a PUT waits instead of answering; once released, every PUT that was held is dropped without being stored. */
+    @Volatile var holdPuts = false
+
     val baseUrl: String get() = server.url("/").toString().removeSuffix("/")
 
     init {
@@ -180,6 +183,10 @@ class FakeNextcloud(val user: String = "alice") : AutoCloseable {
     private fun parentMissing(path: String) = !files.containsKey(path.substringBeforeLast('/').ifEmpty { "/" })
 
     private fun put(request: RecordedRequest, path: String): MockResponse {
+        if (holdPuts) {
+            while (holdPuts) Thread.sleep(20)
+            return MockResponse().setResponseCode(503)
+        }
         if (putDelayMs > 0) Thread.sleep(putDelayMs)
         putScript.poll()?.let { return MockResponse().setResponseCode(it) }
         if (quotaFull) return MockResponse().setResponseCode(507)

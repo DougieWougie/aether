@@ -4,7 +4,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.aether.nextcloud.core.AetherError
 import com.aether.nextcloud.core.AetherResult
 import com.aether.nextcloud.provider.DocumentId
-import com.aether.nextcloud.support.AetherTestRule
+import com.aether.nextcloud.support.RobolectricAetherRule
 import java.io.File
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -18,7 +18,7 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class DocumentRepositoryTest {
-    @get:Rule val env = AetherTestRule()
+    @get:Rule val env = RobolectricAetherRule()
 
     private val documents get() = env.graph.documents()
     private val root get() = DocumentId.root(env.accountName)

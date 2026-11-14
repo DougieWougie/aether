@@ -14,17 +14,40 @@ import com.aether.nextcloud.sync.UploadDocumentWorker
 import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.runBlocking
 import org.junit.rules.ExternalResource
+import org.junit.runner.Description
+import org.junit.runners.model.Statement
 
 /**
  * Signs a real Android account in against a [FakeNextcloud] using the app's own graph (Room, WorkManager, OkHttp),
  * so tests exercise the same objects the provider and workers use. Everything is removed afterwards.
  */
-class AetherTestRule : ExternalResource() {
+open class AetherTestRule : ExternalResource() {
     val context: Context = ApplicationProvider.getApplicationContext()
     lateinit var nextcloud: FakeNextcloud
     lateinit var accountName: String
     /** The app's own singletons, through the provider's entry point. */
     val graph: AetherDocumentsProvider.Dependencies get() = EntryPointAccessors.fromApplication(context, AetherDocumentsProvider.Dependencies::class.java)
+
+    /**
+     * On a device the test thread is not the main thread; under Robolectric it is, and Room refuses the synchronous reads these
+     * tests make there. So on the main thread the whole test (including its @Before and @After) runs on a worker thread.
+     */
+    override fun apply(base: Statement, description: Description): Statement {
+        val inner = super.apply(base, description)
+        return object : Statement() {
+            override fun evaluate() {
+                if (android.os.Looper.getMainLooper()?.thread !== Thread.currentThread()) return inner.evaluate()
+                var failure: Throwable? = null
+                val worker = Thread({ try { inner.evaluate() } catch (t: Throwable) { failure = t } }, "test-body")
+                worker.start()
+                waitFor(worker)
+                failure?.let { throw it }
+            }
+        }
+    }
+
+    /** Waits for the test body; a Robolectric rule overrides this to keep running what is posted to the main looper meanwhile. */
+    protected open fun waitFor(worker: Thread) = worker.join()
 
     override fun before() {
         removeLeftovers()

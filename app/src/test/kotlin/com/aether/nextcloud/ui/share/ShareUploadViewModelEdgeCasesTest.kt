@@ -1,4 +1,4 @@
-package com.aether.nextcloud.ui
+package com.aether.nextcloud.ui.share
 
 import android.content.Intent
 import android.net.Uri
@@ -8,29 +8,24 @@ import com.aether.nextcloud.AetherConstants
 import com.aether.nextcloud.auth.LoginCredentials
 import com.aether.nextcloud.data.prefs.SettingsRepository
 import com.aether.nextcloud.provider.DocumentId
-import com.aether.nextcloud.support.AetherTestRule
-import com.aether.nextcloud.support.MediaStoreFixtures
+import com.aether.nextcloud.support.RobolectricAetherRule
+import com.aether.nextcloud.support.SharedFileFixtures
 import com.aether.nextcloud.support.awaitTrue
-import com.aether.nextcloud.ui.share.SharePhase
-import com.aether.nextcloud.ui.share.ShareUploadViewModel
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
-import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class ShareUploadViewModelEdgeCasesTest {
-    @get:Rule val env = AetherTestRule()
+    @get:Rule val env = RobolectricAetherRule()
 
     private val settings by lazy { SettingsRepository(env.context) }
-    private val media by lazy { MediaStoreFixtures(env.context) }
+    private val media by lazy { SharedFileFixtures(env.context) }
     private val secondAccount = "bob@other.example.com"
-
-    @Before fun grant() = media.grantMediaPermissions()
 
     @After
     fun clean() {

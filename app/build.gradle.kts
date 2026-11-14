@@ -1,3 +1,4 @@
+import org.gradle.testing.jacoco.plugins.JacocoTaskExtension
 import java.util.Properties
 
 plugins {
@@ -71,7 +72,13 @@ android {
     testOptions {
         // android.util.* and friends return defaults instead of throwing in plain JVM tests.
         unitTests.isReturnDefaultValues = true
+        // Robolectric needs the merged resources and manifest (ADR-0009: Robolectric/JVM tests).
+        unitTests.isIncludeAndroidResources = true
     }
+
+    // Test support shared by the JVM (Robolectric) tests and the instrumented tests: the fake Nextcloud and the account rule.
+    sourceSets.getByName("test").kotlin.directories.add("src/sharedTest/kotlin")
+    sourceSets.getByName("androidTest").kotlin.directories.add("src/sharedTest/kotlin")
 }
 
 kotlin {
@@ -114,6 +121,14 @@ dependencies {
     // Lets XmlPullParserFactory resolve a parser in plain JVM tests (the platform one is compiled into Android).
     testImplementation(libs.kxml2)
     testImplementation(libs.xmlpull)
+    // Robolectric: runs the Android-dependent logic and Compose screen tests on the JVM (ADR-0009).
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.androidx.test.ext.junit)
+    testImplementation(libs.androidx.work.testing)
+    testImplementation(libs.androidx.test.espresso.intents)
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.compose.ui.test.junit4)
 
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
@@ -133,6 +148,15 @@ ksp {
 
 jacoco {
     toolVersion = "0.8.13"
+}
+
+// Robolectric loads app classes through its own class loader; without this the JaCoCo agent skips them and the report
+// would not count what the JVM Robolectric tests cover.
+tasks.withType<Test>().configureEach {
+    extensions.findByType(JacocoTaskExtension::class.java)?.apply {
+        isIncludeNoLocationClasses = true
+        excludes = listOf("jdk.internal.*")
+    }
 }
 
 // One report from both test suites. Run the tests first: ./gradlew testDebugUnitTest connectedDebugAndroidTest coverageReport

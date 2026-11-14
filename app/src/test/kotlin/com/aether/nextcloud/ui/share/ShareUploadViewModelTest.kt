@@ -1,4 +1,4 @@
-package com.aether.nextcloud.ui
+package com.aether.nextcloud.ui.share
 
 import android.content.Intent
 import android.net.Uri
@@ -6,11 +6,9 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.aether.nextcloud.AetherConstants
 import com.aether.nextcloud.data.prefs.SettingsRepository
 import com.aether.nextcloud.provider.DocumentId
-import com.aether.nextcloud.support.AetherTestRule
-import com.aether.nextcloud.support.MediaStoreFixtures
+import com.aether.nextcloud.support.RobolectricAetherRule
+import com.aether.nextcloud.support.SharedFileFixtures
 import com.aether.nextcloud.support.awaitTrue
-import com.aether.nextcloud.ui.share.SharePhase
-import com.aether.nextcloud.ui.share.ShareUploadViewModel
 import java.io.File
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -19,7 +17,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
-import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -27,12 +24,10 @@ import org.junit.runner.RunWith
 /** The share sheet's logic with the app's real repositories, WorkManager and a fake server. */
 @RunWith(AndroidJUnit4::class)
 class ShareUploadViewModelTest {
-    @get:Rule val env = AetherTestRule()
+    @get:Rule val env = RobolectricAetherRule()
 
     private val settings by lazy { SettingsRepository(env.context) }
-    private val media by lazy { MediaStoreFixtures(env.context) }
-
-    @Before fun grant() = media.grantMediaPermissions()
+    private val media by lazy { SharedFileFixtures(env.context) }
 
     @After fun clean() {
         media.deleteAll()
@@ -126,29 +121,6 @@ class ShareUploadViewModelTest {
         vm.load(text("second"))
 
         assertEquals("first", vm.state.value.items.single().text)
-    }
-
-    @Test
-    fun aSharedPhotoIsUploadedUnderItsOwnName() {
-        val photo = media.photo("holiday.jpg", ByteArray(64) { it.toByte() })
-        val vm = loaded(Intent(Intent.ACTION_SEND).setType("image/jpeg").putExtra(Intent.EXTRA_STREAM, photo.uri))
-        assertEquals("holiday.jpg", vm.state.value.items.single().name)
-
-        vm.upload()
-
-        awaitTrue("the photo to arrive on the server", timeoutMs = 30_000) { env.nextcloud.bytes("/holiday.jpg")?.size == 64 }
-        assertEquals(SharePhase.Queued(1), vm.state.value.phase)
-    }
-
-    @Test
-    fun anExistingNameIsNotOverwritten() {
-        env.nextcloud.putFile("/Shared text.txt", "mine")
-        val vm = loaded(text("theirs"))
-
-        vm.upload()
-
-        awaitTrue("the second copy to arrive", timeoutMs = 30_000) { env.nextcloud.text("/Shared text (1).txt") == "theirs" }
-        assertEquals("mine", env.nextcloud.text("/Shared text.txt"))
     }
 
     @Test

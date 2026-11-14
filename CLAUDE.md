@@ -49,6 +49,7 @@ Aether is licensed under the **GNU General Public License v3.0 or later** (see [
 - **UI Framework:** Jetpack Compose with **Material 3 Expressive** (`androidx.compose.material3:material3:1.4.0-alpha+` / `1.5.0-alpha+`, `androidx.graphics:graphics-shapes`)
 - **DI:** Hilt (`com.google.dagger.hilt.android`)
 - **Networking:** `OkHttp3` (HTTP/2, custom WebDAV verbs, streaming `RequestBody`/`ResponseBody`)
+- **Testing:** JUnit4, MockK, `MockWebServer`; Robolectric (`org.robolectric:robolectric`, Apache-2.0) runs Android-dependent logic and Compose sections on the JVM; shared test support (`FakeNextcloud`, `AetherTestRule`) lives in `app/src/sharedTest` and is compiled into both test sets (ADR-0009)
 - **XML Parsing:** Android platform `org.xmlpull.v1.XmlPullParser` (with `net.sf.kxml:kxml2` in `testImplementation` for JVM unit tests)
 - **Local Persistence:** Jetpack `Room` (metadata cache, offline pins, transfer queue, backed-up media log) + Jetpack `DataStore` (user preferences/sync constraints)
 - **Background Work:** Jetpack `WorkManager` (`CoroutineWorker` + Hilt Worker integration)
@@ -188,7 +189,8 @@ com.aether.nextcloud/
 # Build debug APK
 ./gradlew assembleDebug
 
-# Run JVM unit tests (WebDAV XML parser, Login v2 polling, Repository logic, DocumentId)
+# Run JVM unit tests (WebDAV XML parser, Login v2 polling, DocumentId) and the Robolectric tests
+# (DocumentRepository, the share sheet's view model, the dashboard's Compose sections) - no emulator needed
 ./gradlew testDebugUnitTest
 
 # Run Android lint checks

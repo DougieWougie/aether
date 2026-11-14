@@ -9,6 +9,7 @@ import com.aether.nextcloud.support.AetherTestRule
 import com.aether.nextcloud.support.awaitTrue
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -25,12 +26,13 @@ class AetherAccountAuthenticatorTest {
     private val account get() = Account(env.accountName, AetherConstants.ACCOUNT_TYPE)
 
     @Test
-    fun theAuthTokenIsTheAppPassword() {
-        val bundle = manager.getAuthToken(account, "any", null, false, null, null).result
+    fun theAppPasswordIsNeverHandedOutAsAnAuthToken() {
+        val future = manager.getAuthToken(account, "any", null, false, null, null)
 
-        assertEquals("app-password", bundle.getString(AccountManager.KEY_AUTHTOKEN))
-        assertEquals(env.accountName, bundle.getString(AccountManager.KEY_ACCOUNT_NAME))
-        assertEquals(AetherConstants.ACCOUNT_TYPE, bundle.getString(AccountManager.KEY_ACCOUNT_TYPE))
+        val failure = runCatching { future.result }.exceptionOrNull()
+
+        assertTrue("getAuthToken must refuse instead of returning the password: $failure", failure is android.accounts.OperationCanceledException || failure is android.accounts.AuthenticatorException)
+        assertFalse(failure.toString().contains("app-password"))
     }
 
     @Test

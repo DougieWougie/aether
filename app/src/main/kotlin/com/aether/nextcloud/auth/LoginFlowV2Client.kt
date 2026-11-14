@@ -27,6 +27,13 @@ data class LoginSession(val server: String, val loginUrl: String, val pollEndpoi
 internal fun LoginSession.usesOnlyHttps(): Boolean =
     loginUrl.startsWith("https://", ignoreCase = true) && pollEndpoint.startsWith("https://", ignoreCase = true)
 
+/** The poll endpoint receives the login token, so it must be on the server the user entered (same host and port). */
+internal fun pollEndpointBelongsTo(server: String, pollEndpoint: String): Boolean {
+    val expected = server.toHttpUrlOrNull() ?: return false
+    val endpoint = pollEndpoint.toHttpUrlOrNull() ?: return false
+    return expected.host.equals(endpoint.host, ignoreCase = true) && expected.port == endpoint.port
+}
+
 data class LoginCredentials(val server: String, val loginName: String, val appPassword: String)
 
 sealed interface PollOutcome {
@@ -69,6 +76,8 @@ class LoginFlowV2Client(
                 val session = (parsed as? AetherResult.Success)?.value
                 if (session != null && !allowInsecure && !session.usesOnlyHttps()) {
                     AetherResult.Failure(AetherError.InvalidServer(INSECURE_MESSAGE))
+                } else if (session != null && !pollEndpointBelongsTo(server, session.pollEndpoint)) {
+                    AetherResult.Failure(AetherError.InvalidServer(FOREIGN_POLL_MESSAGE))
                 } else {
                     parsed
                 }
@@ -82,6 +91,8 @@ class LoginFlowV2Client(
      * the server it is stored for, so one issued for somewhere else must never be accepted.
      */
     suspend fun poll(pollEndpoint: String, pollToken: String, expectedServer: String): AetherResult<PollOutcome> {
+        // The endpoint may come back from saved state; never send the token anywhere but the server the user entered.
+        if (!pollEndpointBelongsTo(expectedServer, pollEndpoint)) return AetherResult.Failure(AetherError.InvalidServer(FOREIGN_POLL_MESSAGE))
         val request = Request.Builder()
             .url(pollEndpoint)
             .header("User-Agent", userAgent)
@@ -151,6 +162,7 @@ class LoginFlowV2Client(
         const val MAX_CONSECUTIVE_NETWORK_ERRORS = 30
         /** Nextcloud invalidates a login flow token after 20 minutes. */
         const val FLOW_TIMEOUT_MS = 20 * 60 * 1_000L
+        private const val FOREIGN_POLL_MESSAGE = "The server sent Aether to a different address to finish signing in, so sign-in was stopped."
         private const val INSECURE_MESSAGE = "The server asked Aether to use an unencrypted connection, so sign-in was stopped."
 
         /**

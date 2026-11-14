@@ -35,7 +35,7 @@ class AetherAccountAuthenticator(private val context: Context) : AbstractAccount
         return Bundle().apply { putParcelable(AccountManager.KEY_INTENT, intent) }
     }
 
-    /** The auth token is the Nextcloud app password. */
+    /** Aether never issues auth tokens: the Nextcloud app password stays inside the app. */
     @Throws(NetworkErrorException::class)
     override fun getAuthToken(
         response: AccountAuthenticatorResponse,
@@ -43,12 +43,11 @@ class AetherAccountAuthenticator(private val context: Context) : AbstractAccount
         authTokenType: String,
         options: Bundle?,
     ): Bundle {
-        val password = AccountManager.get(context).getPassword(account)
-            ?: return addAccount(response, account.type, authTokenType, null, options)
+        // The app password never leaves Aether: it is used in-process through AccountRepository. Handing it out as an auth token
+        // would give it to any app that can request one for this account type, and nothing in Aether asks for one.
         return Bundle().apply {
-            putString(AccountManager.KEY_ACCOUNT_NAME, account.name)
-            putString(AccountManager.KEY_ACCOUNT_TYPE, account.type)
-            putString(AccountManager.KEY_AUTHTOKEN, password)
+            putInt(AccountManager.KEY_ERROR_CODE, AccountManager.ERROR_CODE_UNSUPPORTED_OPERATION)
+            putString(AccountManager.KEY_ERROR_MESSAGE, "Aether does not hand out auth tokens")
         }
     }
 

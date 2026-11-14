@@ -39,10 +39,16 @@ class CameraBackupWorkerTest {
         runBlocking { settings.updateBackup { it.copy(enabled = false, accountName = null, albums = null) } }
     }
 
-    /** Turns backup on and waits out the second in which "added since" is compared, so only later items count. */
-    private fun enableBackup(videos: Boolean = true, albums: List<BackupAlbum>? = null) {
-        runBlocking { settings.updateBackup { it.copy(enabled = true, accountName = env.accountName, remoteFolder = folder, includeVideos = videos, albums = albums) } }
-        Thread.sleep(1_100)
+    /**
+     * Turns backup on. MediaStore stamps items in whole seconds and the worker only takes items added after the "since" stamp,
+     * so the stamp is set explicitly instead of waiting out the second: by default a few seconds back, so items added by the
+     * test right after count; pass [sinceMillis] (an item's own date added) to leave earlier items out.
+     */
+    private fun enableBackup(videos: Boolean = true, albums: List<BackupAlbum>? = null, sinceMillis: Long = System.currentTimeMillis() - 5_000) {
+        runBlocking {
+            settings.updateBackup { it.copy(enabled = true, accountName = env.accountName, remoteFolder = folder, includeVideos = videos, albums = albums) }
+            settings.updateBackup { it.copy(backupSinceMillis = sinceMillis) }
+        }
     }
 
     private fun runWorkerRaw(): ListenableWorker.Result = runBlocking {
@@ -145,9 +151,8 @@ class CameraBackupWorkerTest {
 
     @Test
     fun photosAddedBeforeBackupWasEnabledAreLeftAlone() {
-        media.photo("aether_old.jpg", bytes(3))
-        Thread.sleep(1_100)
-        enableBackup()
+        val old = media.photo("aether_old.jpg", bytes(3))
+        enableBackup(sinceMillis = media.dateAddedMillis(old))
 
         assertEquals(ListenableWorker.Result.success(), runWorker())
 

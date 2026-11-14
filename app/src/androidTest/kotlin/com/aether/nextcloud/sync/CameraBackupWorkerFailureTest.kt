@@ -44,8 +44,11 @@ class CameraBackupWorkerFailureTest {
     }
 
     private fun enableBackup(account: String? = env.accountName, albums: List<com.aether.nextcloud.data.prefs.BackupAlbum>? = null) {
-        runBlocking { settings.updateBackup { it.copy(enabled = true, accountName = account, remoteFolder = folder, albums = albums) } }
-        Thread.sleep(1_100)
+        // MediaStore stamps whole seconds, so the "since" stamp goes back a few seconds instead of waiting one out.
+        runBlocking {
+            settings.updateBackup { it.copy(enabled = true, accountName = account, remoteFolder = folder, albums = albums) }
+            settings.updateBackup { it.copy(backupSinceMillis = System.currentTimeMillis() - 5_000) }
+        }
     }
 
     private fun runWorker(triggered: Boolean = false): ListenableWorker.Result = runBlocking {

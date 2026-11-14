@@ -25,3 +25,10 @@ Every push to a pull request and to `main` ran lint, the JVM unit tests and the 
 - **Negative:** An instrumented regression outside the smoke set is found when a release branch is pushed, not on the pull request. Release branches must therefore be cut early enough to fix what they find.
 - **Follow-up (not done here):** Move instrumented tests that need no device (mime guessing, repositories, view models, `SyncScheduler`) to Robolectric or the JVM so the gate covers more without an emulator.
 - **Revisit** the smoke set if a post-merge regression escapes it; add `@Smoke` to the class that would have caught it.
+
+## Implementation notes: pinned actions, release checks and API matrix (2026-11-14)
+
+- **Actions are pinned to commit SHAs**, each with its release as a trailing comment (`# v7.0.1`), because a tag can be moved to different code. `.github/dependabot.yml` updates the `github-actions` and `gradle` ecosystems weekly; Dependabot rewrites the SHA and the comment together, and each update goes through the normal CI gate.
+- **The release job builds the release variant.** `Lint and unit tests` in `release.yml` also runs `assembleRelease`. Without keystore secrets that produces an unsigned APK, which is enough to exercise R8 and resource shrinking, the part of the build that no debug-only check covers.
+- **The full instrumented job runs on API 29, 34 and 36** (`minSdk`, the level the PR gate uses, and `targetSdk`), with `fail-fast: false` so one level's failure does not hide the others, and a report artifact per level. The PR gate is unchanged: smoke tests on API 34 only.
+- **Fixed sleeps removed from the instrumented tests.** The 1.1 s waits existed because MediaStore stamps items in whole seconds and camera backup only takes items added after the "since" stamp; the tests now set that stamp (a few seconds back, or an item's own `DATE_ADDED` to exclude it). The remaining waits poll for an observable state (a failed transfer row, no staging file left, no queued work) with `awaitTrue`. The only `Thread.sleep` calls left are the polling interval inside `awaitTrue` and `FakeNextcloud`'s deliberate PUT delay.

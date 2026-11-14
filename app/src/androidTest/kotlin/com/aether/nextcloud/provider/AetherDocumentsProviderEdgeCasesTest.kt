@@ -188,7 +188,8 @@ class AetherDocumentsProviderEdgeCasesTest {
         val download = java.util.concurrent.Executors.newSingleThreadExecutor().submit {
             kotlinx.coroutines.runBlocking { env.graph.ocs().downloadPreview(credentials, "100", target, 256) }
         }
-        Thread.sleep(700)
+        // The throttled body keeps the download in flight; once its .part file exists, bytes are on disk but not at the final path.
+        awaitTrue("the download to start writing") { target.parentFile?.listFiles().orEmpty().any { it.name.endsWith(".part") } }
         val midway = target.exists()
         download.get()
 
@@ -268,7 +269,10 @@ class AetherDocumentsProviderEdgeCasesTest {
 
         env.resolver.openFileDescriptor(env.documentUri("/a.txt"), "rw")!!.close()
 
-        Thread.sleep(2_000)
+        // The close callback runs on its own thread and deletes the staging copy of an unchanged file; once it has, nothing is coming.
+        awaitTrue("the unchanged staging copy to be discarded") {
+            java.io.File(env.context.filesDir, "staging").walkTopDown().none { it.isFile && it.extension == "staging" }
+        }
         assertTrue("an untouched file must not be re-uploaded", env.nextcloud.requestsMatching("PUT").isEmpty())
         assertEquals("unchanged", env.nextcloud.text("/a.txt"))
     }

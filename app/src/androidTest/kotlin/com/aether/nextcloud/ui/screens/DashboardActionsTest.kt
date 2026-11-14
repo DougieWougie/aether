@@ -242,7 +242,9 @@ class DashboardActionsTest {
             compose.waitUntil(10_000) { runCatching { Intents.intended(hasAction(android.provider.MediaStore.ACTION_IMAGE_CAPTURE)) }.isSuccess }
             awaitTrue("the camera's empty file to be removed") { java.io.File(context.cacheDir, "captures").listFiles().orEmpty().isEmpty() }
             assertEquals("no gallery copy either", 0, capturedRows())
-            Thread.sleep(1_000)
+            // The upload is enqueued the moment a capture is accepted, so no queued or running upload work means none is coming.
+            val work = androidx.work.WorkManager.getInstance(context).getWorkInfosByTag("upload-account:${env.accountName}").get()
+            assertTrue("no upload may be pending: $work", work.none { !it.state.isFinished })
             assertTrue(env.nextcloud.paths().none { it.endsWith(".jpg") })
         } finally {
             removeCapturedRows()
@@ -269,8 +271,9 @@ class DashboardActionsTest {
         media.grantMediaPermissions()
         runBlocking {
             settings.updateBackup { it.copy(enabled = true, accountName = env.accountName, remoteFolder = "/Photos", unmeteredOnly = true, chargingOnly = true) }
+            // Whole-second MediaStore stamps: go back a few seconds instead of waiting one out.
+            settings.updateBackup { it.copy(backupSinceMillis = System.currentTimeMillis() - 5_000) }
         }
-        Thread.sleep(1_100)
         media.photo("aether_now.jpg", ByteArray(2048) { (it * 3).toByte() })
         try {
             openCameraTab()
@@ -289,8 +292,10 @@ class DashboardActionsTest {
         val settings = SettingsRepository(context)
         val media = MediaStoreFixtures(context)
         media.grantMediaPermissions()
-        runBlocking { settings.updateBackup { it.copy(enabled = true, accountName = env.accountName, remoteFolder = "/Photos") } }
-        Thread.sleep(1_100)
+        runBlocking {
+            settings.updateBackup { it.copy(enabled = true, accountName = env.accountName, remoteFolder = "/Photos") }
+            settings.updateBackup { it.copy(backupSinceMillis = System.currentTimeMillis() - 5_000) }
+        }
         try {
             openCameraTab()
 

@@ -5,6 +5,9 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.aether.nextcloud.support.AetherTestRule
 import com.aether.nextcloud.support.Smoke
 import com.aether.nextcloud.support.awaitTrue
+
+
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -71,7 +74,10 @@ class UploadDocumentWorkerTest {
         env.resolver.openOutputStream(env.documentUri("/doc.txt"), "wt")!!.use { it.write("bigger".toByteArray()) }
 
         awaitTrue("the upload attempt") { env.nextcloud.requestsMatching("PUT", "/doc.txt").isNotEmpty() }
-        Thread.sleep(3_000)
+        // A retry would leave the row queued; failing for good is what settles it.
+        awaitTrue("the upload to be given up on") {
+            runBlocking { env.graph.database().transferDao().observeRecent(10).first() }.any { it.accountName == env.accountName && it.state == com.aether.nextcloud.data.local.entity.TransferState.FAILED }
+        }
         assertEquals("507 is not retried", 1, env.nextcloud.requestsMatching("PUT", "/doc.txt").size)
         assertEquals("small", env.nextcloud.text("/doc.txt"))
     }

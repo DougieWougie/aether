@@ -68,6 +68,10 @@ class MediaStoreFixtures(private val context: Context) {
         return Item(uri, name, bucket, bytes)
     }
 
+    /** When MediaStore says [item] was added, in milliseconds (it only stores whole seconds). */
+    fun dateAddedMillis(item: Item): Long =
+        context.contentResolver.query(item.uri, arrayOf(MediaStore.MediaColumns.DATE_ADDED), null, null, null)!!.use { it.moveToFirst(); it.getLong(0) * 1000 }
+
     private fun insert(collection: Uri, name: String, mime: String, relativePath: String, bytes: ByteArray): Item {
         val resolver = context.contentResolver
         val uri = resolver.insert(

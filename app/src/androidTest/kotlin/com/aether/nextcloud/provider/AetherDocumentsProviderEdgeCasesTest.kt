@@ -268,7 +268,10 @@ class AetherDocumentsProviderEdgeCasesTest {
 
         env.resolver.openFileDescriptor(env.documentUri("/a.txt"), "rw")!!.close()
 
-        Thread.sleep(2_000)
+        // The close callback runs on its own thread and deletes the staging copy of an unchanged file; once it has, nothing is coming.
+        awaitTrue("the unchanged staging copy to be discarded") {
+            java.io.File(env.context.filesDir, "staging").walkTopDown().none { it.isFile && it.extension == "staging" }
+        }
         assertTrue("an untouched file must not be re-uploaded", env.nextcloud.requestsMatching("PUT").isEmpty())
         assertEquals("unchanged", env.nextcloud.text("/a.txt"))
     }

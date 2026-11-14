@@ -120,7 +120,7 @@ class AetherDocumentsProvider : DocumentsProvider() {
                 Root.COLUMN_TITLE to title,
                 Root.COLUMN_SUMMARY to rootSummary(credentials.accountName, all.size),
                 Root.COLUMN_ICON to R.mipmap.ic_launcher,
-                Root.COLUMN_FLAGS to (Root.FLAG_SUPPORTS_CREATE or Root.FLAG_SUPPORTS_IS_CHILD or Root.FLAG_SUPPORTS_SEARCH),
+                Root.COLUMN_FLAGS to (Root.FLAG_SUPPORTS_CREATE or Root.FLAG_SUPPORTS_IS_CHILD or Root.FLAG_SUPPORTS_SEARCH or Root.FLAG_SUPPORTS_RECENTS),
                 Root.COLUMN_MIME_TYPES to "*/*",
                 Root.COLUMN_AVAILABLE_BYTES to quota?.freeBytes,
                 Root.COLUMN_CAPACITY_BYTES to capacity,
@@ -161,6 +161,14 @@ class AetherDocumentsProvider : DocumentsProvider() {
         val cursor = ExtrasCursor(columns, extras)
         documents.cachedChildren(parent).forEach { cursor.addDocument(it, columns) }
         cursor.setNotificationUri(context!!.contentResolver, notifyUri)
+        return cursor
+    }
+
+    /** Recently modified files, from the cache only: opening the Recent view must never wait for the network. */
+    override fun queryRecentDocuments(rootId: String, projection: Array<out String>?): Cursor {
+        val columns = projection ?: DEFAULT_DOCUMENT_PROJECTION
+        val cursor = MatrixCursor(columns)
+        if (accounts.credentials(rootId) != null) documents.cachedRecent(rootId, RECENT_LIMIT).forEach { cursor.addDocument(it, columns) }
         return cursor
     }
 
@@ -393,6 +401,25 @@ class AetherDocumentsProvider : DocumentsProvider() {
         return moved.toString()
     }
 
+    override fun copyDocument(sourceDocumentId: String, targetParentDocumentId: String): String {
+        val source = parseId(sourceDocumentId)
+        val target = parseId(targetParentDocumentId)
+        if (source.accountName != target.accountName) throw FileNotFoundException("Cannot copy between accounts")
+        if (source.isRoot) throw SecurityException("Cannot copy an account root")
+        val credentials = credentialsFor(source)
+        val sourceEntity = documents.cached(source) ?: blocking { documents.refreshDocument(credentials, source).orThrow(source.accountName) }
+        val targetEntity = documents.cached(target)
+            ?: if (target.isRoot) rootPlaceholder(target, credentials.accountName)
+            else blocking { documents.refreshDocument(credentials, target).orThrow(target.accountName) }
+        // Nextcloud permissions: C creates files in a folder, K creates folders.
+        if ((if (sourceEntity.isDirectory) 'K' else 'C') !in targetEntity.permissions.orEmpty()) {
+            throw SecurityException("${targetEntity.name} does not allow creating ${if (sourceEntity.isDirectory) "folders" else "files"} here")
+        }
+        val copied = blocking { documents.copy(credentials, source, target).orThrow(source.accountName) }
+        notifyChildren(target)
+        return copied.documentId
+    }
+
     private fun notifyChildren(parent: DocumentId) {
         context?.contentResolver?.notifyChange(
             DocumentsContract.buildChildDocumentsUri(AetherConstants.AUTHORITY, parent.toString()), null,
@@ -476,6 +503,7 @@ class AetherDocumentsProvider : DocumentsProvider() {
         )
         const val ERROR_BACKOFF_MS = 10_000L
         const val MAX_REMEMBERED_SEARCHES = 16
+        const val RECENT_LIMIT = 64
         const val MIN_THUMBNAIL = 64
         const val MAX_THUMBNAIL = 512
     }

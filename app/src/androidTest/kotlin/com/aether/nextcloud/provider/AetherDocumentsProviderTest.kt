@@ -178,6 +178,89 @@ class AetherDocumentsProviderTest {
         assertFalse(env.nextcloud.exists("/Archive/final.txt"))
     }
 
+    private fun flagsOf(path: String): Int =
+        env.resolver.query(env.documentUri(path), arrayOf(Document.COLUMN_FLAGS), null, null, null)!!.use { it.moveToFirst(); it.getInt(0) }
+
+    @Test
+    fun filesAndFoldersAreCopiedOnTheServerAndTheAccountRootIsNotCopyable() {
+        env.nextcloud.putFile("/Docs/a.txt", "alpha")
+        env.nextcloud.putFile("/Docs/sub/b.txt", "beta")
+        env.nextcloud.mkdirs("/Archive")
+        listNames("/")
+        awaitChildren("/", setOf("Docs", "Archive"))
+        assertTrue(flagsOf("/Docs") and Document.FLAG_SUPPORTS_COPY != 0)
+        assertEquals("the root has no parent to copy it into", 0, flagsOf("/") and Document.FLAG_SUPPORTS_COPY)
+        listNames("/Docs")
+        awaitChildren("/Docs", setOf("a.txt", "sub"))
+
+        val file = DocumentsContract.copyDocument(env.resolver, env.documentUri("/Docs/a.txt"), env.documentUri("/Archive"))!!
+        val folder = DocumentsContract.copyDocument(env.resolver, env.documentUri("/Docs"), env.documentUri("/Archive"))!!
+
+        assertEquals(env.docId("/Archive/a.txt"), DocumentsContract.getDocumentId(file))
+        assertEquals(env.docId("/Archive/Docs"), DocumentsContract.getDocumentId(folder))
+        assertEquals("alpha", env.nextcloud.text("/Archive/a.txt"))
+        assertEquals("beta", env.nextcloud.text("/Archive/Docs/sub/b.txt"))
+        assertEquals("the originals stay", "alpha", env.nextcloud.text("/Docs/a.txt"))
+        awaitChildren("/Archive", setOf("a.txt", "Docs"))
+    }
+
+    @Test
+    fun copyingIntoTheSameFolderPicksAFreeName() {
+        env.nextcloud.putFile("/Docs/a.txt", "alpha")
+        listNames("/")
+        listNames("/Docs")
+        awaitChildren("/Docs", setOf("a.txt"))
+
+        val copy = DocumentsContract.copyDocument(env.resolver, env.documentUri("/Docs/a.txt"), env.documentUri("/Docs"))!!
+
+        assertEquals(env.docId("/Docs/a (1).txt"), DocumentsContract.getDocumentId(copy))
+        assertEquals("alpha", env.nextcloud.text("/Docs/a (1).txt"))
+    }
+
+    @Test
+    fun aFolderCannotBeCopiedIntoItselfOrIntoAFolderWithoutCreatePermission() {
+        env.nextcloud.putFile("/Docs/a.txt", "alpha")
+        env.nextcloud.putFile("/Docs/sub/b.txt", "beta")
+        env.nextcloud.mkdirs("/Shared")
+        env.nextcloud.makeReadOnly("/Shared")
+        listNames("/")
+        awaitChildren("/", setOf("Docs", "Shared"))
+        listNames("/Docs")
+        awaitChildren("/Docs", setOf("a.txt", "sub"))
+
+        val intoItself = runCatching { DocumentsContract.copyDocument(env.resolver, env.documentUri("/Docs"), env.documentUri("/Docs/sub")) }.exceptionOrNull()
+        val intoReadOnly = runCatching { DocumentsContract.copyDocument(env.resolver, env.documentUri("/Docs/a.txt"), env.documentUri("/Shared")) }.exceptionOrNull()
+
+        assertTrue("expected a refusal, got $intoItself", intoItself != null)
+        assertTrue("expected a SecurityException, got $intoReadOnly", intoReadOnly is SecurityException)
+        assertEquals("nothing was copied", setOf("/Docs", "/Docs/a.txt", "/Docs/sub", "/Docs/sub/b.txt", "/Shared"), env.nextcloud.paths())
+    }
+
+    @Test
+    fun recentsAreAnsweredFromTheCacheNewestFirstAndOnlyListFiles() {
+        env.nextcloud.putFile("/old.txt", "o")
+        env.nextcloud.putFile("/Docs/new.txt", "n")
+        env.nextcloud.mkdirs("/Empty")
+        env.nextcloud.setModified("/old.txt", 1_600_000_000_000L)
+        env.nextcloud.setModified("/Docs/new.txt", 1_700_000_000_000L)
+        listNames("/")
+        awaitChildren("/", setOf("old.txt", "Docs", "Empty"))
+        listNames("/Docs")
+        awaitChildren("/Docs", setOf("new.txt"))
+        val roots = env.resolver.query(DocumentsContract.buildRootsUri(AetherConstants.AUTHORITY), arrayOf(Root.COLUMN_FLAGS), null, null, null)!!
+        roots.use { assertTrue(it.moveToFirst() && it.getInt(0) and Root.FLAG_SUPPORTS_RECENTS != 0) }
+        // Reading the roots starts a quota fetch (OCS); only WebDAV traffic would show recents going to the server.
+        fun davRequests() = env.nextcloud.requests.count { it.path.orEmpty().startsWith("/remote.php/") }
+        val before = davRequests()
+
+        val recent = env.resolver.query(
+            DocumentsContract.buildRecentDocumentsUri(AetherConstants.AUTHORITY, env.accountName), arrayOf(Document.COLUMN_DISPLAY_NAME, Document.COLUMN_MIME_TYPE), null, null, null,
+        )!!.use { c -> generateSequence { if (c.moveToNext()) c.getString(0) else null }.toList() }
+
+        assertEquals("both files, newest first, no folders", listOf("new.txt", "old.txt"), recent)
+        assertEquals("answered from Room: no WebDAV request was made", before, davRequests())
+    }
+
     @Test
     fun aLockedFileFailsTheDeleteWithoutPretendingItIsMissing() {
         env.nextcloud.putFile("/locked.txt", "x")

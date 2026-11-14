@@ -289,6 +289,24 @@ class DocumentRepository @Inject constructor(
         }
     }
 
+    /** Recently modified files from the cache alone; nothing is requested from the server. */
+    fun cachedRecent(accountName: String, limit: Int): List<DocumentEntity> = dao.recentFiles(accountName, limit)
+
+    /** `COPY`s [id] into [newParent] on the server under the first free name, so nothing is ever replaced. */
+    suspend fun copy(credentials: AetherCredentials, id: DocumentId, newParent: DocumentId): AetherResult<DocumentEntity> {
+        if (id.isRoot) return AetherResult.Failure(AetherError.Malformed("Cannot copy a root"))
+        if (id == newParent || id.isAncestorOf(newParent)) return AetherResult.Failure(AetherError.Malformed("Cannot copy a folder into itself"))
+        val target = when (val free = uniqueChild(credentials, newParent, id.name)) {
+            is AetherResult.Success -> free.value
+            is AetherResult.Failure -> return free
+        }
+        val suffix = if (withContext(Dispatchers.IO) { dao.get(id.toString())?.isDirectory } == true) "/" else ""
+        return when (val result = davFactory.forAccount(credentials).copy(credentials.fileUrl(id.path + suffix), credentials.fileUrl(target.path + suffix), overwrite = false)) {
+            is AetherResult.Failure -> result
+            is AetherResult.Success -> refreshDocument(credentials, target).also { invalidate(newParent) }
+        }
+    }
+
     suspend fun rename(credentials: AetherCredentials, id: DocumentId, newName: String): AetherResult<DocumentId> {
         val parent = id.parent ?: return AetherResult.Failure(AetherError.Malformed("Cannot rename a root"))
         return relocate(credentials, id, runCatching { parent.child(newName) }.getOrElse {

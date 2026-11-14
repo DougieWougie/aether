@@ -21,6 +21,8 @@ fun DocumentEntity.safFlags(): Int {
         if ('D' in perms) flags = flags or Document.FLAG_SUPPORTS_DELETE
         if ('N' in perms) flags = flags or Document.FLAG_SUPPORTS_RENAME
         if ('V' in perms) flags = flags or Document.FLAG_SUPPORTS_MOVE
+        // Copying needs only read access to the source; whether the destination allows it is checked when it is chosen.
+        if ('G' in perms) flags = flags or Document.FLAG_SUPPORTS_COPY
     }
     return flags
 }

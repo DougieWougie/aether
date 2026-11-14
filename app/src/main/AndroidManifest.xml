@@ -98,6 +98,10 @@
             android:exported="false"
             tools:node="merge" />
 
+        <receiver
+            android:name=".sync.RetryFailedReceiver"
+            android:exported="false" />
+
         <service
             android:name=".auth.AuthenticatorService"
             android:exported="true">

@@ -33,16 +33,3 @@ inline fun <T, R> AetherResult<T>.flatMap(transform: (T) -> AetherResult<R>): Ae
 }
 
 fun <T> AetherResult<T>.getOrNull(): T? = (this as? AetherResult.Success)?.value
-
-fun AetherError.describe(): String = when (this) {
-    is AetherError.Network -> cause.message ?: "Network error"
-    is AetherError.Http -> "Server returned HTTP $code" + (message?.let { ": $it" } ?: "")
-    AetherError.Unauthorized -> "Authentication failed"
-    AetherError.NotFound -> "Not found"
-    AetherError.PreconditionFailed -> "The file changed on the server"
-    AetherError.Locked -> "This file is locked on the server. Close it in any editor that has it open and try again."
-    AetherError.InsufficientStorage -> "Your Nextcloud storage is full. Free up space and try again."
-    AetherError.Timeout -> "Timed out"
-    is AetherError.Malformed -> "Unexpected server response: $detail"
-    is AetherError.InvalidServer -> detail
-}

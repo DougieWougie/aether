@@ -1,5 +1,6 @@
 package com.aether.nextcloud.sync
 
+import com.aether.nextcloud.core.code
 import android.Manifest
 import android.content.ContentUris
 import android.content.Context
@@ -30,7 +31,6 @@ import com.aether.nextcloud.auth.AuthIssues
 import com.aether.nextcloud.auth.AetherCredentials
 import com.aether.nextcloud.core.AetherError
 import com.aether.nextcloud.core.AetherResult
-import com.aether.nextcloud.core.describe
 import com.aether.nextcloud.data.local.AetherDatabase
 import com.aether.nextcloud.data.local.dao.BackedUpKey
 import com.aether.nextcloud.data.local.entity.BackedUpMediaEntity
@@ -203,7 +203,7 @@ class CameraBackupWorker @AssistedInject constructor(
                 direction = TransferDirection.UPLOAD,
                 state = TransferState.FAILED,
                 totalBytes = item.size,
-                error = error.describe(),
+                error = error.code(),
                 createdAt = now,
                 mediaKey = mediaKey(item),
             ),

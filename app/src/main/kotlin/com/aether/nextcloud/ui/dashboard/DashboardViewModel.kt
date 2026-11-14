@@ -186,7 +186,7 @@ class DashboardViewModel @Inject constructor(
             if (avatar.value?.first != account.accountName) avatar.value = account.accountName to avatars.cached(account.accountName)
             avatar.value = account.accountName to avatars.refresh(account)
             when (val result = quotaRepository.refresh(account)) {
-                is AetherResult.Failure -> message.value = result.error.describe()
+                is AetherResult.Failure -> message.value = result.error.describe(context)
                 is AetherResult.Success -> accountRepository.setDisplayName(account.accountName, result.value.displayName)
             }
             refreshStorage()

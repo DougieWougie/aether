@@ -123,7 +123,7 @@ class UploadDocumentWorkerFailureTest {
         assertTrue(file.exists())
         val row = queued().single()
         assertEquals(TransferState.QUEUED, row.state)
-        assertNotNull(row.error)
+        assertEquals("http:503", row.error)
     }
 
     @Test
@@ -201,6 +201,24 @@ class UploadDocumentWorkerFailureTest {
 
         assertTrue(file.exists())
         assertEquals(1, env.nextcloud.requestsMatching("PUT").size)
+        assertEquals("the row stores a code, not English text", "insufficient_storage", transfers().single().error)
+    }
+
+    @Test
+    fun anUploadThatFailsForGoodNotifiesWithAnActionToRetry() {
+        runCatching { androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation.grantRuntimePermission(app.packageName, "android.permission.POST_NOTIFICATIONS") }
+        val manager = app.getSystemService(android.app.NotificationManager::class.java)
+        manager.cancelAll()
+        val file = stage()
+        env.nextcloud.quotaFull = true
+
+        run(input(file, path = "/report.txt"))
+
+        awaitTrue("the failure notification") { manager.activeNotifications.any { it.tag == env.accountName } }
+        val notification = manager.activeNotifications.single { it.tag == env.accountName }.notification
+        assertTrue("it names the file", notification.extras.getCharSequence(android.app.Notification.EXTRA_TEXT).toString().contains("report.txt"))
+        assertTrue("and offers a retry", notification.actions.orEmpty().isNotEmpty())
+        manager.cancelAll()
     }
 
     @Test

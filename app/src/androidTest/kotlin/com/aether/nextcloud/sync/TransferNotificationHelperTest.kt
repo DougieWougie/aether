@@ -43,6 +43,38 @@ class TransferNotificationHelperTest {
     }
 
     @Test
+    fun anUploadFailureAlertHidesTheFileNameOnTheLockScreenAndOffersRetry() {
+        helper.notifyUploadFailed(env.accountName, "/Documents/report.txt", com.aether.nextcloud.core.AetherError.InsufficientStorage)
+
+        awaitTrue("the failure notification") { active(env.accountName).isNotEmpty() }
+        val notification = active(env.accountName).single().notification
+        assertEquals(Notification.VISIBILITY_PRIVATE, notification.visibility)
+        val text = notification.extras.getCharSequence(Notification.EXTRA_TEXT).toString()
+        assertTrue("it names the file and why: $text", "report.txt" in text && "storage is full" in text)
+        assertTrue("the public version must not name the file", "report" !in notification.publicVersion.extras.getCharSequence(Notification.EXTRA_TEXT).toString())
+        assertEquals(env.context.getString(com.aether.nextcloud.R.string.notification_retry), notification.actions.single().title.toString())
+    }
+
+    @Test
+    fun theRetryActionSendsTheFailedUploadAgainAndClearsTheAlert() {
+        val staged = java.io.File.createTempFile("failed", ".tmp", env.context.cacheDir).apply { writeText("kept bytes") }
+        val transfers = env.graph.database().transferDao()
+        transfers.insert(
+            com.aether.nextcloud.data.local.entity.TransferEntity(
+                accountName = env.accountName, remotePath = "/retry.txt", direction = com.aether.nextcloud.data.local.entity.TransferDirection.UPLOAD,
+                state = com.aether.nextcloud.data.local.entity.TransferState.FAILED, createdAt = 1, sourcePath = staged.absolutePath, mimeType = "text/plain",
+            ),
+        )
+        helper.notifyUploadFailed(env.accountName, "/retry.txt", com.aether.nextcloud.core.AetherError.InsufficientStorage)
+        awaitTrue("the failure notification") { active(env.accountName).isNotEmpty() }
+
+        active(env.accountName).single().notification.actions.single().actionIntent.send()
+
+        awaitTrue("the kept bytes to reach the server", timeoutMs = 30_000) { env.nextcloud.text("/retry.txt") == "kept bytes" }
+        awaitTrue("the alert to go") { active(env.accountName).isEmpty() }
+    }
+
+    @Test
     fun theSignInAlertIsOnePerAccountAndCanBeCancelled() {
         helper.notifySignInRequired(env.accountName)
         helper.notifySignInRequired(env.accountName)

@@ -43,6 +43,25 @@ class DocumentRepositoryTest {
     }
 
     @Test
+    fun concurrentOpensOfOneUncachedFileShareASingleDownload() {
+        val bytes = ByteArray(300_000) { (it % 251).toByte() }
+        env.nextcloud.putFile("/big.bin", bytes)
+        env.nextcloud.getDelayMs = 400
+        list()
+
+        val results = java.util.concurrent.Executors.newFixedThreadPool(6).let { pool ->
+            try {
+                (1..6).map { pool.submit<File> { runBlocking { ok(documents.ensureLocalFile(credentials, id("/big.bin"))) } } }.map { it.get() }
+            } finally {
+                pool.shutdown()
+            }
+        }
+
+        results.forEach { assertTrue("every caller must see the complete bytes", it.readBytes().contentEquals(bytes)) }
+        assertEquals("one GET for six opens", 1, env.nextcloud.requestsMatching("GET", "/big.bin").size)
+    }
+
+    @Test
     fun aRefreshDropsChildrenThatDisappearedAndTheirLocalCopies() {
         env.nextcloud.putFile("/keep.txt", "k")
         env.nextcloud.putFile("/gone.txt", "g")

@@ -116,10 +116,13 @@ class NextcloudOcsClientTest {
         val target = File(tmp.root, "thumbs/1050.png")
 
         val download = launch(Dispatchers.IO) { ocs.downloadPreview(credentials, "1050", target) }
-        withTimeout(5_000) { while (!target.exists()) delay(10) }
+        val thumbs = target.parentFile!!
+        withTimeout(5_000) { while (thumbs.listFiles().isNullOrEmpty()) delay(10) }
+        assertFalse("bytes in flight must not sit at the final path", target.exists())
         download.cancelAndJoin()
 
         assertFalse("a truncated thumbnail would be served as valid", target.exists())
+        assertTrue("the partial file is cleaned up", thumbs.listFiles().isNullOrEmpty())
     }
 
     @Test

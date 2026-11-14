@@ -51,4 +51,40 @@ class AetherDatabaseMigrationTest {
             (2..5).forEach { assertEquals(true, c.isNull(it)) }
         }
     }
+
+    @Test
+    fun upgradingFromVersionThreeTurnsStoredMessagesIntoCodes() {
+        val messages = listOf(
+            "Cancelled" to "cancelled",
+            "Authentication failed" to "unauthorized",
+            "Not found" to "not_found",
+            "The file changed on the server" to "precondition_failed",
+            "This file is locked on the server. Close it in any editor that has it open and try again." to "locked",
+            "Your Nextcloud storage is full. Free up space and try again." to "insufficient_storage",
+            "Timed out" to "timeout",
+            "Unexpected server response: bad xml" to "malformed",
+            "Server returned HTTP 503" to "http:503",
+            "Server returned HTTP 502: Bad Gateway" to "http:502",
+            "Unable to resolve host \"cloud.example.com\"" to "unknown",
+        )
+        helper.createDatabase("migration-test-4", 3).apply {
+            messages.forEachIndexed { i, (text, _) ->
+                execSQL("INSERT INTO transfers (accountName, remotePath, direction, state, bytesTransferred, totalBytes, error, createdAt, updatedAt) VALUES ('a@h', '/f$i.txt', 'UPLOAD', 'FAILED', 0, 5, ?, 1, 2)", arrayOf(text))
+            }
+            execSQL("INSERT INTO transfers (accountName, remotePath, direction, state, bytesTransferred, totalBytes, createdAt, updatedAt) VALUES ('a@h', '/none.txt', 'UPLOAD', 'COMPLETED', 5, 5, 1, 2)")
+            close()
+        }
+
+        val db = helper.runMigrationsAndValidate("migration-test-4", 4, true, AetherDatabase.MIGRATION_1_2, AetherDatabase.MIGRATION_2_3, AetherDatabase.MIGRATION_3_4)
+
+        db.query("SELECT remotePath, error FROM transfers ORDER BY id").use { c ->
+            messages.forEachIndexed { i, (text, code) ->
+                assertEquals(true, c.moveToNext())
+                assertEquals("/f$i.txt", c.getString(0))
+                assertEquals("for: $text", code, c.getString(1))
+            }
+            assertEquals(true, c.moveToNext())
+            assertNull("rows without an error stay without one", c.getString(1))
+        }
+    }
 }

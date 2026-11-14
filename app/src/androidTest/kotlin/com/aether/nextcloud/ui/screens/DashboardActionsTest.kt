@@ -149,7 +149,7 @@ class DashboardActionsTest {
         val staged = File.createTempFile("retry", ".tmp", InstrumentationRegistry.getInstrumentation().targetContext.cacheDir).apply { writeText("kept bytes") }
         val transfers = env.graph.database().transferDao()
         transfers.insert(
-            transfer("/retry.txt", TransferState.FAILED, error = "Your Nextcloud storage is full.")
+            transfer("/retry.txt", TransferState.FAILED, error = "insufficient_storage")
                 .copy(accountName = env.accountName, sourcePath = staged.absolutePath, mimeType = "text/plain"),
         )
         transfers.insert(transfer("/gone.txt", TransferState.FAILED, error = "boom").copy(accountName = env.accountName, sourcePath = "/nonexistent/file"))
@@ -332,7 +332,7 @@ class DashboardActionsTest {
         fun mine() = runBlocking { transfers.observeRecent(100).first() }.filter { it.accountName == env.accountName }
         fun theirs() = runBlocking { transfers.observeRecent(100).first() }.filter { it.accountName == other }
         transfers.insert(transfer("/done.txt", TransferState.COMPLETED, TransferDirection.DOWNLOAD).copy(accountName = env.accountName))
-        transfers.insert(transfer("/bad.txt", TransferState.FAILED, error = "Your Nextcloud storage is full.").copy(accountName = env.accountName))
+        transfers.insert(transfer("/bad.txt", TransferState.FAILED, error = "insufficient_storage").copy(accountName = env.accountName))
         transfers.insert(transfer("/theirs.txt", TransferState.COMPLETED, TransferDirection.DOWNLOAD).copy(accountName = other))
         try {
             launch()

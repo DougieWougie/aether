@@ -1,5 +1,7 @@
 package com.aether.nextcloud.sync
 
+import com.aether.nextcloud.core.code
+import com.aether.nextcloud.core.ErrorCodes
 import android.content.Context
 import androidx.hilt.work.HiltWorker
 import androidx.work.BackoffPolicy
@@ -21,7 +23,6 @@ import com.aether.nextcloud.auth.AuthIssues
 import com.aether.nextcloud.auth.AetherCredentials
 import com.aether.nextcloud.core.AetherError
 import com.aether.nextcloud.core.AetherResult
-import com.aether.nextcloud.core.describe
 import com.aether.nextcloud.data.DocumentRepository
 import com.aether.nextcloud.data.local.AetherDatabase
 import com.aether.nextcloud.data.local.entity.DocumentEntity
@@ -136,12 +137,12 @@ class PinnedSyncWorker @AssistedInject constructor(
             when (result) {
                 is AetherResult.Success -> setState(transferId, TransferState.COMPLETED, null)
                 is AetherResult.Failure -> {
-                    setState(transferId, TransferState.FAILED, result.error.describe())
+                    setState(transferId, TransferState.FAILED, result.error.code())
                     noteFailure(credentials, result.error)
                 }
             }
         } catch (e: CancellationException) {
-            withContext(NonCancellable) { setState(transferId, TransferState.FAILED, "Cancelled") }
+            withContext(NonCancellable) { setState(transferId, TransferState.FAILED, ErrorCodes.CANCELLED) }
             throw e
         }
     }

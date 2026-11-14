@@ -31,18 +31,17 @@ class AetherResultTest {
     }
 
     @Test
-    fun `every error has a readable description`() {
-        assertEquals("boom", AetherError.Network(IOException("boom")).describe())
-        assertEquals("Network error", AetherError.Network(IOException()).describe())
-        assertEquals("Server returned HTTP 500", AetherError.Http(500, null).describe())
-        assertEquals("Server returned HTTP 502: Bad Gateway", AetherError.Http(502, "Bad Gateway").describe())
-        assertEquals("Authentication failed", AetherError.Unauthorized.describe())
-        assertEquals("Not found", AetherError.NotFound.describe())
-        assertEquals("The file changed on the server", AetherError.PreconditionFailed.describe())
-        assertTrue(AetherError.Locked.describe().contains("locked"))
-        assertTrue(AetherError.InsufficientStorage.describe().contains("storage is full"))
-        assertEquals("Timed out", AetherError.Timeout.describe())
-        assertEquals("Unexpected server response: bad xml", AetherError.Malformed("bad xml").describe())
-        assertEquals("Enter an address", AetherError.InvalidServer("Enter an address").describe())
+    fun `every error has a stable code that carries no English`() {
+        assertEquals("network", AetherError.Network(IOException("boom")).code())
+        assertEquals("http:500", AetherError.Http(500, null).code())
+        assertEquals("http:502", AetherError.Http(502, "Bad Gateway").code())
+        assertEquals("unauthorized", AetherError.Unauthorized.code())
+        assertEquals("not_found", AetherError.NotFound.code())
+        assertEquals("precondition_failed", AetherError.PreconditionFailed.code())
+        assertEquals("locked", AetherError.Locked.code())
+        assertEquals("insufficient_storage", AetherError.InsufficientStorage.code())
+        assertEquals("timeout", AetherError.Timeout.code())
+        assertEquals("malformed", AetherError.Malformed("bad xml").code())
+        assertEquals("invalid_server", AetherError.InvalidServer("Enter an address").code())
     }
 }

@@ -1,5 +1,7 @@
 package com.aether.nextcloud.sync
 
+import com.aether.nextcloud.core.code
+import com.aether.nextcloud.core.ErrorCodes
 import android.content.Context
 import android.provider.DocumentsContract
 import androidx.hilt.work.HiltWorker
@@ -21,7 +23,6 @@ import com.aether.nextcloud.auth.AuthIssues
 import com.aether.nextcloud.auth.AetherCredentials
 import com.aether.nextcloud.core.AetherError
 import com.aether.nextcloud.core.AetherResult
-import com.aether.nextcloud.core.describe
 import com.aether.nextcloud.data.DocumentRepository
 import com.aether.nextcloud.data.local.AetherDatabase
 import com.aether.nextcloud.data.local.entity.TransferDirection
@@ -130,7 +131,7 @@ class UploadDocumentWorker @AssistedInject constructor(
             withContext(kotlinx.coroutines.NonCancellable) {
                 // Only an account that was removed is a real cancellation. Otherwise WorkManager stopped us (a lost constraint, a
                 // timeout) and will run this again, which continues this same row.
-                if (accounts.credentials(accountName) == null) setTransferState(transferId, TransferState.FAILED, "Cancelled")
+                if (accounts.credentials(accountName) == null) setTransferState(transferId, TransferState.FAILED, ErrorCodes.CANCELLED)
                 else setTransferState(transferId, TransferState.QUEUED, null)
             }
             throw e
@@ -208,10 +209,16 @@ class UploadDocumentWorker @AssistedInject constructor(
         // A server-side lock normally clears once the other editor closes, so it is retried like a transient failure.
         val retryable = error is AetherError.Network || error == AetherError.Locked || (error is AetherError.Http && error.code >= 500)
         if (retryable && runAttemptCount < MAX_ATTEMPTS) {
-            setTransferState(transferId, TransferState.QUEUED, error.describe())
+            setTransferState(transferId, TransferState.QUEUED, error.code())
             return Result.retry()
         }
-        setTransferState(transferId, TransferState.FAILED, error.describe())
+        setTransferState(transferId, TransferState.FAILED, error.code())
+        // Nobody is watching a write-back that a file manager has long since closed: say so. Sign-in problems have their own alert.
+        if (error != AetherError.Unauthorized) {
+            val account = inputData.getString(KEY_ACCOUNT)
+            val remotePath = inputData.getString(KEY_REMOTE_PATH)
+            if (account != null && remotePath != null) notifications.notifyUploadFailed(account, remotePath, error)
+        }
         // The staged bytes stay: the failed row points at them so Retry failed can send them again. Pruning the row deletes them.
         if (error == AetherError.Unauthorized) inputData.getString(KEY_ACCOUNT)?.let(authIssues::report)
         return Result.failure()

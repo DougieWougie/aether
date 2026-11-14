@@ -12,6 +12,8 @@ import androidx.work.ForegroundInfo
 import androidx.work.WorkManager
 import com.aether.nextcloud.MainActivity
 import com.aether.nextcloud.R
+import com.aether.nextcloud.core.AetherError
+import com.aether.nextcloud.core.describe
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.UUID
 import javax.inject.Inject
@@ -30,6 +32,9 @@ class TransferNotificationHelper @Inject constructor(
         )
         manager.createNotificationChannel(
             NotificationChannel(CHANNEL_ACCOUNT, context.getString(R.string.notification_channel_account), NotificationManager.IMPORTANCE_DEFAULT),
+        )
+        manager.createNotificationChannel(
+            NotificationChannel(CHANNEL_FAILURES, context.getString(R.string.notification_channel_failures), NotificationManager.IMPORTANCE_DEFAULT),
         )
         manager.createNotificationChannel(
             NotificationChannel(CHANNEL_CONFLICTS, context.getString(R.string.notification_channel_conflicts), NotificationManager.IMPORTANCE_DEFAULT),
@@ -75,6 +80,38 @@ class TransferNotificationHelper @Inject constructor(
         manager.notify(accountName, ("conflict:$conflictName").hashCode(), notification)
     }
 
+    /**
+     * An upload that failed for good (not a network blip: those retry on their own) and is kept for a retry. Posted under the
+     * account name like the other alerts, so signing out removes it; one per file. Retry sends every failed transfer of the
+     * account again through [TransferRetrier].
+     */
+    fun notifyUploadFailed(accountName: String, remotePath: String, error: AetherError) {
+        ensureChannels()
+        val id = ("upload-failed:$remotePath").hashCode()
+        val retry = PendingIntent.getBroadcast(
+            context, id,
+            Intent(context, RetryFailedReceiver::class.java).putExtra(RetryFailedReceiver.EXTRA_ACCOUNT, accountName).putExtra(RetryFailedReceiver.EXTRA_NOTIFICATION_ID, id),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val public = NotificationCompat.Builder(context, CHANNEL_FAILURES)
+            .setSmallIcon(R.drawable.ic_stat_transfer)
+            .setContentTitle(context.getString(R.string.notification_upload_failed_title))
+            .setContentText(context.getString(R.string.notification_upload_failed_text_public))
+            .build()
+        val notification = NotificationCompat.Builder(context, CHANNEL_FAILURES)
+            .setSmallIcon(R.drawable.ic_stat_transfer)
+            .setContentTitle(context.getString(R.string.notification_upload_failed_title))
+            .setContentText(context.getString(R.string.notification_upload_failed_text, remotePath.substringAfterLast('/'), error.describe(context)))
+            .setStyle(NotificationCompat.BigTextStyle())
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setPublicVersion(public)
+            .setAutoCancel(true)
+            .setContentIntent(openApp())
+            .addAction(0, context.getString(R.string.notification_retry), retry)
+            .build()
+        manager.notify(accountName, id, notification)
+    }
+
     /** Asks the user to sign in again. One per account (same tag and id), so repeated failures do not stack. */
     fun notifySignInRequired(accountName: String) {
         ensureChannels()
@@ -110,6 +147,7 @@ class TransferNotificationHelper @Inject constructor(
         const val CHANNEL_TRANSFERS = "transfers"
         const val CHANNEL_CONFLICTS = "conflicts"
         const val CHANNEL_ACCOUNT = "account"
+        const val CHANNEL_FAILURES = "failures"
         private const val SIGN_IN_ID = 1
 
         fun percent(transferred: Long, total: Long): Int =

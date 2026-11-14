@@ -13,7 +13,7 @@ import com.aether.nextcloud.data.local.entity.TransferEntity
 
 @Database(
     entities = [DocumentEntity::class, TransferEntity::class, BackedUpMediaEntity::class],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 abstract class AetherDatabase : RoomDatabase() {
@@ -33,6 +33,33 @@ abstract class AetherDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE transfers ADD COLUMN mimeType TEXT")
                 db.execSQL("ALTER TABLE transfers ADD COLUMN ifMatchEtag TEXT")
                 db.execSQL("ALTER TABLE transfers ADD COLUMN mediaKey TEXT")
+            }
+        }
+
+        /**
+         * `transfers.error` held English prose; it now holds a code (see `AetherError.code`) that is turned into text when shown.
+         * Existing rows are mapped from the sentences the app used to store; anything else (a network exception's own message,
+         * say) becomes `unknown`. The schema is unchanged.
+         */
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    UPDATE transfers SET error = CASE
+                        WHEN error IS NULL THEN NULL
+                        WHEN error = 'Cancelled' THEN 'cancelled'
+                        WHEN error = 'Authentication failed' THEN 'unauthorized'
+                        WHEN error = 'Not found' THEN 'not_found'
+                        WHEN error = 'The file changed on the server' THEN 'precondition_failed'
+                        WHEN error LIKE 'This file is locked on the server%' THEN 'locked'
+                        WHEN error LIKE 'Your Nextcloud storage is full%' THEN 'insufficient_storage'
+                        WHEN error = 'Timed out' THEN 'timeout'
+                        WHEN error LIKE 'Unexpected server response%' THEN 'malformed'
+                        WHEN error GLOB 'Server returned HTTP [0-9][0-9][0-9]*' THEN 'http:' || substr(error, 22, 3)
+                        ELSE 'unknown'
+                    END
+                    """.trimIndent(),
+                )
             }
         }
     }

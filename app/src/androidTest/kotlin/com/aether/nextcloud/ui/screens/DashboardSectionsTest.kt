@@ -239,7 +239,7 @@ class DashboardSectionsTest {
                     active = listOf(transfer("/Docs/big.zip", TransferState.RUNNING, done = 1_000_000, total = 4_000_000)),
                     recent = listOf(
                         transfer("/done.txt", TransferState.COMPLETED, TransferDirection.DOWNLOAD),
-                        transfer("/bad.txt", TransferState.FAILED, error = "Your Nextcloud storage is full. Free up space and try again."),
+                        transfer("/bad.txt", TransferState.FAILED, error = "insufficient_storage"),
                         transfer("/queued.txt", TransferState.QUEUED),
                     ),
                 )
@@ -257,7 +257,7 @@ class DashboardSectionsTest {
         compose.onNodeWithText(context.resources.getQuantityString(R.plurals.transfer_summary_downloaded, 1, 1)).performClick()
         compose.mainClock.advanceTimeBy(1_000)
         compose.onNodeWithText("big.zip").assertIsDisplayed()
-        compose.onNodeWithText("Your Nextcloud storage is full. Free up space and try again.").assertIsDisplayed()
+        compose.onNodeWithText(str(R.string.error_insufficient_storage)).assertIsDisplayed()
         compose.onNodeWithText(str(R.string.transfer_waiting_network)).assertIsDisplayed()
         compose.onAllNodes(hasContentDescription(str(R.string.transfer_download))).assertCountEquals(1)
     }

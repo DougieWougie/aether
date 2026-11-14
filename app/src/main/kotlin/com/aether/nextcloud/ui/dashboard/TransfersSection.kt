@@ -11,6 +11,7 @@ import androidx.compose.ui.platform.testTag
 import com.aether.nextcloud.sync.RetryOutcome
 import androidx.compose.ui.semantics.semantics
 import com.aether.nextcloud.R
+import com.aether.nextcloud.core.errorCodeText
 import androidx.compose.ui.res.stringResource
 import android.content.ActivityNotFoundException
 import android.content.Intent
@@ -217,7 +218,7 @@ internal fun TransferRow(transfer: TransferEntity, shape: androidx.compose.ui.gr
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         } else {
-                            Text(if (transfer.state == TransferState.QUEUED) transfer.error ?: stringResource(R.string.transfer_waiting_network) else stringResource(R.string.transfer_starting), style = MaterialTheme.typography.bodyMedium)
+                            Text(if (transfer.state == TransferState.QUEUED) errorCodeText(context, transfer.error) ?: stringResource(R.string.transfer_waiting_network) else stringResource(R.string.transfer_starting), style = MaterialTheme.typography.bodyMedium)
                         }
                     }
                     TransferState.COMPLETED -> Text(stringResource(R.string.transfer_done, relative(transfer.updatedAt)), style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
@@ -228,7 +229,7 @@ internal fun TransferRow(transfer: TransferEntity, shape: androidx.compose.ui.gr
                             TextButton(onClick = { openFolderInSystemFiles(context, folder) }, contentPadding = PaddingValues(0.dp)) { Text(stringResource(R.string.transfer_show_folder)) }
                         }
                     }
-                    TransferState.FAILED -> Text(transfer.error ?: stringResource(R.string.transfer_failed), style = MaterialTheme.typography.bodyMedium, color = colors.error)
+                    TransferState.FAILED -> Text(errorCodeText(context, transfer.error) ?: stringResource(R.string.transfer_failed), style = MaterialTheme.typography.bodyMedium, color = colors.error)
                 }
             }
         }

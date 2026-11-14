@@ -224,7 +224,7 @@ class AetherDocumentsProvider : DocumentsProvider() {
                 when (val result = documents.search(credentials, query)) {
                     is AetherResult.Failure -> {
                         if (result.error == AetherError.Unauthorized) deps.authIssues().report(credentials.accountName)
-                        searchErrors[key] = result.error.describe() to System.currentTimeMillis()
+                        searchErrors[key] = result.error.describe(context!!) to System.currentTimeMillis()
                     }
                     is AetherResult.Success -> {
                         searchErrors.remove(key)
@@ -262,7 +262,7 @@ class AetherDocumentsProvider : DocumentsProvider() {
                 when (val result = documents.refreshChildren(credentials, parent)) {
                     is AetherResult.Failure -> {
                         if (result.error == AetherError.Unauthorized) deps.authIssues().report(credentials.accountName)
-                        listingErrors[key] = result.error.describe() to System.currentTimeMillis()
+                        listingErrors[key] = result.error.describe(context!!) to System.currentTimeMillis()
                     }
                     is AetherResult.Success -> listingErrors.remove(key)
                 }
@@ -434,7 +434,7 @@ class AetherDocumentsProvider : DocumentsProvider() {
             }
             AetherError.NotFound -> throw FileNotFoundException("Not found")
             // DocumentsUI only shows a generic failure for provider errors; the message still lands in logcat and the document service.
-            else -> throw IllegalStateException(error.describe())
+            else -> throw IllegalStateException(error.describe(context!!))
         }
     }
 

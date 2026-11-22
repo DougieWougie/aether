@@ -9,7 +9,10 @@ enum class TransferDirection { UPLOAD, DOWNLOAD }
 enum class TransferState { QUEUED, RUNNING, COMPLETED, FAILED, CONFLICT }
 
 /** An upload or download shown on the dashboard's Active Transfers list. */
-@Entity(tableName = "transfers", indices = [Index("state")])
+@Entity(
+    tableName = "transfers",
+    indices = [Index("state"), Index("accountName", "mediaKey"), Index("state", "updatedAt")],
+)
 data class TransferEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val accountName: String,

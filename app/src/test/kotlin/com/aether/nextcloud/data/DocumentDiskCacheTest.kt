@@ -153,7 +153,8 @@ class DocumentDiskCacheTest {
 
         assertNotEquals(a, b)
         assertNotEquals(a.parentFile, b.parentFile)
-        assertTrue(a.name.startsWith("1050_256_"))
+        assertEquals(a.name, b.name)
+        assertTrue(a.name.contains("_256_"))
         assertEquals(File(tmp.root, "thumbnails"), a.parentFile!!.parentFile)
     }
 

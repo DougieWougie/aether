@@ -45,8 +45,8 @@ jobs:
           fi
 
           # The smoke tests cover migrations, the SAF provider and the upload worker, so they matter for anything
-          # but the Compose UI and its resources. Instrumented test changes count except the screen tests.
-          relevant='^app/src/(main|debug|androidTest)/|^app/schemas/|\.gradle\.kts$|^gradle/|^gradle\.properties$|^\.github/'
+          # but the Compose UI and its resources. Instrumented and shared test changes count except the screen tests.
+          relevant='^app/src/(main|debug|androidTest|sharedTest)/|^app/schemas/|\.gradle\.kts$|^gradle/|^gradle\.properties$|^\.github/'
           ui_only='^app/src/main/kotlin/com/aether/nextcloud/ui/|^app/src/main/res/(values|drawable|mipmap-anydpi)/|^app/src/androidTest/kotlin/com/aether/nextcloud/ui/screens/'
           if grep -E "$relevant" <<< "$files" | grep -qvE "$ui_only"; then
             echo "smoke=true" >> "$GITHUB_OUTPUT"

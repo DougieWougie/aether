@@ -201,10 +201,14 @@ internal fun PinnedSection(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Row(Modifier.padding(start = 16.dp, top = 12.dp, bottom = 12.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    val preview by produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, doc.documentId, doc.etag) {
+                    val previewKey = "pinned:${doc.documentId}:${doc.etag}:$PREVIEW_PX"
+                    val preview by produceState<androidx.compose.ui.graphics.ImageBitmap?>(ThumbnailMemoryCache.get(previewKey), previewKey) {
+                        if (value != null) return@produceState
                         value = if (doc.isDirectory || !doc.hasPreview) null else withContext(Dispatchers.IO) {
                             runCatching {
-                                context.contentResolver.loadThumbnail(DocumentsContract.buildDocumentUri(AetherConstants.AUTHORITY, doc.documentId), Size(PREVIEW_PX, PREVIEW_PX), null).asImageBitmap()
+                                context.contentResolver.loadThumbnail(DocumentsContract.buildDocumentUri(AetherConstants.AUTHORITY, doc.documentId), Size(PREVIEW_PX, PREVIEW_PX), null)
+                                    .asImageBitmap()
+                                    .also { ThumbnailMemoryCache.put(previewKey, it) }
                             }.getOrNull()
                         }
                     }

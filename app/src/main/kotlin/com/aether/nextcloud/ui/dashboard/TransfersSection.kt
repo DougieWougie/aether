@@ -75,33 +75,50 @@ internal fun openFolderInSystemFiles(context: android.content.Context, folder: D
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-internal fun TransfersSection(active: List<TransferEntity>, recent: List<TransferEntity>) {
+internal fun TransfersSection(
+    active: List<TransferEntity>,
+    recent: List<TransferEntity>,
+    onCancel: ((TransferEntity) -> Unit)? = null,
+    onRetry: ((TransferEntity) -> Unit)? = null,
+    onDismiss: ((TransferEntity) -> Unit)? = null,
+    onOpenFolderFailed: (() -> Unit)? = null,
+) {
     if (active.isEmpty() && recent.isEmpty()) {
         EmptyState(MaterialShapes.Clover4Leaf, Icons.Outlined.Sync, stringResource(R.string.transfers_empty_title), stringResource(R.string.transfers_empty_body))
         return
     }
     if (active.isNotEmpty()) {
         SectionTitle(stringResource(R.string.transfers_in_progress))
-        TransferGroup(active, highlighted = true, key = "active") { ActiveSummary(active) }
+        TransferGroup(active, highlighted = true, key = "active", onCancel = onCancel, onRetry = onRetry, onDismiss = onDismiss, onOpenFolderFailed = onOpenFolderFailed) { ActiveSummary(active) }
     }
     if (recent.isNotEmpty()) {
-        SectionTitle("Recent")
-        TransferGroup(recent, highlighted = false, key = "recent") { RecentSummary(recent) }
+        SectionTitle(stringResource(R.string.transfers_recent))
+        TransferGroup(recent, highlighted = false, key = "recent", onCancel = onCancel, onRetry = onRetry, onDismiss = onDismiss, onOpenFolderFailed = onOpenFolderFailed) { RecentSummary(recent) }
     }
 }
 
 /** A summary card that expands, on tap, into the per-file rows it stands for. */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun TransferGroup(transfers: List<TransferEntity>, highlighted: Boolean, key: String, summary: @Composable () -> Unit) {
+private fun TransferGroup(
+    transfers: List<TransferEntity>,
+    highlighted: Boolean,
+    key: String,
+    onCancel: ((TransferEntity) -> Unit)? = null,
+    onRetry: ((TransferEntity) -> Unit)? = null,
+    onDismiss: ((TransferEntity) -> Unit)? = null,
+    onOpenFolderFailed: (() -> Unit)? = null,
+    summary: @Composable () -> Unit,
+) {
     var expanded by rememberSaveable(key) { mutableStateOf(false) }
     val colors = MaterialTheme.colorScheme
+    val stateLabel = stringResource(if (expanded) R.string.state_expanded else R.string.state_collapsed)
     Column(verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.animateContentSize(MaterialTheme.motionScheme.defaultSpatialSpec())) {
         Surface(
             onClick = { expanded = !expanded },
             shape = if (expanded) groupedShape(0, transfers.size + 1) else groupedShape(0, 1),
             color = if (highlighted) colors.secondaryContainer else colors.surfaceContainerHigh,
-            modifier = Modifier.fillMaxWidth().semantics { stateDescription = if (expanded) "Expanded" else "Collapsed" },
+            modifier = Modifier.fillMaxWidth().semantics { stateDescription = stateLabel },
         ) {
             Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) { summary() }
@@ -109,7 +126,9 @@ private fun TransferGroup(transfers: List<TransferEntity>, highlighted: Boolean,
             }
         }
         if (expanded) {
-            transfers.forEachIndexed { index, transfer -> TransferRow(transfer, groupedShape(index + 1, transfers.size + 1), highlighted) }
+            transfers.forEachIndexed { index, transfer ->
+                TransferRow(transfer, groupedShape(index + 1, transfers.size + 1), highlighted, onCancel, onRetry, onDismiss, onOpenFolderFailed)
+            }
         }
     }
 }
@@ -129,7 +148,7 @@ private fun ActiveSummary(active: List<TransferEntity>) {
     }
     DirectionCounts(active)
     if (active.none { it.state == TransferState.RUNNING }) {
-        Text(active.firstNotNullOfOrNull { it.error } ?: stringResource(R.string.transfer_waiting_network), style = MaterialTheme.typography.bodyMedium)
+        Text(active.firstNotNullOfOrNull { errorCodeText(context, it.error) } ?: stringResource(R.string.transfer_waiting_network), style = MaterialTheme.typography.bodyMedium)
     }
 }
 
@@ -166,71 +185,106 @@ private fun DirectionCounts(transfers: List<TransferEntity>) {
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-internal fun TransferRow(transfer: TransferEntity, shape: androidx.compose.ui.graphics.Shape, highlighted: Boolean) {
+internal fun TransferRow(
+    transfer: TransferEntity,
+    shape: androidx.compose.ui.graphics.Shape,
+    highlighted: Boolean,
+    onCancel: ((TransferEntity) -> Unit)? = null,
+    onRetry: ((TransferEntity) -> Unit)? = null,
+    onDismiss: ((TransferEntity) -> Unit)? = null,
+    onOpenFolderFailed: (() -> Unit)? = null,
+) {
     val context = LocalContext.current
     val colors = MaterialTheme.colorScheme
     val failed = transfer.state == TransferState.FAILED
     val running = transfer.state == TransferState.RUNNING
     val upload = transfer.direction == TransferDirection.UPLOAD
     Surface(shape = shape, color = if (highlighted) colors.secondaryContainer else colors.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
-        Row(Modifier.padding(16.dp).semantics(mergeDescendants = true) {}, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            // Pictures show themselves; everything else (and any picture that can't be read) keeps the direction badge.
-            // Keyed by what changes the picture, not by progress, so it is not reloaded on every update.
-            val thumbnail by produceState<ImageBitmap?>(null, transfer.id, transfer.state, transfer.sourcePath, transfer.remotePath) {
-                value = loadTransferThumbnail(context, transfer, THUMBNAIL_PX)
-            }
-            val direction = stringResource(if (upload) R.string.transfer_upload else R.string.transfer_download)
-            thumbnail?.let {
-                Image(
-                    it,
-                    contentDescription = direction,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.size(48.dp).clip(RoundedCornerShape(14.dp)).testTag(TRANSFER_THUMBNAIL_TAG),
-                )
-            } ?: MorphingShapeBadge(
-                shape = when {
-                    failed -> MaterialShapes.Pentagon
-                    upload -> MaterialShapes.Cookie4Sided
-                    else -> MaterialShapes.Clover4Leaf
-                },
-                size = 48.dp,
-                container = if (failed) colors.errorContainer else colors.tertiaryContainer,
-                spinning = running,
-            ) {
-                Icon(
-                    if (upload) Icons.Outlined.CloudUpload else Icons.Outlined.CloudDownload,
-                    contentDescription = direction,
-                    tint = if (failed) colors.onErrorContainer else colors.onTertiaryContainer,
-                    modifier = Modifier.size(22.dp),
-                )
-            }
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(transfer.remotePath.substringAfterLast('/').ifEmpty { "/" }, style = MaterialTheme.typography.titleMediumEmphasized, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                when (transfer.state) {
-                    TransferState.RUNNING, TransferState.QUEUED -> {
-                        if (transfer.totalBytes > 0 && running) {
-                            LinearWavyProgressIndicator(
-                                progress = { (transfer.bytesTransferred.toFloat() / transfer.totalBytes).coerceIn(0f, 1f) },
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                            )
-                            Text(
-                                stringResource(R.string.transfer_progress, Formatter.formatShortFileSize(context, transfer.bytesTransferred), Formatter.formatShortFileSize(context, transfer.totalBytes)),
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        } else {
-                            Text(if (transfer.state == TransferState.QUEUED) errorCodeText(context, transfer.error) ?: stringResource(R.string.transfer_waiting_network) else stringResource(R.string.transfer_starting), style = MaterialTheme.typography.bodyMedium)
-                        }
-                    }
-                    TransferState.COMPLETED -> Text(stringResource(R.string.transfer_done, relative(transfer.updatedAt)), style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
-                    TransferState.CONFLICT -> {
-                        Text(stringResource(R.string.transfer_conflict_copy, relative(transfer.updatedAt)), style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
-                        val folder = DocumentId(transfer.accountName, DocumentId.normalizePath(transfer.remotePath)).parent
-                        if (folder != null) {
-                            TextButton(onClick = { openFolderInSystemFiles(context, folder) }, contentPadding = PaddingValues(0.dp)) { Text(stringResource(R.string.transfer_show_folder)) }
-                        }
-                    }
-                    TransferState.FAILED -> Text(errorCodeText(context, transfer.error) ?: stringResource(R.string.transfer_failed), style = MaterialTheme.typography.bodyMedium, color = colors.error)
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(Modifier.semantics(mergeDescendants = true) {}, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                // Pictures show themselves; everything else (and any picture that can't be read) keeps the direction badge.
+                // Keyed by what changes the picture, not by progress, so it is not reloaded on every update.
+                val thumbnail by produceState<ImageBitmap?>(null, transfer.id, transfer.state, transfer.sourcePath, transfer.remotePath) {
+                    value = loadTransferThumbnail(context, transfer, THUMBNAIL_PX)
                 }
+                val direction = stringResource(if (upload) R.string.transfer_upload else R.string.transfer_download)
+                thumbnail?.let {
+                    Image(
+                        it,
+                        contentDescription = direction,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.size(48.dp).clip(RoundedCornerShape(14.dp)).testTag(TRANSFER_THUMBNAIL_TAG),
+                    )
+                } ?: MorphingShapeBadge(
+                    shape = when {
+                        failed -> MaterialShapes.Pentagon
+                        upload -> MaterialShapes.Cookie4Sided
+                        else -> MaterialShapes.Clover4Leaf
+                    },
+                    size = 48.dp,
+                    container = if (failed) colors.errorContainer else colors.tertiaryContainer,
+                    spinning = running,
+                ) {
+                    Icon(
+                        if (upload) Icons.Outlined.CloudUpload else Icons.Outlined.CloudDownload,
+                        contentDescription = direction,
+                        tint = if (failed) colors.onErrorContainer else colors.onTertiaryContainer,
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(transfer.remotePath.substringAfterLast('/').ifEmpty { "/" }, style = MaterialTheme.typography.titleMediumEmphasized, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    when (transfer.state) {
+                        TransferState.RUNNING, TransferState.QUEUED -> {
+                            if (transfer.totalBytes > 0 && running) {
+                                LinearWavyProgressIndicator(
+                                    progress = { (transfer.bytesTransferred.toFloat() / transfer.totalBytes).coerceIn(0f, 1f) },
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                )
+                                Text(
+                                    stringResource(R.string.transfer_progress, Formatter.formatShortFileSize(context, transfer.bytesTransferred), Formatter.formatShortFileSize(context, transfer.totalBytes)),
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            } else {
+                                Text(if (transfer.state == TransferState.QUEUED) errorCodeText(context, transfer.error) ?: stringResource(R.string.transfer_waiting_network) else stringResource(R.string.transfer_starting), style = MaterialTheme.typography.bodyMedium)
+                            }
+                        }
+                        TransferState.COMPLETED -> Text(stringResource(R.string.transfer_done, relative(transfer.updatedAt)), style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
+                        TransferState.CONFLICT -> Text(stringResource(R.string.transfer_conflict_copy, relative(transfer.updatedAt)), style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
+                        TransferState.FAILED -> Text(errorCodeText(context, transfer.error) ?: stringResource(R.string.transfer_failed), style = MaterialTheme.typography.bodyMedium, color = colors.error)
+                    }
+                }
+            }
+            when (transfer.state) {
+                TransferState.RUNNING, TransferState.QUEUED -> onCancel?.let { cancel ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        TextButton(onClick = { cancel(transfer) }) { Text(stringResource(R.string.action_cancel)) }
+                    }
+                }
+                TransferState.CONFLICT -> {
+                    val folder = DocumentId(transfer.accountName, DocumentId.normalizePath(transfer.remotePath)).parent
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        if (folder != null) {
+                            TextButton(onClick = { if (!openFolderInSystemFiles(context, folder)) onOpenFolderFailed?.invoke() }) {
+                                Text(stringResource(R.string.transfer_show_folder))
+                            }
+                        }
+                        onDismiss?.let { dismiss ->
+                            TextButton(onClick = { dismiss(transfer) }) { Text(stringResource(R.string.action_dismiss)) }
+                        }
+                    }
+                }
+                TransferState.FAILED -> if (onRetry != null || onDismiss != null) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        onRetry?.let { retry ->
+                            TextButton(onClick = { retry(transfer) }) { Text(stringResource(R.string.action_retry)) }
+                        }
+                        onDismiss?.let { dismiss ->
+                            TextButton(onClick = { dismiss(transfer) }) { Text(stringResource(R.string.action_dismiss)) }
+                        }
+                    }
+                }
+                TransferState.COMPLETED -> Unit
             }
         }
     }

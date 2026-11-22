@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.media.ThumbnailUtils
 import android.provider.DocumentsContract
+import android.util.LruCache
 import android.util.Size
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -15,6 +16,16 @@ import com.aether.nextcloud.provider.DocumentId
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+
+/** Shared in-memory cache (~6 MB) so expanding/collapsing groups or recomposing avoids re-decoding bitmaps from disk/Binder. */
+internal object ThumbnailMemoryCache {
+    private val cache = object : LruCache<String, ImageBitmap>(6 * 1024 * 1024) {
+        override fun sizeOf(key: String, value: ImageBitmap): Int = value.width * value.height * 4
+    }
+
+    fun get(key: String): ImageBitmap? = cache.get(key)
+    fun put(key: String, bitmap: ImageBitmap) { cache.put(key, bitmap) }
+}
 
 /** Whether the transfer is a picture, from its recorded type or else its file name. */
 internal fun TransferEntity.isImage(): Boolean =
@@ -28,6 +39,8 @@ internal fun TransferEntity.isImage(): Boolean =
  */
 internal suspend fun loadTransferThumbnail(context: Context, transfer: TransferEntity, px: Int): ImageBitmap? {
     if (!transfer.isImage() || transfer.state == TransferState.CONFLICT) return null
+    val cacheKey = "transfer:${transfer.id}:${transfer.state}:${transfer.sourcePath}:${transfer.remotePath}:$px"
+    ThumbnailMemoryCache.get(cacheKey)?.let { return it }
     return withContext(Dispatchers.IO) {
         runCatching {
             val staged = transfer.sourcePath?.let(::File)?.takeIf { it.isFile }
@@ -39,7 +52,7 @@ internal suspend fun loadTransferThumbnail(context: Context, transfer: TransferE
                 }
                 else -> null
             }
-            bitmap?.asImageBitmap()
+            bitmap?.asImageBitmap()?.also { ThumbnailMemoryCache.put(cacheKey, it) }
         }.getOrNull()
     }
 }

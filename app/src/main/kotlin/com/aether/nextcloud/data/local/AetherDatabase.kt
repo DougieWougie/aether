@@ -13,7 +13,7 @@ import com.aether.nextcloud.data.local.entity.TransferEntity
 
 @Database(
     entities = [DocumentEntity::class, TransferEntity::class, BackedUpMediaEntity::class],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 abstract class AetherDatabase : RoomDatabase() {
@@ -60,6 +60,15 @@ abstract class AetherDatabase : RoomDatabase() {
                     END
                     """.trimIndent(),
                 )
+            }
+        }
+
+        /** Composite indices for recent-file SAF queries, camera-backup failure replacement, and recent transfers sorting. */
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_transfers_accountName_mediaKey` ON `transfers` (`accountName`, `mediaKey`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_transfers_state_updatedAt` ON `transfers` (`state`, `updatedAt`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_documents_accountName_isDirectory_lastModified` ON `documents` (`accountName`, `isDirectory`, `lastModified`)")
             }
         }
     }

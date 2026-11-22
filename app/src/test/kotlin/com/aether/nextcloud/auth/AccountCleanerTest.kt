@@ -5,7 +5,7 @@ import com.aether.nextcloud.data.local.entity.BackedUpMediaEntity
 import com.aether.nextcloud.data.local.entity.TransferDirection
 import com.aether.nextcloud.data.local.entity.TransferEntity
 import com.aether.nextcloud.provider.DocumentId
-import com.aether.nextcloud.support.AetherTestRule
+import com.aether.nextcloud.support.RobolectricAetherRule
 import com.aether.nextcloud.support.awaitTrue
 import java.io.File
 import kotlinx.coroutines.flow.first
@@ -20,7 +20,7 @@ import org.junit.runner.RunWith
 /** Signing out must leave nothing of the account behind (PLAN.md 1.3). */
 @RunWith(AndroidJUnit4::class)
 class AccountCleanerTest {
-    @get:Rule val env = AetherTestRule()
+    @get:Rule val env = RobolectricAetherRule()
 
     private val credentials get() = env.graph.accounts().credentials(env.accountName)!!
 

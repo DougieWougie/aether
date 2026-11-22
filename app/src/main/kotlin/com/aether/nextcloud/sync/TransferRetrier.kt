@@ -49,4 +49,27 @@ class TransferRetrier @Inject constructor(
         if (syncPins) scheduler.syncPinsNow()
         RetryOutcome(retried, skipped)
     }
+
+    /** Retries a single failed transfer row. */
+    suspend fun retryOne(row: com.aether.nextcloud.data.local.entity.TransferEntity): RetryOutcome = withContext(Dispatchers.IO) {
+        val staged = row.sourcePath?.let(::File)
+        when {
+            row.mediaKey != null -> {
+                transfers.delete(row.id)
+                scheduler.backUpNow()
+                RetryOutcome(1, 0)
+            }
+            staged != null && staged.isFile -> {
+                UploadDocumentWorker.enqueue(context, UploadRequest(row.accountName, row.remotePath, staged, row.mimeType, row.ifMatchEtag, createParents = row.ifMatchEtag == null))
+                transfers.delete(row.id)
+                RetryOutcome(1, 0)
+            }
+            row.direction == TransferDirection.DOWNLOAD -> {
+                transfers.delete(row.id)
+                scheduler.syncPinsNow()
+                RetryOutcome(1, 0)
+            }
+            else -> RetryOutcome(0, 1)
+        }
+    }
 }

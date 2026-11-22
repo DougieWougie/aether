@@ -44,8 +44,14 @@ data class AetherCredentials(
     val uploadsBaseUrl: String get() = davUrl("uploads", emptyList(), trailingSlash = false)
 
     /** Percent-encoded URL for [remotePath] (e.g. `/Documents/notes.md`) under the files endpoint. */
-    fun fileUrl(remotePath: String): String =
-        davUrl("files", remotePath.split('/').filter { it.isNotEmpty() }, trailingSlash = remotePath.endsWith("/"))
+    fun fileUrl(remotePath: String): String {
+        val normalized = com.aether.nextcloud.provider.DocumentId.normalizePath(remotePath)
+        val trailingSlash = remotePath.endsWith("/")
+        return davUrl("files", normalized.split('/').filter { it.isNotEmpty() }, trailingSlash = trailingSlash)
+    }
+
+    override fun toString(): String =
+        "AetherCredentials(accountName=$accountName, serverUrl=$serverUrl, loginName=$loginName, appPassword=***, displayName=$displayName)"
 
     private fun davUrl(kind: String, segments: List<String>, trailingSlash: Boolean): String =
         server.newBuilder().apply {

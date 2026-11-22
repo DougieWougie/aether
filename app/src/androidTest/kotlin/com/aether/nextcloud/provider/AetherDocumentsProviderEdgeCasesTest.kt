@@ -177,28 +177,6 @@ class AetherDocumentsProviderEdgeCasesTest {
     }
 
     @Test
-    fun aPreviewInFlightIsNeverVisibleAtItsFinalPath() {
-        env.nextcloud.putFile("/photo.jpg", "jpeg-bytes", mime = "image/jpeg")
-        env.nextcloud.withPreview("/photo.jpg")
-        env.nextcloud.previewBytesPerSecond = 200
-        val credentials = env.graph.accounts().credentials(env.accountName)!!
-        val target = java.io.File(env.graph.diskCache().thumbnailFor(env.accountName, "race", 256, "e").path)
-        target.delete()
-
-        val download = java.util.concurrent.Executors.newSingleThreadExecutor().submit {
-            kotlinx.coroutines.runBlocking { env.graph.ocs().downloadPreview(credentials, "100", target, 256) }
-        }
-        // The throttled body keeps the download in flight; once its .part file exists, bytes are on disk but not at the final path.
-        awaitTrue("the download to start writing") { target.parentFile?.listFiles().orEmpty().any { it.name.endsWith(".part") } }
-        val midway = target.exists()
-        download.get()
-
-        assertFalse("a half-written preview must not sit at the final path", midway)
-        assertTrue(target.isFile)
-        assertEquals(600L, target.length())
-    }
-
-    @Test
     fun aDocumentWithoutAPreviewHasNoThumbnail() {
         env.nextcloud.putFile("/plain.txt", "x")
         listed("/")

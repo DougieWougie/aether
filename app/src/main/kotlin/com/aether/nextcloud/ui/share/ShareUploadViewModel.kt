@@ -162,12 +162,17 @@ class ShareUploadViewModel @Inject constructor(
 
     /**
      * `content://<userId>@<authority>` addresses the same provider as `content://<authority>`, so a plain authority comparison
-     * is bypassable; user-id-prefixed authorities are rejected outright and the rest compared case-insensitively.
+     * is bypassable; user-id-prefixed authorities are rejected outright, and any provider owned by this app (including
+     * `AetherDocumentsProvider` and our `captures` FileProvider) is rejected so external senders cannot read app-private files.
      */
     private fun isShareable(uri: Uri): Boolean {
         val authority = uri.authority ?: return false
-        return uri.scheme == ContentResolver.SCHEME_CONTENT && '@' !in authority &&
-            !authority.equals(AetherConstants.AUTHORITY, ignoreCase = true)
+        if (uri.scheme != ContentResolver.SCHEME_CONTENT || '@' in authority) return false
+        if (authority.equals(AetherConstants.AUTHORITY, ignoreCase = true)) return false
+        if (authority.equals("${context.packageName}.captures", ignoreCase = true)) return false
+        val provider = runCatching { context.packageManager.resolveContentProvider(authority, 0) }.getOrNull()
+        if (provider?.packageName == context.packageName) return false
+        return true
     }
 
     private fun readItems(intent: Intent): List<SharedItem> {
@@ -197,7 +202,11 @@ class ShareUploadViewModel @Inject constructor(
                 if (cursor.moveToFirst()) name = cursor.getString(0)
             }
         }
-        val safeName = (name ?: uri.lastPathSegment ?: "shared-file").substringAfterLast('/').ifBlank { "shared-file" }
+        val rawName = (name ?: uri.lastPathSegment ?: "shared-file")
+            .substringAfterLast('/')
+            .filter { it >= ' ' && it != '\u007F' }
+            .trim()
+        val safeName = if (rawName.isBlank() || rawName == "." || rawName == "..") "shared-file" else rawName
         return SharedItem(uri, null, safeName, context.contentResolver.getType(uri))
     }
 }

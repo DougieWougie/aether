@@ -25,8 +25,10 @@ class TransferNotificationHelper @Inject constructor(
     @ApplicationContext private val context: Context,
 ) {
     private val manager get() = context.getSystemService(NotificationManager::class.java)
+    @Volatile private var channelsCreated = false
 
     private fun ensureChannels() {
+        if (channelsCreated) return
         manager.createNotificationChannel(
             NotificationChannel(CHANNEL_TRANSFERS, context.getString(R.string.notification_channel_transfers), NotificationManager.IMPORTANCE_LOW),
         )
@@ -39,6 +41,7 @@ class TransferNotificationHelper @Inject constructor(
         manager.createNotificationChannel(
             NotificationChannel(CHANNEL_CONFLICTS, context.getString(R.string.notification_channel_conflicts), NotificationManager.IMPORTANCE_DEFAULT),
         )
+        channelsCreated = true
     }
 
     /** [total] ≤ 0 renders an indeterminate bar. */
@@ -52,7 +55,7 @@ class TransferNotificationHelper @Inject constructor(
             .setOnlyAlertOnce(true)
             .setSilent(true)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
-            .setContentIntent(openApp())
+            .setContentIntent(openApp(TAB_TRANSFERS))
             .setProgress(if (total > 0) 100 else 0, if (total > 0) percent(transferred, total) else 0, total <= 0)
             .addAction(0, context.getString(R.string.notification_cancel), cancel)
             .build()
@@ -75,7 +78,7 @@ class TransferNotificationHelper @Inject constructor(
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .setPublicVersion(public)
             .setAutoCancel(true)
-            .setContentIntent(openApp())
+            .setContentIntent(openApp(TAB_TRANSFERS))
             .build()
         manager.notify(accountName, ("conflict:$conflictName").hashCode(), notification)
     }
@@ -106,7 +109,7 @@ class TransferNotificationHelper @Inject constructor(
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .setPublicVersion(public)
             .setAutoCancel(true)
-            .setContentIntent(openApp())
+            .setContentIntent(openApp(TAB_TRANSFERS))
             .addAction(0, context.getString(R.string.notification_retry), retry)
             .build()
         manager.notify(accountName, id, notification)
@@ -139,15 +142,22 @@ class TransferNotificationHelper @Inject constructor(
         manager.activeNotifications.filter { it.tag == accountName && it.id != SIGN_IN_ID }.forEach { manager.cancel(it.tag, it.id) }
     }
 
-    private fun openApp(): PendingIntent = PendingIntent.getActivity(
-        context, 0, Intent(context, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-    )
+    private fun openApp(tab: String? = null): PendingIntent {
+        val intent = Intent(context, MainActivity::class.java).apply {
+            if (tab != null) putExtra(EXTRA_TAB, tab)
+        }
+        return PendingIntent.getActivity(
+            context, tab?.hashCode() ?: 0, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+    }
 
     companion object {
         const val CHANNEL_TRANSFERS = "transfers"
         const val CHANNEL_CONFLICTS = "conflicts"
         const val CHANNEL_ACCOUNT = "account"
         const val CHANNEL_FAILURES = "failures"
+        const val EXTRA_TAB = "com.aether.nextcloud.EXTRA_TAB"
+        const val TAB_TRANSFERS = "transfers"
         private const val SIGN_IN_ID = 1
 
         fun percent(transferred: Long, total: Long): Int =

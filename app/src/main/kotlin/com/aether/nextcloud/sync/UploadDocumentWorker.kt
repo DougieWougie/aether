@@ -193,12 +193,13 @@ class UploadDocumentWorker @AssistedInject constructor(
         state: TransferState,
         refreshOriginal: DocumentId? = null,
     ): Result {
-        // Keep the uploaded bytes as the cached copy so the next read does not re-download them.
-        if (state == TransferState.COMPLETED) documents.adoptUploadedFile(credentials, uploaded, source, result.etag)
+        // Keep the uploaded bytes as the cached copy so the next read does not re-download them (O(1) rename on same fs).
+        if (state == TransferState.COMPLETED) documents.adoptUploadedFile(credentials, uploaded, source, result.etag, moveSource = true)
         else documents.refreshDocument(credentials, uploaded)
         refreshOriginal?.let { documents.refreshDocument(credentials, it) }
         source.delete()
         setTransferState(transferId, state, null)
+        PinnedSyncWorker.pruneTransfersIfDue(database)
         uploaded.parent?.let { notifyChildrenChanged(it) }
         // Only a plain overwrite hands its ETag on: a conflict copy leaves the original changed by someone else.
         val etag = result.etag.takeIf { state == TransferState.COMPLETED }

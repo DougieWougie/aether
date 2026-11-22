@@ -14,8 +14,10 @@ import android.provider.DocumentsContract
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.widthIn
 import android.content.ActivityNotFoundException
 import android.net.Uri
 import androidx.activity.result.contract.ActivityResultContracts
@@ -73,12 +75,16 @@ fun DashboardScreen(
     onAddAccount: () -> Unit,
     onSignInAgain: (AetherCredentials) -> Unit,
     modifier: Modifier = Modifier,
+    initialTab: DashboardTab? = null,
     viewModel: DashboardViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val noFileManager = stringResource(R.string.error_no_file_manager)
-    var notice by remember { mutableStateOf<String?>(null) }
+    val cacheClearedMessage = stringResource(R.string.storage_cache_cleared)
+    val pinWrongProvider = stringResource(R.string.pin_pick_aether)
+    val pinFailedMessage = stringResource(R.string.pin_failed)
+    LaunchedEffect(initialTab) { initialTab?.let(viewModel::selectTab) }
 
     val askForNotifications = rememberNotificationPermissionRequest()
     val snackbars = remember { SnackbarHostState() }
@@ -124,7 +130,10 @@ fun DashboardScreen(
             viewModel.finishCapture(uri, saved) { outcome ->
                 when (outcome) {
                     null -> Unit
-                    is CaptureOutcome.Queued -> showMessage(capturedMessage, viewLabel) { viewModel.selectTab(DashboardTab.Transfers) }
+                    is CaptureOutcome.Queued -> {
+                        askForNotifications()
+                        showMessage(capturedMessage, viewLabel) { viewModel.selectTab(DashboardTab.Transfers) }
+                    }
                     else -> showMessage(captureMessages.getValue(outcome))
                 }
             }
@@ -151,8 +160,15 @@ fun DashboardScreen(
     val pagerState = rememberPagerState(initialPage = tabs.indexOf(state.tab)) { tabs.size }
     val listStates = tabs.map { rememberLazyListState() }
     val rootDocumentUri = state.selected?.let { DocumentsContract.buildDocumentUri(AetherConstants.AUTHORITY, DocumentId.root(it.accountName).toString()) }
-    val pickFiles = rememberLauncherForActivityResult(PickAetherDocuments()) { viewModel.pin(it); if (it.isNotEmpty()) askForNotifications() }
-    val pickFolder = rememberLauncherForActivityResult(PickAetherFolder()) { uri -> if (uri != null) { viewModel.pin(listOf(uri)); askForNotifications() } }
+    val handlePinOutcome: (PinOutcome) -> Unit = { outcome ->
+        when (outcome) {
+            PinOutcome.Pinned -> askForNotifications()
+            PinOutcome.WrongProvider -> showMessage(pinWrongProvider)
+            PinOutcome.Failed -> showMessage(pinFailedMessage)
+        }
+    }
+    val pickFiles = rememberLauncherForActivityResult(PickAetherDocuments()) { viewModel.pin(it, handlePinOutcome) }
+    val pickFolder = rememberLauncherForActivityResult(PickAetherFolder()) { uri -> if (uri != null) viewModel.pin(listOf(uri), handlePinOutcome) }
 
     // The view model owns the selected tab (nav bar taps, saved state); the pager follows it, and a settled swipe reports back.
     // The first settled page is skipped: the view model's real tab may not have arrived yet.
@@ -175,7 +191,7 @@ fun DashboardScreen(
         bottomBar = { DashboardNavigationBar(selected = state.tab, onSelect = viewModel::selectTab) },
         floatingActionButton = {
             state.selected?.let { account ->
-                val openFiles = { if (!openInSystemFiles(context, account)) notice = noFileManager }
+                val openFiles = { if (!openInSystemFiles(context, account)) showMessage(noFileManager) }
                 DashboardToolbar(
                     tab = tabs[pagerState.currentPage],
                     canSync = state.pinned.isNotEmpty(),
@@ -227,45 +243,64 @@ fun DashboardScreen(
     ) { padding ->
         HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
             val tab = tabs[page]
-            LazyColumn(
-                state = listStates[page],
-                modifier = Modifier.fillMaxSize().imePadding(),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = padding.calculateTopPadding() + 8.dp, bottom = padding.calculateBottomPadding() + 88.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                item {
-                    Header(
-                        account = state.selected,
-                        avatar = state.avatar,
-                        accounts = state.accounts,
-                        onSelect = viewModel::selectAccount,
-                        onAddAccount = onAddAccount,
-                        onSignOut = viewModel::signOut,
-                        directShareEnabled = state.directShareEnabled,
-                        onDirectShareChange = viewModel::setDirectShare,
-                    )
-                }
-                items(state.needsSignIn, key = { it.accountName }) { account -> SignInBanner(account, onSignIn = { onSignInAgain(account) }) }
-                item { StorageHero(state, onRetry = viewModel::refresh) }
-                item {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        when (tab) {
-                            DashboardTab.Transfers -> TransfersSection(state.activeTransfers, state.recentTransfers)
-                            DashboardTab.Pinned -> PinnedSection(
-                                pinned = state.pinned,
-                                onUnpin = { doc ->
-                                    viewModel.unpin(doc)
-                                    scope.launch {
-                                        snackbars.currentSnackbarData?.dismiss()
-                                        if (snackbars.showSnackbar(unpinnedFormat.format(doc.name), actionLabel = undoLabel, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) viewModel.repin(doc)
-                                    }
-                                },
-                            )
-                            DashboardTab.Camera -> CameraSection(state, cameraSettingsOpen, { cameraSettingsOpen = it }, cameraBackup::setEnabled, { viewModel.selectTab(DashboardTab.Transfers) })
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+                LazyColumn(
+                    state = listStates[page],
+                    modifier = Modifier.fillMaxSize().widthIn(max = 840.dp).imePadding(),
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = padding.calculateTopPadding() + 8.dp, bottom = padding.calculateBottomPadding() + 88.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    item {
+                        Header(
+                            account = state.selected,
+                            avatar = state.avatar,
+                            accounts = state.accounts,
+                            onSelect = viewModel::selectAccount,
+                            onAddAccount = onAddAccount,
+                            onSignOut = viewModel::signOut,
+                            directShareEnabled = state.directShareEnabled,
+                            onDirectShareChange = viewModel::setDirectShare,
+                        )
+                    }
+                    items(state.needsSignIn, key = { it.accountName }) { account -> SignInBanner(account, onSignIn = { onSignInAgain(account) }) }
+                    item {
+                        StorageHero(
+                            state,
+                            onRetry = viewModel::refresh,
+                            onClearCache = {
+                                viewModel.clearCache()
+                                showMessage(cacheClearedMessage)
+                            },
+                        )
+                    }
+                    item {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            when (tab) {
+                                DashboardTab.Transfers -> TransfersSection(
+                                    active = state.activeTransfers,
+                                    recent = state.recentTransfers,
+                                    onCancel = viewModel::cancelTransfer,
+                                    onRetry = { row ->
+                                        viewModel.retryTransfer(row) { outcome -> showMessage(retryMessage(resources, outcome)) }
+                                    },
+                                    onDismiss = viewModel::dismissTransfer,
+                                    onOpenFolderFailed = { showMessage(noFileManager) },
+                                )
+                                DashboardTab.Pinned -> PinnedSection(
+                                    pinned = state.pinned,
+                                    onUnpin = { doc ->
+                                        viewModel.unpin(doc)
+                                        scope.launch {
+                                            snackbars.currentSnackbarData?.dismiss()
+                                            if (snackbars.showSnackbar(unpinnedFormat.format(doc.name), actionLabel = undoLabel, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) viewModel.repin(doc)
+                                        }
+                                    },
+                                )
+                                DashboardTab.Camera -> CameraSection(state, cameraSettingsOpen, { cameraSettingsOpen = it }, cameraBackup::setEnabled, { viewModel.selectTab(DashboardTab.Transfers) })
+                            }
                         }
                     }
                 }
-                notice?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.error) } }
             }
         }
     }

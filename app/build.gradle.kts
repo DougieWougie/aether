@@ -43,10 +43,12 @@ android {
         }
     }
 
+    val coverageEnabled = providers.gradleProperty("coverage").isPresent
+
     buildTypes {
         debug {
-            enableUnitTestCoverage = true
-            enableAndroidTestCoverage = true
+            enableUnitTestCoverage = coverageEnabled
+            enableAndroidTestCoverage = coverageEnabled
         }
         release {
             isMinifyEnabled = true
@@ -153,13 +155,14 @@ jacoco {
 // Robolectric loads app classes through its own class loader; without this the JaCoCo agent skips them and the report
 // would not count what the JVM Robolectric tests cover.
 tasks.withType<Test>().configureEach {
+    maxParallelForks = (Runtime.getRuntime().availableProcessors() / 2).coerceAtLeast(1)
     extensions.findByType(JacocoTaskExtension::class.java)?.apply {
         isIncludeNoLocationClasses = true
         excludes = listOf("jdk.internal.*")
     }
 }
 
-// One report from both test suites. Run the tests first: ./gradlew testDebugUnitTest connectedDebugAndroidTest coverageReport
+// One report from both test suites. Run the tests with -Pcoverage first: ./gradlew testDebugUnitTest connectedDebugAndroidTest coverageReport -Pcoverage
 tasks.register<JacocoReport>("coverageReport") {
     group = "verification"
     description = "Merges JVM and instrumented test coverage into build/reports/coverage/combined."

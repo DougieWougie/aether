@@ -23,7 +23,9 @@ import androidx.compose.ui.Modifier
 import androidx.core.content.IntentCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.aether.nextcloud.auth.AccountRepository
+import com.aether.nextcloud.sync.TransferNotificationHelper
 import com.aether.nextcloud.ui.dashboard.DashboardScreen
+import com.aether.nextcloud.ui.dashboard.DashboardTab
 import com.aether.nextcloud.ui.login.LoginScreen
 import com.aether.nextcloud.ui.theme.AetherTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -44,10 +46,14 @@ class MainActivity : ComponentActivity() {
         authenticatorResponse = IntentCompat.getParcelableExtra(
             intent, AccountManager.KEY_ACCOUNT_AUTHENTICATOR_RESPONSE, AccountAuthenticatorResponse::class.java,
         )
+        val requestedTab = when (intent?.getStringExtra(TransferNotificationHelper.EXTRA_TAB)) {
+            TransferNotificationHelper.TAB_TRANSFERS -> DashboardTab.Transfers
+            else -> null
+        }
         setContent {
             AetherTheme {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    AetherNavigation(accounts, onAccountAdded = ::reportAccountAdded)
+                    AetherNavigation(accounts, initialTab = requestedTab, onAccountAdded = ::reportAccountAdded)
                 }
             }
         }
@@ -73,7 +79,11 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun AetherNavigation(accounts: AccountRepository, onAccountAdded: (String) -> Unit) {
+private fun AetherNavigation(
+    accounts: AccountRepository,
+    initialTab: DashboardTab? = null,
+    onAccountAdded: (String) -> Unit,
+) {
     // null = still reading the account list from Android
     val signedIn by accounts.observeAccounts().collectAsStateWithLifecycle(initialValue = null)
     var route by rememberSaveable { mutableStateOf(Route.Home) }
@@ -89,6 +99,12 @@ private fun AetherNavigation(accounts: AccountRepository, onAccountAdded: (Strin
         current == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { LoadingIndicator() }
         current.isEmpty() || route == Route.AddAccount -> LoginScreen(
             initialServer = reauthServer,
+            onBack = if (current.isNotEmpty()) {
+                {
+                    route = Route.Home
+                    reauthServer = null
+                }
+            } else null,
             onSignedIn = { name ->
                 route = Route.Home
                 reauthServer = null
@@ -96,6 +112,7 @@ private fun AetherNavigation(accounts: AccountRepository, onAccountAdded: (Strin
             },
         )
         else -> DashboardScreen(
+            initialTab = initialTab,
             onAddAccount = { route = Route.AddAccount },
             onSignInAgain = { account ->
                 reauthServer = account.serverUrl

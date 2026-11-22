@@ -2,9 +2,11 @@ package com.aether.nextcloud.sync
 
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.work.Configuration
 import androidx.work.NetworkType
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
+import androidx.work.testing.WorkManagerTestInitHelper
 import com.aether.nextcloud.data.prefs.BackupSettings
 import com.aether.nextcloud.data.prefs.SyncSettings
 import com.aether.nextcloud.support.awaitTrue
@@ -14,6 +16,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -24,6 +27,11 @@ class SyncSchedulerTest {
     private val work get() = WorkManager.getInstance(context)
 
     private fun infos(name: String) = work.getWorkInfosForUniqueWork(name).get().filter { !it.state.isFinished }
+
+    @Before
+    fun initWorkManager() {
+        WorkManagerTestInitHelper.initializeTestWorkManager(context, Configuration.Builder().build())
+    }
 
     @After
     fun cancelEverything() {

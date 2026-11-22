@@ -24,11 +24,15 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.aether.nextcloud.data.MediaAlbum
 import com.aether.nextcloud.data.prefs.BackupAlbum
@@ -61,16 +65,21 @@ fun AlbumSheet(
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberBottomSheetState(SheetValue.Hidden, setOf(SheetValue.Hidden, SheetValue.Expanded))) {
         Column(Modifier.navigationBarsPadding()) {
-            Text(stringResource(R.string.albums_picker_title), style = MaterialTheme.typography.titleLargeEmphasized, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
+            Text(
+                stringResource(R.string.albums_picker_title),
+                style = MaterialTheme.typography.titleLargeEmphasized,
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp).semantics { heading() },
+            )
+            val allSelected = selected == null
             ListItem(
                 supportingContent = { Text(stringResource(R.string.albums_all_hint)) },
-                trailingContent = {
-                    Switch(
-                        checked = selected == null,
-                        onCheckedChange = { all -> onChange(if (all) null else available.orEmpty().map { BackupAlbum(it.id, it.name) }) },
-                    )
-                },
+                trailingContent = { Switch(checked = allSelected, onCheckedChange = null) },
                 colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+                modifier = Modifier.toggleable(
+                    value = allSelected,
+                    role = Role.Switch,
+                    onValueChange = { all -> onChange(if (all) null else available.orEmpty().map { BackupAlbum(it.id, it.name) }) },
+                ),
             ) { Text(stringResource(R.string.albums_all)) }
             when {
                 available == null -> Text(stringResource(R.string.albums_loading), modifier = Modifier.padding(24.dp))
@@ -79,6 +88,7 @@ fun AlbumSheet(
                     items(available, key = { it.id }) { album ->
                         val checked = selected == null || selected.any { it.id == album.id }
                         val onlyOne = selected != null && selected.size == 1 && checked
+                        val enabled = selected != null && !onlyOne
                         val backedUp = uploads[album.id] ?: 0
                         ListItem(
                             supportingContent = {
@@ -91,16 +101,18 @@ fun AlbumSheet(
                                 )
                             },
                             trailingContent = {
-                                Checkbox(
-                                    checked = checked,
-                                    enabled = selected != null && !onlyOne,
-                                    onCheckedChange = { on ->
-                                        val current = selected.orEmpty()
-                                        onChange(if (on) current + BackupAlbum(album.id, album.name) else current.filterNot { it.id == album.id })
-                                    },
-                                )
+                                Checkbox(checked = checked, enabled = enabled, onCheckedChange = null)
                             },
                             colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+                            modifier = Modifier.toggleable(
+                                value = checked,
+                                enabled = enabled,
+                                role = Role.Checkbox,
+                                onValueChange = { on ->
+                                    val current = selected.orEmpty()
+                                    onChange(if (on) current + BackupAlbum(album.id, album.name) else current.filterNot { it.id == album.id })
+                                },
+                            ),
                         ) { Text(album.name) }
                     }
                 }

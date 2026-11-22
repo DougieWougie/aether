@@ -7,11 +7,12 @@ import java.security.MessageDigest
 object Checksums {
     private const val SHA1 = "SHA1:"
 
-    /** Reads [input] to the end (without closing it) and returns its `SHA1:<hex>`. */
-    fun sha1(input: InputStream): String {
+    /** Reads [input] to the end (without closing it) and returns its `SHA1:<hex>`. Calls [checkCancelled] per chunk. */
+    fun sha1(input: InputStream, checkCancelled: () -> Unit = {}): String {
         val digest = MessageDigest.getInstance("SHA-1")
         val buffer = ByteArray(64 * 1024)
         while (true) {
+            checkCancelled()
             val read = input.read(buffer)
             if (read < 0) break
             digest.update(buffer, 0, read)

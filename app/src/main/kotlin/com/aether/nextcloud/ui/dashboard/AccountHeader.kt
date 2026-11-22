@@ -4,7 +4,12 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.AlertDialog
 import com.aether.nextcloud.R
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -72,7 +77,7 @@ internal fun Header(
             }
         }
         Column(Modifier.weight(1f)) {
-            Text(account?.displayName ?: "Aether", style = MaterialTheme.typography.headlineSmallEmphasized, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(account?.displayName ?: stringResource(R.string.app_name), style = MaterialTheme.typography.headlineSmallEmphasized, maxLines = 1, overflow = TextOverflow.Ellipsis)
             account?.let { Text(it.serverUrl.removePrefix("https://"), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) }
         }
         AccountMenu(accounts, account, onSelect, onAddAccount, onSignOut, directShareEnabled, onDirectShareChange)
@@ -117,6 +122,10 @@ internal fun AccountMenu(
                 text = { Text(stringResource(R.string.account_direct_share)) },
                 trailingIcon = { Switch(checked = directShareEnabled, onCheckedChange = null) },
                 onClick = { onDirectShareChange(!directShareEnabled) },
+                modifier = Modifier.semantics {
+                    role = Role.Switch
+                    toggleableState = ToggleableState(directShareEnabled)
+                },
             )
             selected?.let { account ->
                 DropdownMenuItem(

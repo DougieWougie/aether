@@ -49,10 +49,13 @@ open class AetherTestRule : ExternalResource() {
     /** Waits for the test body; a Robolectric rule overrides this to keep running what is posted to the main looper meanwhile. */
     protected open fun waitFor(worker: Thread) = worker.join()
 
+    private var previousFreshnessWindowMs: Long = 0L
+
     override fun before() {
         removeLeftovers()
         // The repository skips the freshness check for a few seconds in production; tests that edit the server behind the
         // app's back expect every open to look, so the window is off unless a test turns it on.
+        previousFreshnessWindowMs = graph.documents().freshnessWindowMs
         graph.documents().freshnessWindowMs = 0
         nextcloud = FakeNextcloud()
         accountName = AccountRepository.accountNameFor(nextcloud.user, nextcloud.baseUrl)!!
@@ -72,6 +75,7 @@ open class AetherTestRule : ExternalResource() {
         nextcloud.close()
         runBlocking { graph.documents().forgetAccount(accountName) }
         graph.diskCache().forgetAccount(accountName)
+        graph.documents().freshnessWindowMs = previousFreshnessWindowMs
     }
 
     /** Accounts left by an earlier crashed run would make `queryRoots` ambiguous. */

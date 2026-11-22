@@ -104,6 +104,12 @@ class LoginViewModel @Inject constructor(
         _state.update { it.copy(phase = LoginPhase.Idle) }
     }
 
+    fun onNoBrowser() {
+        polling?.cancel()
+        clearSession()
+        _state.update { it.copy(phase = LoginPhase.Failed(context.getString(R.string.login_no_browser))) }
+    }
+
     private fun startPolling(endpoint: String, token: String, server: String) {
         polling?.cancel()
         polling = viewModelScope.launch {

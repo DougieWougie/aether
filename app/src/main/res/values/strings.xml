@@ -244,4 +244,21 @@
     <string name="pinned_status_folder_syncing">Folder syncing</string>
     <string name="pinned_unpinned">Unpinned %1$s</string>
     <string name="action_undo">Undo</string>
+    <string name="action_back">Back</string>
+    <string name="action_dismiss">Dismiss</string>
+    <string name="login_no_browser">No browser app found to open the sign-in page.</string>
+    <string name="login_copy_link">Copy link</string>
+    <string name="login_waiting_server">Signing in to %1$s</string>
+    <string name="backup_partial_permission_notice">Only selected photos are shared with Aether. Allow full photo access so new photos back up automatically.</string>
+    <string name="backup_open_settings">Open settings</string>
+    <string name="transfers_recent">Recent</string>
+    <string name="state_expanded">Expanded</string>
+    <string name="state_collapsed">Collapsed</string>
+    <string name="storage_almost_full">Almost full</string>
+    <string name="storage_clear_cache_title">Clear cached files?</string>
+    <string name="storage_clear_cache_body">Removes %1$s of temporary copies. Pinned files and files on your Nextcloud server are not affected.</string>
+    <string name="storage_clear_cache_confirm">Clear cache</string>
+    <string name="storage_cache_cleared">Cache cleared</string>
+    <string name="pin_pick_aether">Pick files or folders inside Aether</string>
+    <string name="pin_failed">Couldn\'t pin the selected item</string>
 </resources>

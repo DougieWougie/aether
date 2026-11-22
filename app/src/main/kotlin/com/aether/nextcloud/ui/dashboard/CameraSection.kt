@@ -89,7 +89,7 @@ internal fun CameraSection(
                         Icon(Icons.Outlined.PhotoCamera, contentDescription = null, tint = colors.onTertiary, modifier = Modifier.size(22.dp))
                     }
                 }
-                Column(Modifier.weight(1f).clickable { onExpandedChange(true) }) {
+                Column(Modifier.weight(1f)) {
                     Text(title, style = MaterialTheme.typography.titleMediumEmphasized, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(statusLine(state), style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
@@ -124,11 +124,25 @@ internal fun CameraSection(
                 }
             }
             if (toggle.permissionDenied) {
-                Text(stringResource(R.string.backup_permission_needed), style = MaterialTheme.typography.bodyMedium, color = colors.error)
+                if (toggle.permanentlyDenied) {
+                    Notice(stringResource(R.string.backup_permission_needed), stringResource(R.string.backup_open_settings), toggle.openSettings)
+                } else {
+                    Text(stringResource(R.string.backup_permission_needed), style = MaterialTheme.typography.bodyMedium, color = colors.error)
+                }
             }
             if (backup.enabled && !toggle.hasPermission) {
                 // Backup is on but the photo permission was taken away: without it every scan finds nothing.
-                Notice(stringResource(R.string.backup_no_permission_notice), stringResource(R.string.backup_allow_access), toggle.requestAccess)
+                Notice(
+                    stringResource(R.string.backup_no_permission_notice),
+                    stringResource(if (toggle.permanentlyDenied) R.string.backup_open_settings else R.string.backup_allow_access),
+                    if (toggle.permanentlyDenied) toggle.openSettings else toggle.requestAccess,
+                )
+            } else if (backup.enabled && toggle.partialAccess) {
+                Notice(
+                    stringResource(R.string.backup_partial_permission_notice),
+                    stringResource(R.string.backup_allow_access),
+                    toggle.requestAccess,
+                )
             }
             if (backup.enabled && state.backupFailedCount > 0) {
                 Notice(
@@ -152,7 +166,14 @@ private fun statusLine(state: DashboardUiState): String {
         state.backupRunning && progress != null -> stringResource(R.string.camera_progress, progress.done, progress.total)
         state.backupRunning -> stringResource(R.string.camera_backing_up)
         state.lastBackupAt != null -> stringResource(R.string.camera_up_to_date, relative(state.lastBackupAt))
-        else -> stringResource(R.string.camera_waiting)
+        else -> {
+            val base = stringResource(R.string.camera_waiting)
+            val constraints = listOfNotNull(
+                if (backup.unmeteredOnly) stringResource(R.string.backup_wifi_only) else null,
+                if (backup.chargingOnly) stringResource(R.string.backup_charging_only) else null,
+            )
+            if (constraints.isEmpty()) base else "$base · ${constraints.joinToString(", ")}"
+        }
     }
 }
 

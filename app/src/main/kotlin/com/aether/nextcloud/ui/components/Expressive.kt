@@ -1,5 +1,7 @@
 package com.aether.nextcloud.ui.components
 
+import android.content.Context
+import android.provider.Settings
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
@@ -19,15 +21,27 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.graphics.shapes.Morph
 import androidx.graphics.shapes.RoundedPolygon
+
+/** True when Android's "Remove animations" accessibility setting (animator_duration_scale == 0) is active. */
+@Composable
+fun rememberReducedMotion(): Boolean {
+    val context = LocalContext.current
+    return remember(context) { isReducedMotionEnabled(context) }
+}
+
+private fun isReducedMotionEnabled(context: Context): Boolean = runCatching {
+    Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
+}.getOrDefault(false)
 
 /** Writes [Morph] at [progress] into a Compose path scaled to [size]. */
 internal fun Morph.toComposePath(progress: Float, size: Size, path: Path): Path {
@@ -75,10 +89,13 @@ fun MorphingShapeBadge(
         }
     }
 
+    val reducedMotion = rememberReducedMotion()
     val rotation = remember { Animatable(0f) }
     val settle = MaterialTheme.motionScheme.slowSpatialSpec<Float>()
-    LaunchedEffect(spinning) {
-        if (spinning) {
+    LaunchedEffect(spinning, reducedMotion) {
+        if (reducedMotion) {
+            rotation.snapTo(0f)
+        } else if (spinning) {
             while (true) rotation.animateTo(rotation.value + 360f, tween(14_000, easing = LinearEasing))
         } else {
             val rest = rotation.value % 360f
@@ -90,7 +107,7 @@ fun MorphingShapeBadge(
 
     val path = remember { Path() }
     Box(modifier.size(size), contentAlignment = Alignment.Center) {
-        Canvas(Modifier.fillMaxSize().rotate(rotation.value)) {
+        Canvas(Modifier.fillMaxSize().graphicsLayer { rotationZ = rotation.value }) {
             drawPath(morph.toComposePath(progress.value, this.size, path), container)
         }
         content()

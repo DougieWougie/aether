@@ -25,11 +25,15 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -43,7 +47,7 @@ import androidx.compose.foundation.shape.CircleShape
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalLayoutApi::class)
 @Composable
-internal fun StorageHero(state: DashboardUiState, onRetry: () -> Unit) {
+internal fun StorageHero(state: DashboardUiState, onRetry: () -> Unit, onClearCache: (() -> Unit)? = null) {
     val context = LocalContext.current
     val quota = state.quota
     val total = quota?.totalBytes
@@ -51,6 +55,24 @@ internal fun StorageHero(state: DashboardUiState, onRetry: () -> Unit) {
     val failed = state.quotaError != null
     val colors = MaterialTheme.colorScheme
     val fraction = if (quota != null && total != null && total > 0) (quota.usedBytes.toFloat() / total).coerceIn(0f, 1f) else null
+    var confirmClearCache by remember { mutableStateOf(false) }
+
+    if (confirmClearCache && onClearCache != null) {
+        val cacheFormatted = Formatter.formatShortFileSize(context, state.storage.cacheBytes)
+        AlertDialog(
+            onDismissRequest = { confirmClearCache = false },
+            title = { Text(stringResource(R.string.storage_clear_cache_title)) },
+            text = { Text(stringResource(R.string.storage_clear_cache_body, cacheFormatted)) },
+            confirmButton = {
+                TextButton(onClick = { confirmClearCache = false; onClearCache() }) {
+                    Text(stringResource(R.string.storage_clear_cache_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmClearCache = false }) { Text(stringResource(R.string.action_cancel)) }
+            },
+        )
+    }
 
     if (quota == null && failed) {
         StorageLoadError(state.quotaError.orEmpty(), onRetry)
@@ -59,27 +81,30 @@ internal fun StorageHero(state: DashboardUiState, onRetry: () -> Unit) {
 
     Surface(shape = HeroShape, color = colors.primaryContainer, contentColor = colors.onPrimaryContainer, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Column(Modifier.weight(1f).semantics(mergeDescendants = true) {}, verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(stringResource(R.string.storage_title), style = MaterialTheme.typography.labelLargeEmphasized)
                     when {
                         quota != null -> {
                             val (value, unit) = splitSize(Formatter.formatShortFileSize(context, quota.usedBytes))
                             Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text(value, style = MaterialTheme.typography.displayLargeEmphasized, maxLines = 1)
-                                Text(unit, style = MaterialTheme.typography.headlineMediumEmphasized, modifier = Modifier.padding(bottom = 10.dp))
+                                Text(value, style = MaterialTheme.typography.displayLargeEmphasized, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                                Text(unit, style = MaterialTheme.typography.headlineMediumEmphasized, maxLines = 1, modifier = Modifier.padding(bottom = 10.dp))
                             }
                             Text(
                                 if (total != null) stringResource(R.string.storage_used_of, Formatter.formatShortFileSize(context, total)) else stringResource(R.string.storage_used_unlimited),
                                 style = MaterialTheme.typography.titleMedium,
                             )
+                            if (fraction != null && fraction >= 0.95f) {
+                                Text(stringResource(R.string.storage_almost_full), style = MaterialTheme.typography.labelLargeEmphasized, color = colors.error)
+                            }
                         }
                         else -> Text(stringResource(R.string.storage_loading), style = MaterialTheme.typography.headlineMediumEmphasized)
                     }
                 }
-                // The text beside the gauge already says how much is used, so the gauge only adds the percentage or the transfer count.
+                // The text beside the gauge already says how much is used, so the gauge only adds the percentage, error, or transfer count.
                 val gaugeDescription = when {
-                    failed -> null
+                    failed -> stringResource(R.string.storage_load_failed)
                     syncing -> pluralStringResource(R.plurals.transfers_active, state.activeTransfers.size, state.activeTransfers.size)
                     fraction != null -> stringResource(R.string.storage_percent_used, (fraction * 100).roundToInt())
                     else -> null
@@ -96,13 +121,32 @@ internal fun StorageHero(state: DashboardUiState, onRetry: () -> Unit) {
                         quota != null -> Text(
                             if (fraction != null) "${(fraction * 100).roundToInt()}%" else "∞",
                             style = MaterialTheme.typography.headlineMediumEmphasized,
+                            maxLines = 1,
                         )
                     }
                 }
             }
+            if (failed) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        state.quotaError.orEmpty().ifBlank { stringResource(R.string.storage_load_failed) },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.error,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = onRetry) { Text(stringResource(R.string.action_retry)) }
+                }
+            }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (state.storage.pinnedBytes > 0) StatChip(stringResource(R.string.storage_pinned, Formatter.formatShortFileSize(context, state.storage.pinnedBytes)))
-                if (state.storage.cacheBytes > 0) StatChip(stringResource(R.string.storage_cache, Formatter.formatShortFileSize(context, state.storage.cacheBytes)))
+                if (state.storage.cacheBytes > 0) {
+                    StatChip(
+                        text = stringResource(R.string.storage_cache, Formatter.formatShortFileSize(context, state.storage.cacheBytes)),
+                        onClick = onClearCache?.let { { confirmClearCache = true } },
+                    )
+                }
             }
         }
     }
@@ -134,9 +178,15 @@ internal fun QuotaArcGauge(fraction: Float?, modifier: Modifier = Modifier) {
 }
 
 @Composable
-internal fun StatChip(text: String) {
-    Surface(shape = CircleShape, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.10f)) {
-        Text(text, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
+internal fun StatChip(text: String, onClick: (() -> Unit)? = null) {
+    if (onClick != null) {
+        Surface(onClick = onClick, shape = CircleShape, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.10f)) {
+            Text(text, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
+        }
+    } else {
+        Surface(shape = CircleShape, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.10f)) {
+            Text(text, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
+        }
     }
 }
 

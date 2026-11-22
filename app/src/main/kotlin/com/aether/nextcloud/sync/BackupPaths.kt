@@ -9,7 +9,9 @@ object BackupPaths {
     fun remotePath(folder: String, takenAtMillis: Long, fileName: String, zone: ZoneId = ZoneId.systemDefault()): String {
         val date = Instant.ofEpochMilli(takenAtMillis).atZone(zone)
         val root = folder.trim().trimEnd('/').let { if (it.startsWith("/")) it else "/$it" }.let { if (it == "/") "" else it }
-        return "$root/${YEAR.format(date)}/${MONTH.format(date)}/$fileName"
+        val cleanName = fileName.substringAfterLast('/').filter { it >= ' ' && it != '\u007F' }.trim()
+        val safeName = if (cleanName.isBlank() || cleanName == "." || cleanName == "..") "file" else cleanName
+        return "$root/${YEAR.format(date)}/${MONTH.format(date)}/$safeName"
     }
 
     /** Folders to `MKCOL`, shallowest first, for [remotePath]'s parent. */

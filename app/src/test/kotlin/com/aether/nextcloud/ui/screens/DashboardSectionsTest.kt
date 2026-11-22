@@ -341,7 +341,7 @@ class DashboardSectionsTest {
     fun beforeAnythingIsUploadedTheTileSaysItIsWaiting() {
         compose.show { CameraSection(DashboardUiState(backup = BackupSettings(enabled = true, accountName = alice.accountName))) }
 
-        compose.onNodeWithText(str(R.string.camera_waiting)).assertIsDisplayed()
+        compose.onNodeWithText(str(R.string.camera_waiting), substring = true).assertIsDisplayed()
     }
 
     @Test

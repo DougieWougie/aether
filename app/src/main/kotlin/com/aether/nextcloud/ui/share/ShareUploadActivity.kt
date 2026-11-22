@@ -54,6 +54,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.aether.nextcloud.AetherConstants
@@ -105,7 +110,10 @@ private fun ShareSheet(viewModel: ShareUploadViewModel, onFinished: () -> Unit, 
     }
 
     ModalBottomSheet(onDismissRequest = onFinished, sheetState = sheetState) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 16.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(
+            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 16.dp).navigationBarsPadding(),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
             when {
                 !state.ready -> Loading()
                 state.accounts.isEmpty() -> {
@@ -173,6 +181,7 @@ private fun Chooser(
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }
@@ -190,7 +199,7 @@ private fun Chooser(
             }
         }
 
-        Text(stringResource(R.string.share_destination), style = MaterialTheme.typography.labelLargeEmphasized)
+        Text(stringResource(R.string.share_destination), style = MaterialTheme.typography.labelLargeEmphasized, modifier = Modifier.semantics { heading() })
         val destination = state.destination
         val choices = (listOfNotNull(destination) + state.recentFolders.filter { it.accountName == state.account?.accountName })
             .distinct()
@@ -220,10 +229,9 @@ private fun Chooser(
         }
 
         (state.phase as? SharePhase.Failed)?.let { failed ->
-            Text(failed.message, color = MaterialTheme.colorScheme.error)
-            LaunchedEffect(failed) {
-                delay(4_000)
-                onDismissError()
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(failed.message, color = MaterialTheme.colorScheme.error, modifier = Modifier.weight(1f))
+                TextButton(onClick = onDismissError) { Text(stringResource(R.string.action_dismiss)) }
             }
         }
 

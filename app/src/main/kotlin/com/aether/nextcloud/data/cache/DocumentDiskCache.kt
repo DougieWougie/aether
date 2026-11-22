@@ -30,7 +30,7 @@ class DocumentDiskCache(
 
     /** Keyed by [etag] as well, so a file changed on the server gets a new thumbnail instead of the old one. */
     fun thumbnailFor(accountName: String, fileId: String, size: Int, etag: String?): File =
-        File(accountDir(thumbnailsDir, accountName), "${fileId}_${size}_${hash(etag.orEmpty()).take(12)}")
+        File(accountDir(thumbnailsDir, accountName), "${hash(fileId).take(32)}_${size}_${hash(etag.orEmpty()).take(12)}")
 
     /** Deletes older thumbnails of the same file and size as [current], which was just stored for a newer ETag. */
     fun removeOutdatedThumbnails(current: File) {
@@ -81,12 +81,16 @@ class DocumentDiskCache(
     private fun evictOldest(dir: File, limit: Long, protect: Set<File>): List<File> {
         val files = dir.walkTopDown().filter { it.isFile && !it.name.endsWith(PART_SUFFIX) }.toList()
         var total = files.sumOf { it.length() }
+        if (total <= limit) return emptyList()
         val evicted = mutableListOf<File>()
         for (file in files.sortedBy { it.lastModified() }) {
             if (total <= limit) break
             if (file in protect) continue
-            total -= file.length()
-            if (file.delete()) evicted += file
+            val len = file.length()
+            if (file.delete()) {
+                total -= len
+                evicted += file
+            }
         }
         return evicted
     }

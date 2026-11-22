@@ -7,7 +7,12 @@ import androidx.room.PrimaryKey
 /** Cached WebDAV metadata for one file or folder, plus local state (pin flag and where its bytes live). */
 @Entity(
     tableName = "documents",
-    indices = [Index("parentId"), Index("accountName", "path"), Index("isPinned")],
+    indices = [
+        Index("parentId"),
+        Index("accountName", "path"),
+        Index("isPinned"),
+        Index("accountName", "isDirectory", "lastModified"),
+    ],
 )
 data class DocumentEntity(
     @PrimaryKey val documentId: String,

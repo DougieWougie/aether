@@ -72,20 +72,14 @@ class PinnedSyncWorker @AssistedInject constructor(
             val credentials = accounts.credentials(root.accountName) ?: continue
             syncNode(credentials, DocumentId.parse(root.documentId))
         }
-        withContext(Dispatchers.IO) {
-            val now = System.currentTimeMillis()
-            val finishedBefore = now - TimeUnit.DAYS.toMillis(1)
-            val failedBefore = now - TimeUnit.DAYS.toMillis(FAILED_KEPT_DAYS)
-            transfers.prunableSources(finishedBefore, failedBefore).forEach { File(it).delete() }
-            transfers.pruneFinished(finishedBefore, failedBefore)
-        }
+        pruneTransfers(database)
         return if (retryNeeded) Result.retry() else Result.success()
     }
 
     /** [listed] is the entry this folder just came back as in its parent's listing, so it is not asked for again. */
     private suspend fun syncNode(credentials: AetherCredentials, id: DocumentId, listed: DocumentEntity? = null) {
         // A listing keeps the local state (including the ETag the subtree was last synced at), so [listed] doubles as "before".
-        val before = listed ?: documents.cached(id)
+        val before = listed ?: withContext(Dispatchers.IO) { documents.cached(id) }
         val node = listed ?: when (val refreshed = documents.refreshDocument(credentials, id)) {
             is AetherResult.Success -> refreshed.value
             is AetherResult.Failure -> return noteFailure(credentials, refreshed.error)
@@ -101,7 +95,8 @@ class PinnedSyncWorker @AssistedInject constructor(
         }
         documents.pinChildren(id)
         val failuresBefore = failures
-        for (child in documents.cachedChildren(id)) {
+        val children = withContext(Dispatchers.IO) { documents.cachedChildren(id) }
+        for (child in children) {
             val childId = DocumentId.parse(child.documentId)
             if (child.isDirectory) syncNode(credentials, childId, child) else syncFile(credentials, child.copy(isPinned = true))
         }
@@ -110,7 +105,7 @@ class PinnedSyncWorker @AssistedInject constructor(
 
     private suspend fun syncFile(credentials: AetherCredentials, file: DocumentEntity) {
         val id = DocumentId.parse(file.documentId)
-        val current = documents.cached(id) ?: file
+        val current = withContext(Dispatchers.IO) { documents.cached(id) } ?: file
         if (documents.hasCurrentPinnedCopy(current)) return
 
         val transferId = withContext(Dispatchers.IO) {
@@ -160,10 +155,30 @@ class PinnedSyncWorker @AssistedInject constructor(
     companion object {
         /** How long a failed transfer stays listed (and its staged upload stays on disk) for Retry failed. */
         private const val FAILED_KEPT_DAYS = 7L
+        private const val PRUNE_INTERVAL_MS = 24 * 60 * 60 * 1_000L
         private const val KEY_FOREGROUND = "foreground"
         private const val PROGRESS_INTERVAL_MS = 500L
         private const val PERIODIC_NAME = "pinned-sync-periodic"
         private const val NOW_NAME = "pinned-sync-now"
+        @Volatile private var lastPrunedAt = 0L
+
+        /** Deletes old finished/failed transfers and their orphaned staged upload files. */
+        suspend fun pruneTransfers(database: AetherDatabase) = withContext(Dispatchers.IO) {
+            val now = System.currentTimeMillis()
+            val finishedBefore = now - TimeUnit.DAYS.toMillis(1)
+            val failedBefore = now - TimeUnit.DAYS.toMillis(FAILED_KEPT_DAYS)
+            val dao = database.transferDao()
+            dao.prunableSources(finishedBefore, failedBefore).forEach { File(it).delete() }
+            dao.pruneFinished(finishedBefore, failedBefore)
+            lastPrunedAt = now
+        }
+
+        /** Throttled daily prune for workers that run even when the user has no pinned files. */
+        suspend fun pruneTransfersIfDue(database: AetherDatabase) {
+            val now = System.currentTimeMillis()
+            if (now - lastPrunedAt < PRUNE_INTERVAL_MS) return
+            pruneTransfers(database)
+        }
 
         /** Every 6 hours; [unmeteredOnly] mirrors the user's sync constraint. Re-applying updates the constraint in place. */
         fun schedulePeriodic(context: Context, unmeteredOnly: Boolean) {
@@ -172,6 +187,12 @@ class PinnedSyncWorker @AssistedInject constructor(
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 1, TimeUnit.MINUTES)
                 .build()
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(PERIODIC_NAME, ExistingPeriodicWorkPolicy.UPDATE, request)
+        }
+
+        fun cancelAll(context: Context) {
+            val wm = WorkManager.getInstance(context)
+            wm.cancelUniqueWork(PERIODIC_NAME)
+            wm.cancelUniqueWork(NOW_NAME)
         }
 
         /** User-triggered sync: expedited and shown as a foreground notification. */

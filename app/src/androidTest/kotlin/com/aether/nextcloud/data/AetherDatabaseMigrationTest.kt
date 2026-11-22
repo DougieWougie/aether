@@ -87,4 +87,44 @@ class AetherDatabaseMigrationTest {
             assertNull("rows without an error stay without one", c.getString(1))
         }
     }
+
+    @Test
+    fun upgradingFromVersionOneToFiveAddsIndicesAndOpensInRoom() {
+        helper.createDatabase("migration-test-1-to-5", 1).apply {
+            execSQL("INSERT INTO backed_up_media (accountName, mediaId, isVideo, dateModified, size, remotePath, backedUpAt) VALUES ('a@h', 7, 0, 1, 2048, '/Photos/7.jpg', 99)")
+            execSQL("INSERT INTO transfers (accountName, remotePath, direction, state, bytesTransferred, totalBytes, error, createdAt, updatedAt) VALUES ('a@h', '/x.txt', 'UPLOAD', 'FAILED', 0, 5, 'Timed out', 1, 2)")
+            close()
+        }
+
+        val db = helper.runMigrationsAndValidate(
+            "migration-test-1-to-5",
+            5,
+            true,
+            AetherDatabase.MIGRATION_1_2,
+            AetherDatabase.MIGRATION_2_3,
+            AetherDatabase.MIGRATION_3_4,
+            AetherDatabase.MIGRATION_4_5,
+        )
+        db.query("SELECT error FROM transfers WHERE remotePath = '/x.txt'").use { c ->
+            assertEquals(true, c.moveToFirst())
+            assertEquals("timeout", c.getString(0))
+        }
+        db.close()
+
+        val room = androidx.room.Room.databaseBuilder(
+            InstrumentationRegistry.getInstrumentation().targetContext,
+            AetherDatabase::class.java,
+            "migration-test-1-to-5",
+        ).addMigrations(
+            AetherDatabase.MIGRATION_1_2,
+            AetherDatabase.MIGRATION_2_3,
+            AetherDatabase.MIGRATION_3_4,
+            AetherDatabase.MIGRATION_4_5,
+        ).build()
+        try {
+            assertEquals(1, room.transferDao().failed("a@h").size)
+        } finally {
+            room.close()
+        }
+    }
 }

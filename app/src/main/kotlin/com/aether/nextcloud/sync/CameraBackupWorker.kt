@@ -47,6 +47,7 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -102,13 +103,14 @@ class CameraBackupWorker @AssistedInject constructor(
         }
         // Content-URI triggers are one-shot: queue the next watcher unless this run will be retried (it keeps its trigger).
         if (triggered && settings.enabled && !settings.paused && result != Result.retry()) scheduleTrigger(applicationContext, settings, ExistingWorkPolicy.APPEND_OR_REPLACE)
+        PinnedSyncWorker.pruneTransfersIfDue(database)
         return result
     }
 
     private suspend fun backUpNewMedia(settings: BackupSettings, credentials: AetherCredentials): Result {
         val items = withContext(Dispatchers.IO) {
             val done = database.backedUpMediaDao().backedUpKeys(credentials.accountName).toHashSet()
-            queryNewMedia(settings).filter { BackedUpKey(it.id, it.isVideo) !in done }
+            queryNewMedia(settings, done)
         }
         if (items.isEmpty()) return Result.success(workDataOf(KEY_ATTEMPTED to 0))
         runCatching { setForeground(getForegroundInfo()) } // not allowed for background-started runs; best effort
@@ -165,7 +167,7 @@ class CameraBackupWorker @AssistedInject constructor(
                 if (remote?.contentLength == item.size) {
                     // Same name and size. When the server holds a SHA-1 the content decides; without one the size has to do.
                     val remoteSha1 = Checksums.sha1Of(remote.checksums)
-                    if (remoteSha1 != null) source = withContext(Dispatchers.IO) { plain.withChecksum() }
+                    if (remoteSha1 != null) source = withContext(Dispatchers.IO) { plain.withChecksum { coroutineContext.ensureActive() } }
                     if (remoteSha1 == null || remoteSha1 == source.checksum) {
                         record(credentials, item, remotePath)
                         return AetherResult.Success(Unit)
@@ -177,7 +179,7 @@ class CameraBackupWorker @AssistedInject constructor(
         }
 
         // Send a SHA-1 so the server verifies the upload and a later run (or a reinstall) can tell this file from another.
-        if (source.checksum == null) source = withContext(Dispatchers.IO) { plain.withChecksum() }
+        if (source.checksum == null) source = withContext(Dispatchers.IO) { plain.withChecksum { coroutineContext.ensureActive() } }
         val upload = if (item.size > WebDavClient.CHUNKED_THRESHOLD) {
             dav.uploadChunkedV2(source, remotePath)
         } else {
@@ -227,16 +229,16 @@ class CameraBackupWorker @AssistedInject constructor(
         )
     }
 
-    private fun queryNewMedia(settings: BackupSettings): List<MediaItem> {
+    private fun queryNewMedia(settings: BackupSettings, done: Set<BackedUpKey>): List<MediaItem> {
         val sinceSeconds = settings.backupSinceMillis / 1000
         val albumIds = settings.albums?.map { it.id }
         if (albumIds != null && albumIds.isEmpty()) return emptyList()
-        val items = queryCollection(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, isVideo = false, sinceSeconds, albumIds)
-        val videos = if (settings.includeVideos) queryCollection(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, isVideo = true, sinceSeconds, albumIds) else emptyList()
+        val items = queryCollection(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, isVideo = false, sinceSeconds, albumIds, done)
+        val videos = if (settings.includeVideos) queryCollection(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, isVideo = true, sinceSeconds, albumIds, done) else emptyList()
         return (items + videos).sortedBy { it.modifiedMillis }
     }
 
-    private fun queryCollection(collection: Uri, isVideo: Boolean, sinceSeconds: Long, albumIds: List<Long>?): List<MediaItem> {
+    private fun queryCollection(collection: Uri, isVideo: Boolean, sinceSeconds: Long, albumIds: List<Long>?, done: Set<BackedUpKey>): List<MediaItem> {
         val projection = arrayOf(
             MediaStore.MediaColumns._ID,
             MediaStore.MediaColumns.DISPLAY_NAME,
@@ -256,6 +258,7 @@ class CameraBackupWorker @AssistedInject constructor(
         )?.use { cursor ->
             while (cursor.moveToNext()) {
                 val id = cursor.getLong(0)
+                if (BackedUpKey(id, isVideo) in done) continue
                 val modified = cursor.getLong(4) * 1000
                 result += MediaItem(
                     id = id,
@@ -294,6 +297,15 @@ class CameraBackupWorker @AssistedInject constructor(
                 else -> listOf(Manifest.permission.READ_EXTERNAL_STORAGE)
             }
             return permissions.any { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }
+        }
+
+        /** True on Android 14+ when the user granted only selected-photo access (future camera shots won't be visible). */
+        fun hasPartialMediaPermissionOnly(context: Context): Boolean {
+            if (Build.VERSION.SDK_INT < 34) return false
+            val fullImages = ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED
+            val fullVideos = ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_VIDEO) == PackageManager.PERMISSION_GRANTED
+            val partial = ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) == PackageManager.PERMISSION_GRANTED
+            return partial && !fullImages && !fullVideos
         }
 
         /** Runs never overlap: the trigger and periodic workers share the same scan. */

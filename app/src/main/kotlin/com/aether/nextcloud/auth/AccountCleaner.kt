@@ -48,14 +48,15 @@ class AccountCleaner @Inject constructor(
     fun remove(accountName: String, removeFromAccountManager: Boolean = true) {
         val credentials = accounts.credentials(accountName)
         if (removeFromAccountManager) accounts.removeAccount(accountName)
-        // Stop uploads first so nothing is writing into the files that are about to be deleted.
+        // Stop all background work before wiping local files and metadata.
         UploadDocumentWorker.cancelAll(context, accountName)
+        com.aether.nextcloud.sync.PinnedSyncWorker.cancelAll(context)
         scope.launch {
-            if (credentials != null) withTimeoutOrNull(REVOKE_TIMEOUT_MS) { ocs.revokeAppPassword(credentials) }
-            documents.forgetAccount(accountName)
-            withContext(Dispatchers.IO) { diskCache.forgetAccount(accountName) }
             val remembered = settings.forgetAccount(accountName)
             scheduler.applyBackup(remembered.backup)
+            documents.forgetAccount(accountName)
+            withContext(Dispatchers.IO) { diskCache.forgetAccount(accountName) }
+            com.aether.nextcloud.provider.AetherDocumentsProvider.clearAccountCaches(accountName)
             DirectShareShortcuts.sync(context, settings.directShareEnabled.first(), remembered.recentFolders.mapNotNull(DocumentId::parseOrNull))
             notifications.cancelConflicts(accountName)
             notifications.cancelSignInRequired(accountName)
@@ -64,6 +65,8 @@ class AccountCleaner @Inject constructor(
             quotas.forget(accountName)
             avatars.forget(accountName)
             accounts.notifyRootsChanged()
+            // Revoke the server-side app password after local data is already gone so offline/process-kill never leaves data behind.
+            if (credentials != null) withTimeoutOrNull(REVOKE_TIMEOUT_MS) { ocs.revokeAppPassword(credentials) }
         }
     }
 

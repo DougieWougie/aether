@@ -16,6 +16,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.aether.nextcloud.ui.components.MorphingShapeBadge
 
@@ -29,7 +31,7 @@ internal fun splitSize(formatted: String): Pair<String, String> {
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun SectionTitle(text: String) {
-    Text(text, style = MaterialTheme.typography.titleLargeEmphasized, modifier = Modifier.padding(start = 8.dp, top = 8.dp))
+    Text(text, style = MaterialTheme.typography.titleLargeEmphasized, modifier = Modifier.padding(start = 8.dp, top = 8.dp).semantics { heading() })
 }
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)

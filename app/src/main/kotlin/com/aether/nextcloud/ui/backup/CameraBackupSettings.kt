@@ -1,10 +1,23 @@
 package com.aether.nextcloud.ui.backup
 
 import android.Manifest
+import android.app.Activity
 import android.content.Context
+import android.content.ContextWrapper
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.provider.DocumentsContract
+import android.provider.Settings
+import androidx.core.app.ActivityCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import com.aether.nextcloud.sync.CameraBackupWorker
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -84,39 +97,85 @@ private val requestedPermissions: Array<String> = mediaPermissions + Manifest.pe
 
 private fun hasMediaPermission(context: Context) = mediaPermissions.any { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }
 
+private fun Context.findActivity(): Activity? {
+    var ctx = this
+    while (ctx is ContextWrapper) {
+        if (ctx is Activity) return ctx
+        ctx = ctx.baseContext
+    }
+    return null
+}
+
+internal fun openAppSettings(context: Context) {
+    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    runCatching { context.startActivity(intent) }
+}
+
 /** The camera backup on/off switch and the photo-permission flow behind it, shared by the tile and the settings sheet. */
 class BackupToggle internal constructor(
     /** False when backup is on but the photo permission was taken away: without it every scan finds nothing. */
     val hasPermission: Boolean,
+    /** True on Android 14+ when only selected-photos access was granted, so future camera shots won't be backed up. */
+    val partialAccess: Boolean,
     /** The user refused the photo permission when turning backup on. */
     val permissionDenied: Boolean,
+    /** True when the user refused and the system won't show the permission dialog again. */
+    val permanentlyDenied: Boolean,
     val onToggle: (Boolean) -> Unit,
     val requestAccess: () -> Unit,
+    val openSettings: () -> Unit,
 )
 
 /** Turning on asks for photo access first; [onSetEnabled] only hears `true` once it is granted. */
 @Composable
 fun rememberBackupToggle(enabled: Boolean, onSetEnabled: (Boolean) -> Unit): BackupToggle {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     var hasPermission by remember(enabled) { mutableStateOf(hasMediaPermission(context)) }
+    var partialAccess by remember(enabled) { mutableStateOf(CameraBackupWorker.hasPartialMediaPermissionOnly(context)) }
     var denied by remember { mutableStateOf(false) }
+    var permanentlyDenied by remember { mutableStateOf(false) }
+
+    DisposableEffect(lifecycleOwner, context) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                hasPermission = hasMediaPermission(context)
+                partialAccess = CameraBackupWorker.hasPartialMediaPermissionOnly(context)
+                if (hasPermission) {
+                    denied = false
+                    permanentlyDenied = false
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     val askForNotifications = rememberNotificationPermissionRequest()
     val setEnabled by rememberUpdatedState(onSetEnabled)
     val request = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted ->
-        // Partial photo access ("selected photos") still counts: backup then uploads what the user shared with Aether.
         val ok = mediaPermissions.any { granted[it] == true }
         denied = !ok
         hasPermission = ok
-        if (ok) {
+        partialAccess = CameraBackupWorker.hasPartialMediaPermissionOnly(context)
+        if (!ok) {
+            val activity = context.findActivity()
+            permanentlyDenied = activity != null && mediaPermissions.none { ActivityCompat.shouldShowRequestPermissionRationale(activity, it) }
+        } else {
+            permanentlyDenied = false
             setEnabled(true)
             askForNotifications()
         }
     }
     return BackupToggle(
         hasPermission = hasPermission,
+        partialAccess = partialAccess,
         permissionDenied = denied,
-        onToggle = { on -> if (on) request.launch(requestedPermissions) else { denied = false; setEnabled(false) } },
+        permanentlyDenied = permanentlyDenied,
+        onToggle = { on -> if (on) request.launch(requestedPermissions) else { denied = false; permanentlyDenied = false; setEnabled(false) } },
         requestAccess = { request.launch(requestedPermissions) },
+        openSettings = { openAppSettings(context) },
     )
 }
 
@@ -124,6 +183,7 @@ fun rememberBackupToggle(enabled: Boolean, onSetEnabled: (Boolean) -> Unit): Bac
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun CameraSettingsSheet(onDismiss: () -> Unit, viewModel: CameraBackupViewModel = hiltViewModel()) {
+    LaunchedEffect(viewModel) { viewModel.refreshServerSize() }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberBottomSheetState(SheetValue.Hidden, setOf(SheetValue.Hidden, SheetValue.Expanded))) {
         CameraBackupSettings(
             viewModel = viewModel,
@@ -141,6 +201,7 @@ fun CameraBackupSettings(modifier: Modifier = Modifier, viewModel: CameraBackupV
     var folder by remember(settings.remoteFolder) { mutableStateOf(settings.remoteFolder) }
     var showAlbums by remember { mutableStateOf(false) }
     val availableAlbums by viewModel.albums.collectAsStateWithLifecycle()
+    val noticeRes by viewModel.notice.collectAsStateWithLifecycle()
     val colors = MaterialTheme.colorScheme
     val toggle = rememberBackupToggle(settings.enabled, viewModel::setEnabled)
     val context = LocalContext.current
@@ -161,9 +222,19 @@ fun CameraBackupSettings(modifier: Modifier = Modifier, viewModel: CameraBackupV
     var folderFocused by remember { mutableStateOf(false) }
 
     Column(modifier, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text(stringResource(R.string.backup_settings_title), style = MaterialTheme.typography.titleLargeEmphasized)
+        Text(stringResource(R.string.backup_settings_title), style = MaterialTheme.typography.titleLargeEmphasized, modifier = Modifier.semantics { heading() })
         if (toggle.permissionDenied) {
             Text(stringResource(R.string.backup_permission_needed), style = MaterialTheme.typography.bodyMedium, color = colors.error)
+            if (toggle.permanentlyDenied) {
+                TextButton(onClick = toggle.openSettings) { Text(stringResource(R.string.backup_open_settings)) }
+            }
+        }
+        if (toggle.partialAccess) {
+            Text(stringResource(R.string.backup_partial_permission_notice), style = MaterialTheme.typography.bodyMedium, color = colors.error)
+            TextButton(onClick = toggle.requestAccess) { Text(stringResource(R.string.backup_allow_access)) }
+        }
+        noticeRes?.let { res ->
+            Text(stringResource(res), style = MaterialTheme.typography.bodyMedium, color = colors.error)
         }
 
         if (settings.enabled) BackupDetails(state, onOpenPhotos = { openPhotos(context) })
@@ -232,7 +303,12 @@ fun CameraBackupSettings(modifier: Modifier = Modifier, viewModel: CameraBackupV
 
 @Composable
 private fun SectionTitle(text: Int) {
-    Text(stringResource(text), style = MaterialTheme.typography.labelLargeEmphasized, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp))
+    Text(
+        stringResource(text),
+        style = MaterialTheme.typography.labelLargeEmphasized,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(top = 8.dp).semantics { heading() },
+    )
 }
 
 /** A whole-row switch: the label, not just the thumb, flips it. */

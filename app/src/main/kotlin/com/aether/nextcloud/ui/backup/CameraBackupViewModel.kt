@@ -70,9 +70,11 @@ class CameraBackupViewModel @Inject constructor(
     /** Albums on the phone; null until [loadAlbums] has run. */
     val albums: StateFlow<List<MediaAlbum>?> = _albums
 
-    init {
-        refreshServerSize()
-    }
+    private val _notice = MutableStateFlow<Int?>(null)
+    /** One-shot string resource message (e.g. picking a non-Aether folder). */
+    val notice: StateFlow<Int?> = _notice
+
+    fun clearNotice() { _notice.value = null }
 
     fun loadAlbums() {
         viewModelScope.launch { _albums.value = mediaAlbums.albums(includeVideos = true) }
@@ -109,7 +111,11 @@ class CameraBackupViewModel @Inject constructor(
 
     /** Result of the system folder picker: only a folder inside Aether counts, and it also chooses the destination account. */
     fun onFolderPicked(tree: Uri?) {
-        if (tree == null || tree.authority != AetherConstants.AUTHORITY) return
+        if (tree == null) return
+        if (tree.authority != AetherConstants.AUTHORITY) {
+            _notice.value = com.aether.nextcloud.R.string.share_pick_aether_folder
+            return
+        }
         val folder = DocumentId.parseOrNull(DocumentsContract.getTreeDocumentId(tree)) ?: return
         update { it.copy(accountName = folder.accountName, remoteFolder = folder.path) }
     }

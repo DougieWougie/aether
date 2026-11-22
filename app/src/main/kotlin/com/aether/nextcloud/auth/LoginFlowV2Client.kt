@@ -21,20 +21,29 @@ import okhttp3.RequestBody.Companion.toRequestBody
  * What the caller needs to open the browser and later resume polling (survives process death via SavedStateHandle).
  * [server] is the normalized address the user entered; the credentials that come back must belong to it.
  */
-data class LoginSession(val server: String, val loginUrl: String, val pollEndpoint: String, val pollToken: String)
+data class LoginSession(val server: String, val loginUrl: String, val pollEndpoint: String, val pollToken: String) {
+    override fun toString(): String =
+        "LoginSession(server=$server, loginUrl=$loginUrl, pollEndpoint=$pollEndpoint, pollToken=***)"
+}
 
 /** Both URLs the server handed out (the page to open and the endpoint that receives the token) are `https://`. */
 internal fun LoginSession.usesOnlyHttps(): Boolean =
     loginUrl.startsWith("https://", ignoreCase = true) && pollEndpoint.startsWith("https://", ignoreCase = true)
 
-/** The poll endpoint receives the login token, so it must be on the server the user entered (same host and port). */
-internal fun pollEndpointBelongsTo(server: String, pollEndpoint: String): Boolean {
+/** The poll endpoint (or login URL) must stay on the server the user entered (same scheme, host, and port). */
+internal fun pollEndpointBelongsTo(server: String, pollEndpoint: String, allowInsecure: Boolean = false): Boolean {
     val expected = server.toHttpUrlOrNull() ?: return false
     val endpoint = pollEndpoint.toHttpUrlOrNull() ?: return false
-    return expected.host.equals(endpoint.host, ignoreCase = true) && expected.port == endpoint.port
+    if (!allowInsecure && !endpoint.isHttps) return false
+    return expected.scheme.equals(endpoint.scheme, ignoreCase = true) &&
+        expected.host.equals(endpoint.host, ignoreCase = true) &&
+        expected.port == endpoint.port
 }
 
-data class LoginCredentials(val server: String, val loginName: String, val appPassword: String)
+data class LoginCredentials(val server: String, val loginName: String, val appPassword: String) {
+    override fun toString(): String =
+        "LoginCredentials(server=$server, loginName=$loginName, appPassword=***)"
+}
 
 sealed interface PollOutcome {
     data object Pending : PollOutcome
@@ -56,6 +65,7 @@ class LoginFlowV2Client(
     private val allowInsecure: Boolean = false,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
+    private val pollClient: OkHttpClient = client.newBuilder().followRedirects(false).build()
 
     /** Starts Login Flow v2: `POST <server>/index.php/login/v2`. */
     suspend fun start(serverInput: String): AetherResult<LoginSession> {
@@ -76,7 +86,7 @@ class LoginFlowV2Client(
                 val session = (parsed as? AetherResult.Success)?.value
                 if (session != null && !allowInsecure && !session.usesOnlyHttps()) {
                     AetherResult.Failure(AetherError.InvalidServer(INSECURE_MESSAGE))
-                } else if (session != null && !pollEndpointBelongsTo(server, session.pollEndpoint)) {
+                } else if (session != null && (!pollEndpointBelongsTo(server, session.pollEndpoint, allowInsecure) || !pollEndpointBelongsTo(server, session.loginUrl, allowInsecure))) {
                     AetherResult.Failure(AetherError.InvalidServer(FOREIGN_POLL_MESSAGE))
                 } else {
                     parsed
@@ -92,19 +102,31 @@ class LoginFlowV2Client(
      */
     suspend fun poll(pollEndpoint: String, pollToken: String, expectedServer: String): AetherResult<PollOutcome> {
         // The endpoint may come back from saved state; never send the token anywhere but the server the user entered.
-        if (!pollEndpointBelongsTo(expectedServer, pollEndpoint)) return AetherResult.Failure(AetherError.InvalidServer(FOREIGN_POLL_MESSAGE))
+        if (!allowInsecure && !pollEndpoint.startsWith("https://", ignoreCase = true)) {
+            return AetherResult.Failure(AetherError.InvalidServer(INSECURE_MESSAGE))
+        }
+        if (!pollEndpointBelongsTo(expectedServer, pollEndpoint, allowInsecure)) {
+            return AetherResult.Failure(AetherError.InvalidServer(FOREIGN_POLL_MESSAGE))
+        }
         val request = Request.Builder()
             .url(pollEndpoint)
             .header("User-Agent", userAgent)
             .post(FormBody.Builder().add("token", pollToken).build())
             .build()
-        return client.execute(request) { response ->
+        return pollClient.execute(request) { response ->
             when (response.code) {
                 404 -> AetherResult.Success(PollOutcome.Pending)
                 200 -> when (val parsed = parse<LoginPollResponse, LoginPollResponse>(response.body.string()) { it }) {
                     is AetherResult.Failure -> parsed
-                    is AetherResult.Success -> verifyIssuedServer(expectedServer, parsed.value.server, allowInsecure).map {
-                        PollOutcome.Authenticated(LoginCredentials(it, parsed.value.loginName, parsed.value.appPassword))
+                    is AetherResult.Success -> {
+                        val name = parsed.value.loginName.trim()
+                        if (name.isEmpty() || name == "." || name == ".." || '/' in name || parsed.value.appPassword.isEmpty()) {
+                            AetherResult.Failure(AetherError.Malformed("Invalid credentials from server"))
+                        } else {
+                            verifyIssuedServer(expectedServer, parsed.value.server, allowInsecure).map {
+                                PollOutcome.Authenticated(LoginCredentials(it, name, parsed.value.appPassword))
+                            }
+                        }
                     }
                 }
                 else -> AetherResult.Failure(response.toError())
@@ -204,6 +226,9 @@ class LoginFlowV2Client(
             value = value.trimEnd('/').removeSuffix("/index.php").trimEnd('/')
             val url = value.toHttpUrlOrNull()
                 ?: return AetherResult.Failure(AetherError.InvalidServer("That doesn't look like a valid server address"))
+            if (url.username.isNotEmpty() || url.password.isNotEmpty()) {
+                return AetherResult.Failure(AetherError.InvalidServer("Remove username or password from the server address"))
+            }
             if (url.query != null || url.fragment != null) {
                 return AetherResult.Failure(AetherError.InvalidServer("Remove query parameters from the server address"))
             }

@@ -39,6 +39,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -55,6 +56,9 @@ enum class DashboardTab { Pinned, Camera, Transfers }
 
 /** What pressing Back up now did, in the order it can be reported: [Started], then [NothingNew] if the run found nothing to upload. */
 enum class BackUpNowEvent { Started, NothingNew, TurnedOff, Paused, NoPermission }
+
+/** Outcome of picking files/folders to pin. */
+enum class PinOutcome { Pinned, WrongProvider, Failed }
 
 data class StorageUsage(val cacheBytes: Long = 0, val pinnedBytes: Long = 0)
 
@@ -178,20 +182,26 @@ class DashboardViewModel @Inject constructor(
         tab.value = value
     }
 
-    /** Refreshes quota (for the ring) and on-disk usage. */
+    /** Refreshes quota (for the ring), avatar, on-disk usage and backup folder size concurrently. */
     fun refresh() {
         viewModelScope.launch {
             val account = selected.first().second ?: return@launch
             message.value = null
             if (avatar.value?.first != account.accountName) avatar.value = account.accountName to avatars.cached(account.accountName)
-            avatar.value = account.accountName to avatars.refresh(account)
-            when (val result = quotaRepository.refresh(account)) {
-                is AetherResult.Failure -> message.value = result.error.describe(context)
-                is AetherResult.Success -> accountRepository.setDisplayName(account.accountName, result.value.displayName)
+            coroutineScope {
+                launch { avatar.value = account.accountName to avatars.refresh(account) }
+                launch {
+                    when (val result = quotaRepository.refresh(account)) {
+                        is AetherResult.Failure -> message.value = result.error.describe(context)
+                        is AetherResult.Success -> accountRepository.setDisplayName(account.accountName, result.value.displayName)
+                    }
+                }
+                launch { refreshStorage() }
+                launch {
+                    val backup = settings.backup.first()
+                    if (backup.enabled) cameraStats.refreshServerSize(account, backup.remoteFolder)
+                }
             }
-            refreshStorage()
-            val backup = settings.backup.first()
-            if (backup.enabled) cameraStats.refreshServerSize(account, backup.remoteFolder)
         }
     }
 
@@ -250,6 +260,39 @@ class DashboardViewModel @Inject constructor(
         viewModelScope.launch { onResult(retrier.retryFailed(account)) }
     }
 
+    /** Retries a single failed transfer row. */
+    fun retryTransfer(row: TransferEntity, onResult: (RetryOutcome) -> Unit = {}) {
+        viewModelScope.launch { onResult(retrier.retryOne(row)) }
+    }
+
+    /** Dismisses a finished, failed, or conflict row (and deletes any leftover staged file for failed rows). */
+    fun dismissTransfer(row: TransferEntity) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                row.sourcePath?.let { java.io.File(it).delete() }
+                transferDao.delete(row.id)
+            }
+        }
+    }
+
+    /** Cancels an active transfer: stops its WorkManager job, removes staged bytes, and marks the row cancelled. */
+    fun cancelTransfer(row: TransferEntity) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                when (row.direction) {
+                    com.aether.nextcloud.data.local.entity.TransferDirection.UPLOAD -> {
+                        androidx.work.WorkManager.getInstance(context).cancelUniqueWork("upload:${row.accountName}:${row.remotePath}")
+                    }
+                    com.aether.nextcloud.data.local.entity.TransferDirection.DOWNLOAD -> {
+                        com.aether.nextcloud.sync.PinnedSyncWorker.cancelAll(context)
+                    }
+                }
+                row.sourcePath?.let { java.io.File(it).delete() }
+                transferDao.setState(row.id, com.aether.nextcloud.data.local.entity.TransferState.FAILED, com.aether.nextcloud.core.ErrorCodes.CANCELLED, System.currentTimeMillis())
+            }
+        }
+    }
+
     /**
      * Starts a camera backup scan that ignores the Wi-Fi and charging rules. Backup being off or missing its photo permission
      * is reported instead of silently doing nothing.
@@ -304,13 +347,18 @@ class DashboardViewModel @Inject constructor(
 
     /**
      * Pins whatever the user picked in the system document picker (tree URIs pin a whole folder). URIs from other
-     * providers are ignored. Pinned items are downloaded by an immediate sync.
+     * providers are reported via [onOutcome]. Pinned items are downloaded by an immediate sync.
      */
-    fun pin(uris: List<Uri>) {
+    fun pin(uris: List<Uri>, onOutcome: (PinOutcome) -> Unit = {}) {
+        if (uris.isEmpty()) return
         viewModelScope.launch {
             var pinnedAny = false
+            var wrongProvider = false
             for (uri in uris) {
-                if (uri.authority != AetherConstants.AUTHORITY) continue
+                if (uri.authority != AetherConstants.AUTHORITY) {
+                    wrongProvider = true
+                    continue
+                }
                 val rawId = if (DocumentsContract.isTreeUri(uri) && uri.pathSegments.size <= 2) DocumentsContract.getTreeDocumentId(uri)
                 else DocumentsContract.getDocumentId(uri)
                 val id = DocumentId.parseOrNull(rawId) ?: continue
@@ -320,7 +368,15 @@ class DashboardViewModel @Inject constructor(
                     pinnedAny = true
                 }
             }
-            if (pinnedAny) scheduler.syncPinsNow()
+            if (pinnedAny) {
+                scheduler.applyPinnedSync(settings.sync.first())
+                scheduler.syncPinsNow()
+                onOutcome(PinOutcome.Pinned)
+            } else if (wrongProvider) {
+                onOutcome(PinOutcome.WrongProvider)
+            } else {
+                onOutcome(PinOutcome.Failed)
+            }
         }
     }
 

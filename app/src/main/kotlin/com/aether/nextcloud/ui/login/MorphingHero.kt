@@ -21,9 +21,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.fillMaxSize
@@ -31,6 +31,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.ui.res.painterResource
 import com.aether.nextcloud.R
 import androidx.graphics.shapes.Morph
+import com.aether.nextcloud.ui.components.rememberReducedMotion
 import com.aether.nextcloud.ui.components.toComposePath
 import androidx.graphics.shapes.RoundedPolygon
 import kotlinx.coroutines.delay
@@ -56,7 +57,12 @@ fun MorphingHero(
     val progress = remember { Animatable(0f) }
     val spec = MaterialTheme.motionScheme.slowSpatialSpec<Float>()
 
-    LaunchedEffect(busy) {
+    val reducedMotion = rememberReducedMotion()
+    LaunchedEffect(busy, reducedMotion) {
+        if (reducedMotion) {
+            progress.snapTo(0f)
+            return@LaunchedEffect
+        }
         while (true) {
             delay(if (busy) 250 else 1200)
             progress.animateTo(1f, spec)
@@ -65,7 +71,7 @@ fun MorphingHero(
         }
     }
 
-    val rotation by rememberInfiniteTransition(label = "hero-rotation").animateFloat(
+    val rotationState = if (reducedMotion) null else rememberInfiniteTransition(label = "hero-rotation").animateFloat(
         initialValue = 0f,
         targetValue = 360f,
         animationSpec = infiniteRepeatable(tween(if (busy) 12_000 else 40_000, easing = LinearEasing), RepeatMode.Restart),
@@ -76,7 +82,7 @@ fun MorphingHero(
     val onContainer = contentColor
     val path = remember { Path() }
     Box(modifier.size(size), contentAlignment = Alignment.Center) {
-        Canvas(Modifier.fillMaxSize().rotate(rotation)) {
+        Canvas(Modifier.fillMaxSize().graphicsLayer { rotationZ = rotationState?.value ?: 0f }) {
             drawPath(morphs[index].toComposePath(progress.value, this.size, path), container)
         }
         // The launcher mark's themed layer, so the sign-in screen shows the same logo as the home screen.

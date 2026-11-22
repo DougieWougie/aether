@@ -55,6 +55,9 @@ class FakeNextcloud(val user: String = "alice") : AutoCloseable {
     /** Extra latency applied to every PUT, to make races observable. */
     @Volatile var putDelayMs = 0L
 
+    /** Optional gate checked on PUT: awaits the latch (up to 10s) and clears itself, avoiding wall-clock sleeps. */
+    @Volatile var nextPutGate: java.util.concurrent.CountDownLatch? = null
+
     /** Delay before every file GET answers, to make concurrent downloads overlap. */
     @Volatile var getDelayMs = 0L
 
@@ -191,6 +194,10 @@ class FakeNextcloud(val user: String = "alice") : AutoCloseable {
         if (holdPuts) {
             while (holdPuts) Thread.sleep(20)
             return MockResponse().setResponseCode(503)
+        }
+        nextPutGate?.let { gate ->
+            nextPutGate = null
+            gate.await(10, java.util.concurrent.TimeUnit.SECONDS)
         }
         if (putDelayMs > 0) Thread.sleep(putDelayMs)
         putScript.poll()?.let { return MockResponse().setResponseCode(it) }

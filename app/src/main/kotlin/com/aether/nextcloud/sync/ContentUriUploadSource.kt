@@ -65,5 +65,6 @@ class ContentUriUploadSource(
     }
 
     /** Reads the whole item to hash it; run off the main thread. */
-    fun withChecksum(): ContentUriUploadSource = ContentUriUploadSource(resolver, uri, length, lastModified, open(0).use(Checksums::sha1), requireOriginal)
+    fun withChecksum(checkCancelled: () -> Unit = {}): ContentUriUploadSource =
+        ContentUriUploadSource(resolver, uri, length, lastModified, open(0).use { Checksums.sha1(it, checkCancelled) }, requireOriginal)
 }

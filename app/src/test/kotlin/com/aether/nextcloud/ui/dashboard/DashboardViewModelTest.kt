@@ -93,6 +93,7 @@ class DashboardViewModelTest {
         every { quotas.snapshots } returns snapshots
         coEvery { quotas.refresh(any()) } returns AetherResult.Success(info)
         coEvery { avatars.cached(any()) } returns null
+        every { settings.sync } returns flowOf(com.aether.nextcloud.data.prefs.SyncSettings())
         coEvery { avatars.refresh(any()) } returns null
         every { settings.backup } returns flowOf(BackupSettings())
         every { settings.directShareEnabled } returns flowOf(true)

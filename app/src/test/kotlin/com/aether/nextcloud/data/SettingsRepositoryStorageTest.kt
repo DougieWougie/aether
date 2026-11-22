@@ -44,6 +44,7 @@ class SettingsRepositoryStorageTest {
         settings.updateSync { originalSync }
         settings.setDirectShareEnabled(originalDirectShare)
         settings.forgetAccount("a@h"); settings.forgetAccount("b@h")
+        originalFolders.reversed().forEach { settings.rememberFolder(it) }
         Unit
     }
 

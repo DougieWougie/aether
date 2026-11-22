@@ -49,6 +49,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.withLock
 import kotlin.coroutines.coroutineContext
 
 /**
@@ -87,17 +88,9 @@ class AetherDocumentsProvider : DocumentsProvider() {
 
     private val pipes = StreamingPipeHelper()
     private val listingsInFlight: MutableSet<String> = ConcurrentHashMap.newKeySet()
-    private val listingErrors = ConcurrentHashMap<String, Pair<String, Long>>()
     private val quotaInFlight: MutableSet<String> = ConcurrentHashMap.newKeySet()
     private val searchesInFlight: MutableSet<String> = ConcurrentHashMap.newKeySet()
-    private val searchErrors = ConcurrentHashMap<String, Pair<String, Long>>()
-
-    /** The server's last answer per search, so a repeat query (DocumentsUI re-queries on every notify) is not re-sent. */
-    private val searchAnswers: MutableMap<String, SearchAnswer> = java.util.Collections.synchronizedMap(
-        object : LinkedHashMap<String, SearchAnswer>(16, 0.75f, true) {
-            override fun removeEldestEntry(eldest: Map.Entry<String, SearchAnswer>) = size > MAX_REMEMBERED_SEARCHES
-        },
-    )
+    private val thumbnailLocks = Array(32) { kotlinx.coroutines.sync.Mutex() }
 
     private class SearchAnswer(val ids: List<String>, val at: Long)
 
@@ -312,8 +305,10 @@ class AetherDocumentsProvider : DocumentsProvider() {
         if (StreamingPipeHelper.needsExistingContent(mode)) {
             // Seed the staging file with the current bytes; this also refreshes the ETag we will send as If-Match.
             // An earlier save that has not uploaded yet is newer than anything on the server.
-            val local = blocking(signal) { documents.pendingUploadFile(id) ?: documents.ensureLocalFile(credentials, id).orThrow(id.accountName) }
-            local.copyTo(staging, overwrite = true)
+            blocking(signal) {
+                val local = documents.pendingUploadFile(id) ?: documents.ensureLocalFile(credentials, id).orThrow(id.accountName)
+                local.copyTo(staging, overwrite = true)
+            }
         }
         val entity = documents.cached(id) ?: blocking(signal) { documents.refreshDocument(credentials, id).orThrow(id.accountName) }
         if ('W' !in entity.permissions.orEmpty()) {
@@ -348,15 +343,29 @@ class AetherDocumentsProvider : DocumentsProvider() {
         val credentials = credentialsFor(id)
         val entity = documents.cached(id) ?: throw FileNotFoundException("Unknown document $documentId")
         val fileId = entity.fileId?.takeIf { entity.hasPreview } ?: throw FileNotFoundException("No preview for $documentId")
-        val size = maxOf(sizeHint.x, sizeHint.y).coerceIn(MIN_THUMBNAIL, MAX_THUMBNAIL)
+        val requested = maxOf(sizeHint.x, sizeHint.y).coerceIn(MIN_THUMBNAIL, MAX_THUMBNAIL)
+        val size = when {
+            requested <= 128 -> 128
+            requested <= 256 -> 256
+            else -> MAX_THUMBNAIL
+        }
         val diskCache = deps.diskCache()
         val thumbnail = diskCache.thumbnailFor(credentials.accountName, fileId, size, entity.etag)
         if (thumbnail.isFile) {
             diskCache.touch(thumbnail)
         } else {
-            blocking(signal) { deps.ocs().downloadPreview(credentials, fileId, thumbnail, size).orThrow(credentials.accountName) }
-            diskCache.removeOutdatedThumbnails(thumbnail)
-            diskCache.trimThumbnailsWhenDue(thumbnail)
+            val lock = thumbnailLocks[(thumbnail.path.hashCode() and Int.MAX_VALUE) % thumbnailLocks.size]
+            blocking(signal) {
+                lock.withLock {
+                    if (thumbnail.isFile) {
+                        diskCache.touch(thumbnail)
+                    } else {
+                        deps.ocs().downloadPreview(credentials, fileId, thumbnail, size).orThrow(credentials.accountName)
+                        diskCache.removeOutdatedThumbnails(thumbnail)
+                        diskCache.trimThumbnailsWhenDue(thumbnail)
+                    }
+                }
+            }
         }
         return AssetFileDescriptor(pipes.openForRead(thumbnail), 0, AssetFileDescriptor.UNKNOWN_LENGTH)
     }
@@ -473,16 +482,20 @@ class AetherDocumentsProvider : DocumentsProvider() {
 
     private fun MatrixCursor.addDocument(entity: DocumentEntity, columns: Array<out String>) {
         val isRoot = entity.parentId == null
-        val values = mapOf<String, Any?>(
-            Document.COLUMN_DOCUMENT_ID to entity.documentId,
-            Document.COLUMN_DISPLAY_NAME to if (isRoot) entity.accountName else entity.name,
-            Document.COLUMN_MIME_TYPE to if (entity.isDirectory) MimeTypes.DIRECTORY else entity.mimeType,
-            Document.COLUMN_SIZE to if (entity.isDirectory) null else entity.size,
-            Document.COLUMN_LAST_MODIFIED to entity.lastModified.takeIf { it > 0 },
-            Document.COLUMN_FLAGS to entity.safFlags(),
-            Document.COLUMN_ICON to null,
-        )
-        addRow(columns.map { values[it] })
+        val row = newRow()
+        for (column in columns) {
+            val value: Any? = when (column) {
+                Document.COLUMN_DOCUMENT_ID -> entity.documentId
+                Document.COLUMN_DISPLAY_NAME -> if (isRoot) entity.accountName else entity.name
+                Document.COLUMN_MIME_TYPE -> if (entity.isDirectory) MimeTypes.DIRECTORY else entity.mimeType
+                Document.COLUMN_SIZE -> if (entity.isDirectory) null else entity.size
+                Document.COLUMN_LAST_MODIFIED -> entity.lastModified.takeIf { it > 0 }
+                Document.COLUMN_FLAGS -> entity.safFlags()
+                Document.COLUMN_ICON -> null
+                else -> null
+            }
+            row.add(value)
+        }
     }
 
     /** [MatrixCursor] drops extras by default; `EXTRA_LOADING` / `EXTRA_ERROR` must reach DocumentsUI. */
@@ -492,20 +505,40 @@ class AetherDocumentsProvider : DocumentsProvider() {
 
     // endregion
 
-    private companion object {
-        val DEFAULT_ROOT_PROJECTION = arrayOf(
+    companion object {
+        private val listingErrors = ConcurrentHashMap<String, Pair<String, Long>>()
+        private val searchErrors = ConcurrentHashMap<String, Pair<String, Long>>()
+
+        /** The server's last answer per search, so a repeat query (DocumentsUI re-queries on every notify) is not re-sent. */
+        private val searchAnswers: MutableMap<String, SearchAnswer> = java.util.Collections.synchronizedMap(
+            object : LinkedHashMap<String, SearchAnswer>(16, 0.75f, true) {
+                override fun removeEldestEntry(eldest: Map.Entry<String, SearchAnswer>) = size > MAX_REMEMBERED_SEARCHES
+            },
+        )
+
+        /** Drops in-memory search answers and error strings for [accountName] on sign-out. */
+        fun clearAccountCaches(accountName: String) {
+            val prefix = "$accountName:"
+            listingErrors.keys.removeIf { it.startsWith(prefix) }
+            searchErrors.keys.removeIf { it.startsWith(prefix) }
+            synchronized(searchAnswers) {
+                searchAnswers.keys.removeIf { it.startsWith(prefix) }
+            }
+        }
+
+        private val DEFAULT_ROOT_PROJECTION = arrayOf(
             Root.COLUMN_ROOT_ID, Root.COLUMN_DOCUMENT_ID, Root.COLUMN_TITLE, Root.COLUMN_SUMMARY, Root.COLUMN_ICON,
             Root.COLUMN_FLAGS, Root.COLUMN_MIME_TYPES, Root.COLUMN_AVAILABLE_BYTES, Root.COLUMN_CAPACITY_BYTES,
         )
-        val DEFAULT_DOCUMENT_PROJECTION = arrayOf(
+        private val DEFAULT_DOCUMENT_PROJECTION = arrayOf(
             Document.COLUMN_DOCUMENT_ID, Document.COLUMN_DISPLAY_NAME, Document.COLUMN_MIME_TYPE, Document.COLUMN_SIZE,
             Document.COLUMN_LAST_MODIFIED, Document.COLUMN_FLAGS, Document.COLUMN_ICON,
         )
-        const val ERROR_BACKOFF_MS = 10_000L
-        const val MAX_REMEMBERED_SEARCHES = 16
-        const val RECENT_LIMIT = 64
-        const val MIN_THUMBNAIL = 64
-        const val MAX_THUMBNAIL = 512
+        private const val ERROR_BACKOFF_MS = 10_000L
+        private const val MAX_REMEMBERED_SEARCHES = 16
+        private const val RECENT_LIMIT = 64
+        private const val MIN_THUMBNAIL = 64
+        private const val MAX_THUMBNAIL = 512
     }
 }
 

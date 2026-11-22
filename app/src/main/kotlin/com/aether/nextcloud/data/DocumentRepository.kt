@@ -21,7 +21,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Single entry point for document metadata and bytes, shared by the SAF provider, the workers and the UI.
@@ -48,7 +47,7 @@ class DocumentRepository @Inject constructor(
 
     /** The cached rows for [ids], in that order; ids that have since left the cache are skipped. */
     fun cachedAll(ids: List<String>): List<DocumentEntity> {
-        val byId = dao.getAll(ids).associateBy { it.documentId }
+        val byId = getAllChunked(ids).associateBy { it.documentId }
         return ids.mapNotNull(byId::get)
     }
 
@@ -66,7 +65,7 @@ class DocumentRepository @Inject constructor(
             database.withTransaction {
                 val hits = resources.map { it.toEntity(credentials.accountName, credentials.loginName) }
                     .filter { it.parentId != null && it.matches(query) }
-                val existing = dao.getAll(hits.map { it.documentId }).associateBy { it.documentId }
+                val existing = getAllChunked(hits.map { it.documentId }).associateBy { it.documentId }
                 val merged = hits.map { it.withLocalStateOf(existing[it.documentId]) }
                 dao.upsertAll(merged)
                 AetherResult.Success(merged)
@@ -85,7 +84,8 @@ class DocumentRepository @Inject constructor(
         }
         val now = System.currentTimeMillis()
         return withContext(Dispatchers.IO) {
-            database.withTransaction {
+            val filesToDelete = mutableListOf<File>()
+            val outcome = database.withTransaction {
                 val existing = dao.children(dir.toString()).associateBy { it.documentId }
                 val parsed = resources.map { it.toEntity(credentials.accountName, credentials.loginName) }
                 val self = parsed.firstOrNull { it.documentId == dir.toString() }
@@ -94,13 +94,15 @@ class DocumentRepository @Inject constructor(
                     .map { it.withLocalStateOf(existing[it.documentId]) }
 
                 val keep = children.mapTo(HashSet()) { it.documentId }
-                existing.values.filter { it.documentId !in keep }.forEach { removeLocal(it) }
+                existing.values.filter { it.documentId !in keep }.forEach { filesToDelete += removeLocalRows(it) }
                 dao.upsertAll(children)
                 children.forEach { markFresh(it.documentId) }
                 val folder = self.withLocalStateOf(dao.get(self.documentId)).copy(childrenSyncedAt = now)
                 dao.upsert(folder)
                 AetherResult.Success(folder)
             }
+            filesToDelete.forEach { diskCache.delete(it) }
+            outcome
         }
     }
 
@@ -147,9 +149,9 @@ class DocumentRepository @Inject constructor(
         onProgress: ProgressListener = { _, _ -> },
     ): AetherResult<File> = lockFor(id).withLock { fetchLocalFile(credentials, id, onProgress, justListed) }
 
-    /** One lock per document, so simultaneous opens share one download instead of racing on the same `.part` file. */
-    private val fileLocks = ConcurrentHashMap<String, Mutex>()
-    private fun lockFor(id: DocumentId): Mutex = fileLocks.getOrPut(id.toString()) { Mutex() }
+    /** Striped locks so simultaneous opens of the same document share one download while keeping memory O(1). */
+    private val fileLocks = Array(FILE_LOCK_STRIPES) { Mutex() }
+    private fun lockFor(id: DocumentId): Mutex = fileLocks[(id.toString().hashCode() and Int.MAX_VALUE) % fileLocks.size]
 
     /** The body of [ensureLocalFile]; callers must hold [lockFor]. A caller that waited finds the first one's copy valid. */
     private suspend fun fetchLocalFile(
@@ -221,22 +223,30 @@ class DocumentRepository @Inject constructor(
         val pinned = diskCache.pinnedFileFor(id.toString())
         if (file == pinned) return AetherResult.Success(file)
         return withContext(Dispatchers.IO) {
-            file.copyTo(pinned, overwrite = true)
-            file.delete()
+            moveOrCopy(file, pinned)
             dao.get(id.toString())?.let { dao.upsert(it.copy(localCachePath = pinned.path)) }
             AetherResult.Success(pinned)
         }
     }
 
     /** Adopts [file] (just uploaded; [etag] is the server's ETag for those bytes) as the local copy so reads skip a download. */
-    suspend fun adoptUploadedFile(credentials: AetherCredentials, id: DocumentId, file: File, etag: String?) = lockFor(id).withLock {
+    suspend fun adoptUploadedFile(credentials: AetherCredentials, id: DocumentId, file: File, etag: String?, moveSource: Boolean = false) = lockFor(id).withLock {
         val refreshed = refreshDocument(credentials, id).getOrNull()
         if (refreshed == null || etag == null || refreshed.etag != etag) return@withLock
         withContext(Dispatchers.IO) {
             val target = if (refreshed.isPinned) diskCache.pinnedFileFor(id.toString()) else diskCache.cacheFileFor(id.toString())
-            file.copyTo(target, overwrite = true)
+            if (moveSource) moveOrCopy(file, target) else file.copyTo(target, overwrite = true)
             dao.upsert(refreshed.copy(localCachePath = target.path, cachedEtag = etag, lastAccessed = System.currentTimeMillis()))
             if (!refreshed.isPinned) diskCache.trimToSize(protect = setOf(target))
+        }
+    }
+
+    private fun moveOrCopy(source: File, target: File) {
+        target.parentFile?.mkdirs()
+        if (target.exists()) target.delete()
+        if (!source.renameTo(target)) {
+            source.copyTo(target, overwrite = true)
+            source.delete()
         }
     }
 
@@ -338,7 +348,7 @@ class DocumentRepository @Inject constructor(
     private suspend fun moveSubtreeRows(from: DocumentId, to: DocumentId) = withContext(Dispatchers.IO) {
         database.withTransaction {
             val rows = dao.subtree(from.accountName, from.path, subtreeLikePattern(from.path))
-            dao.deleteAll(rows.map { it.documentId })
+            deleteAllChunked(rows.map { it.documentId })
             dao.upsertAll(
                 rows.map { row ->
                     val newId = DocumentId(to.accountName, to.path + row.path.removePrefix(from.path))
@@ -358,15 +368,19 @@ class DocumentRepository @Inject constructor(
             dao.setPinned(id.toString(), true)
             return@withContext
         }
-        dao.subtree(id.accountName, id.path, subtreeLikePattern(id.path)).forEach { row ->
-            dao.setPinned(row.documentId, false)
-            // Pinned bytes are no longer protected, so free the space; the on-demand cache refills as needed.
-            val local = row.localCachePath?.let(::File)
-            if (local != null && diskCache.isPinnedFile(local)) {
-                diskCache.delete(local)
-                dao.clearLocalCopy(row.documentId)
+        val filesToDelete = mutableListOf<File>()
+        database.withTransaction {
+            dao.subtree(id.accountName, id.path, subtreeLikePattern(id.path)).forEach { row ->
+                dao.setPinned(row.documentId, false)
+                // Pinned bytes are no longer protected, so free the space; the on-demand cache refills as needed.
+                val local = row.localCachePath?.let(::File)
+                if (local != null && diskCache.isPinnedFile(local)) {
+                    filesToDelete += local
+                    dao.clearLocalCopy(row.documentId)
+                }
             }
         }
+        filesToDelete.forEach { diskCache.delete(it) }
     }
 
     /** Pinned folders propagate to whatever they contain, including items that appear later. */
@@ -388,12 +402,14 @@ class DocumentRepository @Inject constructor(
 
     /** Removes [id] and everything below it from the cache, deleting their local bytes. */
     suspend fun forget(id: DocumentId) = withContext(Dispatchers.IO) {
+        val filesToDelete = mutableListOf<File>()
         database.withTransaction {
             val rows = dao.subtree(id.accountName, id.path, subtreeLikePattern(id.path))
             rows.forEach { synchronized(refreshedAt) { refreshedAt.remove(it.documentId) } }
-            rows.forEach { diskCache.delete(it.localCachePath?.let(::File)) }
-            dao.deleteAll(rows.map { it.documentId })
+            rows.mapNotNullTo(filesToDelete) { it.localCachePath?.let(::File) }
+            deleteAllChunked(rows.map { it.documentId })
         }
+        filesToDelete.forEach { diskCache.delete(it) }
     }
 
     suspend fun forgetAccount(accountName: String) = withContext(Dispatchers.IO) {
@@ -403,10 +419,18 @@ class DocumentRepository @Inject constructor(
 
     private suspend fun invalidate(id: DocumentId) = withContext(Dispatchers.IO) { dao.invalidateChildren(id.toString()) }
 
-    private fun removeLocal(entity: DocumentEntity) {
+    private fun removeLocalRows(entity: DocumentEntity): List<File> {
         val subtree = dao.subtree(entity.accountName, entity.path, subtreeLikePattern(entity.path))
-        subtree.forEach { diskCache.delete(it.localCachePath?.let(::File)) }
-        dao.deleteAll(subtree.map { it.documentId })
+        deleteAllChunked(subtree.map { it.documentId })
+        return subtree.mapNotNull { it.localCachePath?.let(::File) }
+    }
+
+    private fun getAllChunked(ids: List<String>): List<DocumentEntity> =
+        if (ids.size <= SQL_IN_CHUNK) dao.getAll(ids) else ids.chunked(SQL_IN_CHUNK).flatMap { dao.getAll(it) }
+
+    private fun deleteAllChunked(ids: List<String>) {
+        if (ids.isEmpty()) return
+        if (ids.size <= SQL_IN_CHUNK) dao.deleteAll(ids) else ids.chunked(SQL_IN_CHUNK).forEach { dao.deleteAll(it) }
     }
 
     private fun DocumentEntity.withLocalStateOf(existing: DocumentEntity?): DocumentEntity =
@@ -444,5 +468,7 @@ class DocumentRepository @Inject constructor(
         const val DEFAULT_FRESHNESS_WINDOW_MS = 3_000L
         const val FRESHNESS_ENTRIES = 512
         const val CACHED_SEARCH_LIMIT = 100
+        const val FILE_LOCK_STRIPES = 64
+        const val SQL_IN_CHUNK = 500
     }
 }

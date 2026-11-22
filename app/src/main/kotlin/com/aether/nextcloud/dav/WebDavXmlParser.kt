@@ -14,7 +14,7 @@ class WebDavXmlParser {
 
     @Throws(XmlPullParserException::class, java.io.IOException::class)
     fun parse(input: InputStream): List<DavResource> {
-        val parser = XmlPullParserFactory.newInstance().apply { isNamespaceAware = true }.newPullParser()
+        val parser = FACTORY.newPullParser()
         parser.setInput(input, null)
         val resources = mutableListOf<DavResource>()
         while (parser.next() != XmlPullParser.END_DOCUMENT) {
@@ -132,8 +132,16 @@ class WebDavXmlParser {
         const val OC = "http://owncloud.org/ns"
         const val NC = "http://nextcloud.org/ns"
 
+        private val FACTORY: XmlPullParserFactory by lazy {
+            XmlPullParserFactory.newInstance().apply { isNamespaceAware = true }
+        }
+
         internal fun cleanEtag(raw: String): String? =
-            raw.trim().removePrefix("W/").trim('"').ifEmpty { null }
+            raw.trim()
+                .removePrefix("W/")
+                .trim('"')
+                .filter { it in '\u0020'..'\u007E' && it != '"' }
+                .ifEmpty { null }
 
         internal fun parseHttpDate(value: String): Long? = try {
             OffsetDateTime.parse(value, DateTimeFormatter.RFC_1123_DATE_TIME).toInstant().toEpochMilli()
@@ -180,7 +188,14 @@ private fun XmlPullParser.readText(): String {
     return text.toString()
 }
 
-/** Skips the current element including any nested content. */
+/** Skips the current element including any nested content without allocating text buffers. */
 private fun XmlPullParser.skip() {
-    readText()
+    var depth = 1
+    while (depth > 0) {
+        when (next()) {
+            XmlPullParser.START_TAG -> depth++
+            XmlPullParser.END_TAG -> depth--
+            XmlPullParser.END_DOCUMENT -> throw XmlPullParserException("Unexpected end of document")
+        }
+    }
 }

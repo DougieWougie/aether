@@ -3,12 +3,16 @@ description: Frees disk space and enables KVM so the Android emulator can run on
 runs:
   using: composite
   steps:
-    - name: Free disk space
-      # The emulator's default user-data partition is ~7 GB and the runner image leaves too little room for it.
+    - name: Free disk space if needed
+      # The emulator's user-data partition needs room; skip the slow rm -rf when the runner already has >= 25 GB free.
       shell: bash
       run: |
-        sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /usr/local/lib/android/sdk/ndk
-        df -h /
+        avail_gb=$(df -BG --output=avail / | tail -1 | tr -dc '0-9')
+        echo "Available disk space: ${avail_gb}G"
+        if [ "${avail_gb:-0}" -lt 25 ]; then
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /usr/local/lib/android/sdk/ndk
+          df -h /
+        fi
 
     - name: Enable KVM
       shell: bash

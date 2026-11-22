@@ -84,7 +84,8 @@ class UploadDocumentWorkerTest {
     fun savingTwiceBeforeTheFirstUploadFinishesKeepsTheSecondWithoutAConflictCopy() {
         env.nextcloud.putFile("/doc.txt", "original")
         listed("/", "doc.txt")
-        env.nextcloud.putDelayMs = 2_500
+        val releaseFirstPut = java.util.concurrent.CountDownLatch(1)
+        env.nextcloud.nextPutGate = releaseFirstPut
 
         env.resolver.openOutputStream(env.documentUri("/doc.txt"), "wt")!!.use { it.write("first".toByteArray()) }
         // The provider records a save when its descriptor's close callback runs, which is asynchronous.
@@ -95,6 +96,7 @@ class UploadDocumentWorkerTest {
         val between = env.resolver.openInputStream(env.documentUri("/doc.txt"))!!.use { it.readBytes().decodeToString() }
         // Appending seeds from the pending save too, and the second upload must not 412 against the old ETag.
         env.resolver.openOutputStream(env.documentUri("/doc.txt"), "wa")!!.use { it.write(" second".toByteArray()) }
+        releaseFirstPut.countDown()
 
         awaitTrue("the second save to land", timeoutMs = 40_000) { env.nextcloud.text("/doc.txt") == "first second" }
         assertEquals("a read between the saves returns the first save", "first", between)

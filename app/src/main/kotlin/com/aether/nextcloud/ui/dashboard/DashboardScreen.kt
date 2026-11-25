@@ -171,11 +171,15 @@ fun DashboardScreen(
     val pickFiles = rememberLauncherForActivityResult(PickAetherDocuments()) { viewModel.pin(it, handlePinOutcome) }
     val pickFolder = rememberLauncherForActivityResult(PickAetherFolder()) { uri -> if (uri != null) viewModel.pin(listOf(uri), handlePinOutcome) }
 
-    val uploadFiles = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
-        if (uris.isNotEmpty()) context.startActivity(ShareUploadActivity.filesIntent(context, uris))
+    // Once the share sheet has queued the files, show them on the Transfers tab so their progress is in view.
+    val uploadSheet = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) viewModel.selectTab(DashboardTab.Transfers)
+    }
+    val uploadFiles = rememberLauncherForActivityResult(UploadFilesPicker()) { uris ->
+        if (uris.isNotEmpty()) uploadSheet.launch(ShareUploadActivity.filesIntent(context, uris))
     }
     val uploadFolder = rememberLauncherForActivityResult(UploadFolderPicker()) { tree ->
-        if (tree != null) context.startActivity(ShareUploadActivity.folderIntent(context, tree))
+        if (tree != null) uploadSheet.launch(ShareUploadActivity.folderIntent(context, tree))
     }
 
     // The view model owns the selected tab (nav bar taps, saved state); the pager follows it, and a settled swipe reports back.

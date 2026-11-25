@@ -34,7 +34,7 @@ class ShareUploadViewModelEdgeCasesTest {
         runBlocking { settings.forgetAccount(env.accountName); settings.forgetAccount(secondAccount) }
     }
 
-    private fun viewModel() = ShareUploadViewModel(env.context, env.graph.accounts(), settings, env.graph.documents(), env.graph.diskCache())
+    private fun viewModel() = ShareUploadViewModel(env.context, env.graph.accounts(), settings, env.graph.documents(), env.graph.diskCache(), env.graph.database())
 
     private fun loaded(intent: Intent) = viewModel().also {
         it.load(intent)

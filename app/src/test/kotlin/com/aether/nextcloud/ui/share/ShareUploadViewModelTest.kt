@@ -39,7 +39,7 @@ class ShareUploadViewModelTest {
         runBlocking { settings.forgetAccount(env.accountName) }
     }
 
-    private fun viewModel() = ShareUploadViewModel(env.context, env.graph.accounts(), settings, env.graph.documents(), env.graph.diskCache())
+    private fun viewModel() = ShareUploadViewModel(env.context, env.graph.accounts(), settings, env.graph.documents(), env.graph.diskCache(), env.graph.database())
 
     private fun loaded(intent: Intent) = viewModel().also {
         it.load(intent)
@@ -218,6 +218,8 @@ class ShareUploadViewModelTest {
         // The files themselves are sent by WorkManager (covered by the instrumented tests); here the folders are made up front.
         awaitTrue("the uploads to be queued") { vm.state.value.phase is SharePhase.Queued }
         assertEquals(2, (vm.state.value.phase as SharePhase.Queued).count)
+        // The dashboard's Transfers list shows each file as queued straight away, before WorkManager starts the worker.
+        assertEquals(2, kotlinx.coroutines.runBlocking { env.graph.database().transferDao().observeActive().first().size })
         assertTrue(env.nextcloud.exists("/Holiday (1)"))
         assertTrue(env.nextcloud.exists("/Holiday (1)/Empty"))
         assertEquals("old", env.nextcloud.text("/Holiday/old.txt"))

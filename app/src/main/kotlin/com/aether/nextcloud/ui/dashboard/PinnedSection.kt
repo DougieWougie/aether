@@ -104,16 +104,20 @@ internal fun DashboardToolbar(
     HorizontalFloatingToolbar(
         expanded = true,
         floatingActionButton = {
-            // Camera's main action is taking a photo and Transfers' is syncing; Files moves in beside those tabs' other actions.
-            val (label, icon, onClick) = when (tab) {
-                DashboardTab.Camera -> Triple(R.string.action_take_photo, Icons.Outlined.PhotoCamera, onTakePhoto)
-                DashboardTab.Transfers -> Triple(R.string.sync_now, Icons.Outlined.Sync, onSyncTransfers)
-                DashboardTab.Pinned -> Triple(R.string.action_files, Icons.Outlined.FolderOpen, onOpenFiles)
-            }
-            val text = stringResource(label)
-            ToolbarTooltip(text) {
-                FloatingToolbarDefaults.VibrantFloatingActionButton(onClick = onClick) {
-                    Icon(icon, contentDescription = text)
+            // Camera's main action is taking a photo and Transfers' is syncing; Files' is uploading (its menu picks files or a
+            // folder). Open in System Files moves in beside every tab's other actions.
+            if (tab == DashboardTab.Pinned) {
+                UploadFab(onUploadFiles, onUploadFolder)
+            } else {
+                val (label, icon, onClick) = when (tab) {
+                    DashboardTab.Camera -> Triple(R.string.action_take_photo, Icons.Outlined.PhotoCamera, onTakePhoto)
+                    else -> Triple(R.string.sync_now, Icons.Outlined.Sync, onSyncTransfers)
+                }
+                val text = stringResource(label)
+                ToolbarTooltip(text) {
+                    FloatingToolbarDefaults.VibrantFloatingActionButton(onClick = onClick) {
+                        Icon(icon, contentDescription = text)
+                    }
                 }
             }
         },
@@ -123,7 +127,7 @@ internal fun DashboardToolbar(
             DashboardTab.Pinned -> {
                 ToolbarAction(R.string.pin_files, Icons.Outlined.PushPin, onPinFiles)
                 ToolbarAction(R.string.pin_folder, Icons.Outlined.CreateNewFolder, onPinFolder)
-                UploadAction(onUploadFiles, onUploadFolder)
+                ToolbarAction(R.string.action_files, Icons.Outlined.FolderOpen, onOpenFiles)
                 ToolbarAction(R.string.sync_now, Icons.Outlined.Sync, onSyncNow, enabled = canSync)
             }
             DashboardTab.Camera -> {
@@ -145,14 +149,14 @@ internal fun DashboardToolbar(
     }
 }
 
-/** "Upload" opens a small menu choosing between files and a folder, as Android has no picker for both at once. */
+/** The Files tab's main action: Upload opens a small menu choosing between files and a folder, as Android has no picker for both at once. */
 @Composable
-private fun UploadAction(onFiles: () -> Unit, onFolder: () -> Unit) {
+private fun UploadFab(onFiles: () -> Unit, onFolder: () -> Unit) {
     var open by remember { mutableStateOf(false) }
     val text = stringResource(R.string.action_upload)
     Box {
         ToolbarTooltip(text) {
-            IconButton(onClick = { open = true }) { Icon(Icons.Outlined.CloudUpload, contentDescription = text) }
+            FloatingToolbarDefaults.VibrantFloatingActionButton(onClick = { open = true }) { Icon(Icons.Outlined.CloudUpload, contentDescription = text) }
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             DropdownMenuItem(
@@ -299,8 +303,20 @@ private fun openPinned(context: android.content.Context, doc: DocumentEntity) {
     }
 }
 
-/** [ActivityResultContracts.OpenDocumentTree] whose confirm button reads "Upload". */
+/**
+ * Where upload pickers open: the device's Downloads folder, not wherever the picker was last left (which could well be Aether
+ * itself, and uploading from Aether to Aether is pointless; its own documents are refused anyway).
+ */
+private val UPLOAD_START: Uri = DocumentsContract.buildDocumentUri("com.android.externalstorage.documents", "primary:Download")
+
+/** [ActivityResultContracts.OpenMultipleDocuments] that starts in [UPLOAD_START]. */
+internal class UploadFilesPicker : ActivityResultContracts.OpenMultipleDocuments() {
+    override fun createIntent(context: android.content.Context, input: Array<String>): Intent =
+        super.createIntent(context, input).putExtra(DocumentsContract.EXTRA_INITIAL_URI, UPLOAD_START)
+}
+
+/** [ActivityResultContracts.OpenDocumentTree] that starts in [UPLOAD_START] and whose confirm button reads "Upload". */
 internal class UploadFolderPicker : ActivityResultContracts.OpenDocumentTree() {
     override fun createIntent(context: android.content.Context, input: Uri?): Intent =
-        super.createIntent(context, input).putExtra(DocumentsContract.EXTRA_PROMPT, context.getString(R.string.pick_prompt_upload))
+        super.createIntent(context, input ?: UPLOAD_START).putExtra(DocumentsContract.EXTRA_PROMPT, context.getString(R.string.pick_prompt_upload))
 }

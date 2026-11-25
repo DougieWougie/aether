@@ -41,7 +41,7 @@ class ShareUploadEndToEndTest {
         runBlocking { settings.forgetAccount(env.accountName) }
     }
 
-    private fun loaded(intent: Intent) = ShareUploadViewModel(env.context, env.graph.accounts(), settings, env.graph.documents(), env.graph.diskCache()).also {
+    private fun loaded(intent: Intent) = ShareUploadViewModel(env.context, env.graph.accounts(), settings, env.graph.documents(), env.graph.diskCache(), env.graph.database()).also {
         it.load(intent)
         awaitTrue("the share to load") { it.state.value.ready }
     }

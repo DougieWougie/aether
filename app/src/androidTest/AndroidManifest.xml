@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- A picked folder for the folder-upload tests: the app reads it as it would another app's document tree. -->
+        <provider
+            android:name="com.aether.nextcloud.support.TreeFixtureProvider"
+            android:authorities="com.aether.nextcloud.test.tree"
+            android:exported="true" />
+    </application>
+</manifest>

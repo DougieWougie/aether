@@ -34,7 +34,20 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-data class SharedItem(val uri: Uri?, val text: String?, val name: String, val mimeType: String?)
+/**
+ * One thing to upload. For a picked folder, [directory] is the item's parent folder relative to the folder's root
+ * (`""` at the top, else `"a/b"`), and an [isFolder] item is an empty subfolder that is created but has no content.
+ */
+data class SharedItem(
+    val uri: Uri?,
+    val text: String?,
+    val name: String,
+    val mimeType: String?,
+    val directory: String = "",
+    val isFolder: Boolean = false,
+) {
+    val relativePath: String get() = if (directory.isEmpty()) name else "$directory/$name"
+}
 
 sealed interface SharePhase {
     data object Ready : SharePhase
@@ -52,8 +65,12 @@ data class ShareUiState(
     val destination: DocumentId? = null,
     val recentFolders: List<DocumentId> = emptyList(),
     val items: List<SharedItem> = emptyList(),
+    /** Set when a whole folder was picked: its name, which becomes a new folder under [destination]. */
+    val folderName: String? = null,
     val phase: SharePhase = SharePhase.Ready,
-)
+) {
+    val fileCount: Int get() = items.count { !it.isFolder }
+}
 
 @HiltViewModel
 class ShareUploadViewModel @Inject constructor(
@@ -77,7 +94,9 @@ class ShareUploadViewModel @Inject constructor(
             // A tapped Direct Share target names its folder; otherwise default to the last used one, else the first account's root.
             val requested = intent.getStringExtra(Intent.EXTRA_SHORTCUT_ID)?.let(DocumentId::parseOrNull)?.takeIf { id -> accounts.any { it.accountName == id.accountName } }
             val destination = requested ?: recent.firstOrNull() ?: accounts.firstOrNull()?.let { DocumentId.root(it.accountName) }
-            val items = withContext(Dispatchers.IO) { readItems(intent) }
+            val tree = intent.data?.takeIf { intent.action == ACTION_UPLOAD_FOLDER && isShareable(it) }
+            val items = withContext(Dispatchers.IO) { if (tree != null) readTree(tree) else readItems(intent) }
+            val folderName = tree?.let { withContext(Dispatchers.IO) { treeName(it) } }
             _state.update {
                 it.copy(
                     accounts = accounts,
@@ -85,6 +104,7 @@ class ShareUploadViewModel @Inject constructor(
                     destination = destination,
                     recentFolders = recent,
                     items = items,
+                    folderName = folderName,
                     ready = true,
                 )
             }
@@ -121,22 +141,40 @@ class ShareUploadViewModel @Inject constructor(
         if (snapshot.phase is SharePhase.Preparing || snapshot.items.isEmpty()) return
         viewModelScope.launch {
             try {
+                // A picked folder lands in a fresh, uniquely named folder, so nothing already on the server is merged into or overwritten.
+                val base = snapshot.folderName?.let { name ->
+                    when (val made = documents.createDirectory(account, destination, name)) {
+                        is AetherResult.Success -> DocumentId.parse(made.value.documentId)
+                        is AetherResult.Failure -> throw IOException(context.getString(R.string.share_folder_failed, name))
+                    }
+                } ?: destination
                 snapshot.items.forEachIndexed { index, item ->
                     _state.update { it.copy(phase = SharePhase.Preparing(index, snapshot.items.size)) }
-                    stageAndEnqueue(account, destination, item)
+                    if (item.isFolder) createEmptyFolder(account, base, item) else stageAndEnqueue(account, base, item, nested = snapshot.folderName != null)
                 }
                 settings.rememberFolder(destination.toString())
                 val recent = settings.recentFolders.first().mapNotNull(DocumentId::parseOrNull)
                 DirectShareShortcuts.sync(context, settings.directShareEnabled.first(), recent)
-                _state.update { it.copy(phase = SharePhase.Queued(snapshot.items.size)) }
+                _state.update { it.copy(phase = SharePhase.Queued(snapshot.fileCount.coerceAtLeast(1))) }
             } catch (e: IOException) {
                 _state.update { it.copy(phase = SharePhase.Failed(e.message ?: context.getString(R.string.share_read_failed))) }
             }
         }
     }
 
+    /** `MKCOL`s an empty subfolder of a picked folder, and the folders above it. */
+    private suspend fun createEmptyFolder(account: AetherCredentials, base: DocumentId, item: SharedItem) {
+        var folder = base
+        for (segment in item.relativePath.split('/')) {
+            folder = folder.child(segment)
+            if (documents.ensureDirectory(account, folder) is AetherResult.Failure) {
+                throw IOException(context.getString(R.string.share_folder_failed, item.relativePath))
+            }
+        }
+    }
+
     /** Copies the content into app-private storage (the share's URI permission may not outlive this activity) and queues the upload. */
-    private suspend fun stageAndEnqueue(account: AetherCredentials, destination: DocumentId, item: SharedItem) {
+    private suspend fun stageAndEnqueue(account: AetherCredentials, destination: DocumentId, item: SharedItem, nested: Boolean) {
         val staging = withContext(Dispatchers.IO) {
             val file = diskCache.newStagingFile("${destination}/${item.name}")
             try {
@@ -151,12 +189,14 @@ class ShareUploadViewModel @Inject constructor(
             }
             file
         }
-        // Best effort: if the server can't be reached the original name is used and create-only upload protects existing files.
-        val target = (documents.uniqueChild(account, destination, item.name) as? AetherResult.Success)?.value
-            ?: destination.child(item.name)
+        // Inside a picked folder the layout is ours (a fresh top folder), so the relative path is used as is and missing
+        // subfolders are created by the worker. Otherwise: best effort, if the server can't be reached the original name is
+        // used and create-only upload protects existing files.
+        val target = if (nested) item.relativePath.split('/').fold(destination) { dir, segment -> dir.child(segment) }
+        else (documents.uniqueChild(account, destination, item.name) as? AetherResult.Success)?.value ?: destination.child(item.name)
         UploadDocumentWorker.enqueue(
             context,
-            UploadRequest(account.accountName, target.path, staging, item.mimeType ?: MimeTypes.guess(item.name), ifMatchEtag = null),
+            UploadRequest(account.accountName, target.path, staging, item.mimeType ?: MimeTypes.guess(item.name), ifMatchEtag = null, createParents = nested),
         )
     }
 
@@ -202,11 +242,61 @@ class ShareUploadViewModel @Inject constructor(
                 if (cursor.moveToFirst()) name = cursor.getString(0)
             }
         }
-        val rawName = (name ?: uri.lastPathSegment ?: "shared-file")
-            .substringAfterLast('/')
-            .filter { it >= ' ' && it != '\u007F' }
-            .trim()
-        val safeName = if (rawName.isBlank() || rawName == "." || rawName == "..") "shared-file" else rawName
-        return SharedItem(uri, null, safeName, context.contentResolver.getType(uri))
+        return SharedItem(uri, null, safeName(name ?: uri.lastPathSegment, "shared-file"), context.contentResolver.getType(uri))
+    }
+
+    /** Display name of the picked folder, made safe to use as a remote folder name. */
+    private fun treeName(tree: Uri): String {
+        val document = DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
+        var name: String? = null
+        runCatching {
+            context.contentResolver.query(document, arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) name = cursor.getString(0)
+            }
+        }
+        return safeName(name, "Uploaded folder")
+    }
+
+    /** Every file under [tree] with its folder path, plus each empty subfolder; the picked folder itself is [ShareUiState.folderName]. */
+    private fun readTree(tree: Uri): List<SharedItem> {
+        val items = mutableListOf<SharedItem>()
+        fun walk(documentId: String, directory: String, depth: Int) {
+            val children = mutableListOf<Triple<String, String, String?>>()
+            runCatching {
+                val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(tree, documentId)
+                val columns = arrayOf(
+                    DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                    DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                    DocumentsContract.Document.COLUMN_MIME_TYPE,
+                )
+                context.contentResolver.query(childrenUri, columns, null, null, null)?.use { cursor ->
+                    while (cursor.moveToNext()) children += Triple(cursor.getString(0), safeName(cursor.getString(1), "file"), cursor.getString(2))
+                }
+            }
+            if (children.isEmpty() && directory.isNotEmpty()) {
+                items += SharedItem(null, null, directory.substringAfterLast('/'), null, directory.substringBeforeLast('/', ""), isFolder = true)
+            }
+            for ((id, name, mime) in children) {
+                if (mime == DocumentsContract.Document.MIME_TYPE_DIR) {
+                    if (depth < MAX_TREE_DEPTH) walk(id, if (directory.isEmpty()) name else "$directory/$name", depth + 1)
+                } else {
+                    items += SharedItem(DocumentsContract.buildDocumentUriUsingTree(tree, id), null, name, mime, directory)
+                }
+            }
+        }
+        walk(DocumentsContract.getTreeDocumentId(tree), "", 0)
+        return items
+    }
+
+    /** A single path segment without control characters or separators; [fallback] when nothing usable is left. */
+    private fun safeName(raw: String?, fallback: String): String {
+        val name = (raw ?: "").substringAfterLast('/').filter { it >= ' ' && it != '\u007F' }.trim()
+        return if (name.isBlank() || name == "." || name == "..") fallback else name
+    }
+
+    companion object {
+        /** Explicit-intent action for uploading a whole folder; `data` is the picked tree URI. Not offered to other apps. */
+        const val ACTION_UPLOAD_FOLDER = "com.aether.nextcloud.action.UPLOAD_FOLDER"
+        private const val MAX_TREE_DEPTH = 32
     }
 }

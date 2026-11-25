@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.widthIn
 import android.content.ActivityNotFoundException
 import android.net.Uri
 import androidx.activity.result.contract.ActivityResultContracts
+import com.aether.nextcloud.ui.share.ShareUploadActivity
 import com.aether.nextcloud.sync.CaptureOutcome
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -170,6 +171,13 @@ fun DashboardScreen(
     val pickFiles = rememberLauncherForActivityResult(PickAetherDocuments()) { viewModel.pin(it, handlePinOutcome) }
     val pickFolder = rememberLauncherForActivityResult(PickAetherFolder()) { uri -> if (uri != null) viewModel.pin(listOf(uri), handlePinOutcome) }
 
+    val uploadFiles = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty()) context.startActivity(ShareUploadActivity.filesIntent(context, uris))
+    }
+    val uploadFolder = rememberLauncherForActivityResult(UploadFolderPicker()) { tree ->
+        if (tree != null) context.startActivity(ShareUploadActivity.folderIntent(context, tree))
+    }
+
     // The view model owns the selected tab (nav bar taps, saved state); the pager follows it, and a settled swipe reports back.
     // The first settled page is skipped: the view model's real tab may not have arrived yet.
     LaunchedEffect(state.tab) {
@@ -202,6 +210,8 @@ fun DashboardScreen(
                     canClearFinished = state.recentTransfers.any { it.state == TransferState.COMPLETED },
                     onPinFiles = { pickFiles.launch(rootDocumentUri) },
                     onPinFolder = { pickFolder.launch(rootDocumentUri) },
+                    onUploadFiles = { uploadFiles.launch(arrayOf("*/*")) },
+                    onUploadFolder = { uploadFolder.launch(null) },
                     onSyncNow = viewModel::syncPinsNow,
                     onBackUpNow = {
                         viewModel.backUpNow { event ->

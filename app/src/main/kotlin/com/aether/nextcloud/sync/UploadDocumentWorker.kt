@@ -110,7 +110,7 @@ class UploadDocumentWorker @AssistedInject constructor(
                 )
             }
         }
-        val large = total > WebDavClient.CHUNKED_THRESHOLD
+        val large = total > davFactory.chunkedThreshold
         if (large) setForeground(getForegroundInfo())
 
         val progress = ThrottledProgress(transferId, total, large)
@@ -157,7 +157,7 @@ class UploadDocumentWorker @AssistedInject constructor(
         total: Long,
         progress: ThrottledProgress,
     ): AetherResult<UploadResult> =
-        if (total > WebDavClient.CHUNKED_THRESHOLD) {
+        if (total > davFactory.chunkedThreshold) {
             dav.uploadChunkedV2(FileUploadSource(source), target.path, ifMatch, { done, size -> progress.report(done, size) }, createOnly = true)
         } else {
             dav.uploadFile(credentials.fileUrl(target.path), FileUploadSource(source), mimeType, ifMatch, { done, size -> progress.report(done, size) }, createOnly = true)
@@ -198,7 +198,13 @@ class UploadDocumentWorker @AssistedInject constructor(
         else documents.refreshDocument(credentials, uploaded)
         refreshOriginal?.let { documents.refreshDocument(credentials, it) }
         source.delete()
-        setTransferState(transferId, state, null)
+        if (state == TransferState.CONFLICT) {
+            withContext(Dispatchers.IO) {
+                transfers.setOutcomeWithPath(transferId, uploaded.path, state, null, System.currentTimeMillis())
+            }
+        } else {
+            setTransferState(transferId, state, null)
+        }
         PinnedSyncWorker.pruneTransfersIfDue(database)
         uploaded.parent?.let { notifyChildrenChanged(it) }
         // Only a plain overwrite hands its ETag on: a conflict copy leaves the original changed by someone else.

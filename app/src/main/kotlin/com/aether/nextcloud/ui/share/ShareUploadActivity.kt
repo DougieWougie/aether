@@ -30,14 +30,17 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.CreateNewFolder
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.FolderOpen
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material3.OutlinedTextField
 import com.aether.nextcloud.ui.components.MorphingShapeBadge
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -53,7 +56,9 @@ import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
@@ -136,7 +141,7 @@ private fun ShareSheet(viewModel: ShareUploadViewModel, onFinished: () -> Unit, 
         }
     }
 
-    ModalBottomSheet(onDismissRequest = onFinished, sheetState = sheetState) {
+    ModalBottomSheet(onDismissRequest = { viewModel.cancelPreparing(); onFinished() }, sheetState = sheetState) {
         Column(
             Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 16.dp).navigationBarsPadding(),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -163,8 +168,9 @@ private fun ShareSheet(viewModel: ShareUploadViewModel, onFinished: () -> Unit, 
                             val account = state.account?.accountName ?: state.accounts.first().accountName
                             pickFolder.launch(DocumentsContract.buildDocumentUri(AetherConstants.AUTHORITY, DocumentId.root(account).toString()))
                         },
+                        onCreateSubfolder = viewModel::createSubfolder,
                         onUpload = { askForNotifications(); viewModel.upload() },
-                        onCancel = onFinished,
+                        onCancel = { if (state.phase is SharePhase.Preparing) viewModel.cancelPreparing() else onFinished() },
                         onDismissError = viewModel::dismissError,
                     )
                 }
@@ -186,11 +192,43 @@ private fun Chooser(
     onSelectAccount: (String) -> Unit,
     onSelectFolder: (DocumentId) -> Unit,
     onBrowse: () -> Unit,
+    onCreateSubfolder: (String) -> Unit,
     onUpload: () -> Unit,
     onCancel: () -> Unit,
     onDismissError: () -> Unit,
 ) {
     val preparing = state.phase as? SharePhase.Preparing
+    var creatingFolder by remember { mutableStateOf(false) }
+    var newFolderName by remember { mutableStateOf("") }
+    if (creatingFolder) {
+        AlertDialog(
+            onDismissRequest = { creatingFolder = false },
+            title = { Text(stringResource(R.string.share_new_folder_title)) },
+            text = {
+                OutlinedTextField(
+                    value = newFolderName,
+                    onValueChange = { newFolderName = it },
+                    singleLine = true,
+                    label = { Text(stringResource(R.string.share_new_folder_label)) },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = newFolderName.isNotBlank() && '/' !in newFolderName,
+                    onClick = {
+                        val name = newFolderName.trim()
+                        creatingFolder = false
+                        newFolderName = ""
+                        onCreateSubfolder(name)
+                    },
+                ) { Text(stringResource(R.string.action_create)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { creatingFolder = false }) { Text(stringResource(R.string.action_cancel)) }
+            },
+        )
+    }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             MorphingShapeBadge(
@@ -250,6 +288,12 @@ private fun Chooser(
                 label = { Text(stringResource(R.string.share_choose_folder)) },
                 enabled = preparing == null,
             )
+            AssistChip(
+                onClick = { newFolderName = ""; creatingFolder = true },
+                leadingIcon = { Icon(Icons.Outlined.CreateNewFolder, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                label = { Text(stringResource(R.string.share_new_folder)) },
+                enabled = preparing == null && destination != null,
+            )
         }
         destination?.let {
             Text(
@@ -268,7 +312,7 @@ private fun Chooser(
 
         Spacer(Modifier.height(4.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onCancel, enabled = preparing == null) { Text(stringResource(R.string.action_cancel)) }
+            TextButton(onClick = onCancel) { Text(stringResource(R.string.action_cancel)) }
             Spacer(Modifier.size(8.dp))
             Button(
                 onClick = onUpload,

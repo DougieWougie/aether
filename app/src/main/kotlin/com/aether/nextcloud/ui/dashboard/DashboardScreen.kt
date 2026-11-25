@@ -7,7 +7,6 @@ import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarHost
-import com.aether.nextcloud.ui.backup.CameraBackupViewModel
 import com.aether.nextcloud.ui.components.rememberNotificationPermissionRequest
 import android.content.Intent
 import android.provider.DocumentsContract
@@ -47,11 +46,15 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.ShortNavigationBar
 import androidx.compose.material3.ShortNavigationBarItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -70,7 +73,7 @@ import com.aether.nextcloud.auth.AetherCredentials
 import com.aether.nextcloud.data.local.entity.TransferState
 import com.aether.nextcloud.provider.DocumentId
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun DashboardScreen(
     onAddAccount: () -> Unit,
@@ -95,7 +98,6 @@ fun DashboardScreen(
     val resources = LocalResources.current
     // Hoisted from the Camera tile so the Back up now snackbar can open its settings.
     var cameraSettingsOpen by rememberSaveable { mutableStateOf(false) }
-    val cameraBackup: CameraBackupViewModel = hiltViewModel()
     val backUpNowMessages = mapOf(
         BackUpNowEvent.Started to stringResource(R.string.backup_now_started),
         BackUpNowEvent.NothingNew to stringResource(R.string.backup_nothing_new),
@@ -257,7 +259,21 @@ fun DashboardScreen(
     ) { padding ->
         HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
             val tab = tabs[page]
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+            val pullState = rememberPullToRefreshState()
+            PullToRefreshBox(
+                isRefreshing = state.refreshing,
+                onRefresh = viewModel::pullToRefresh,
+                state = pullState,
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.TopCenter,
+                indicator = {
+                    PullToRefreshDefaults.LoadingIndicator(
+                        state = pullState,
+                        isRefreshing = state.refreshing,
+                        modifier = Modifier.align(Alignment.TopCenter).padding(top = padding.calculateTopPadding()),
+                    )
+                },
+            ) {
                 LazyColumn(
                     state = listStates[page],
                     modifier = Modifier.fillMaxSize().widthIn(max = 840.dp).imePadding(),
@@ -274,6 +290,8 @@ fun DashboardScreen(
                             onSignOut = viewModel::signOut,
                             directShareEnabled = state.directShareEnabled,
                             onDirectShareChange = viewModel::setDirectShare,
+                            pinnedWifiOnly = state.pinnedWifiOnly,
+                            onPinnedWifiOnlyChange = viewModel::setPinnedWifiOnly,
                         )
                     }
                     items(state.needsSignIn, key = { it.accountName }) { account -> SignInBanner(account, onSignIn = { onSignInAgain(account) }) }
@@ -310,7 +328,7 @@ fun DashboardScreen(
                                         }
                                     },
                                 )
-                                DashboardTab.Camera -> CameraSection(state, cameraSettingsOpen, { cameraSettingsOpen = it }, cameraBackup::setEnabled, { viewModel.selectTab(DashboardTab.Transfers) })
+                                DashboardTab.Camera -> CameraSection(state, cameraSettingsOpen, { cameraSettingsOpen = it }, viewModel::setBackupEnabled, { viewModel.selectTab(DashboardTab.Transfers) })
                             }
                         }
                     }

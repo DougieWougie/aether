@@ -104,6 +104,7 @@
     <string name="transfer_waiting_network">Waiting for network</string>
     <string name="transfer_starting">Starting…</string>
     <string name="transfer_show_folder">Show folder in Files</string>
+    <string name="transfer_open_copy">Open copy</string>
     <string name="camera_off_body">Back up new photos and videos automatically.</string>
     <string name="camera_backing_up">Backing up</string>
     <string name="camera_no_gallery">No gallery app found</string>
@@ -115,6 +116,7 @@
     <string name="accounts_description">Accounts</string>
     <string name="account_add">Add account</string>
     <string name="account_direct_share">Show folders in share sheet</string>
+    <string name="account_pinned_wifi_only">Sync pins on Wi-Fi only</string>
     <string name="backup_permission_needed">Allow access to photos and videos to turn this on.</string>
     <string name="backup_turn_off">Turn off backup</string>
     <string name="backup_turn_on">Turn on backup</string>
@@ -133,6 +135,10 @@
     <string name="action_close">Close</string>
     <string name="share_destination">Destination</string>
     <string name="share_choose_folder">Choose folder…</string>
+    <string name="share_new_folder">New folder…</string>
+    <string name="share_new_folder_title">New folder</string>
+    <string name="share_new_folder_label">Folder name</string>
+    <string name="action_create">Create</string>
     <string name="share_upload">Upload</string>
     <string name="share_progress_hint">Progress shows in your notifications.</string>
     <string name="albums_picker_title">Albums to back up</string>
@@ -160,6 +166,8 @@
     <string name="option_charging">Only while charging</string>
     <string name="option_videos">Include videos</string>
     <string name="option_videos_hint">Large videos upload in chunks</string>
+    <string name="option_existing_photos">Back up existing library</string>
+    <string name="option_existing_photos_hint">Include photos and videos already on this device</string>
     <string name="camera_open_photos">Open Photos</string>
     <string name="backup_wifi_only">Waits for Wi-Fi</string>
     <string name="backup_mobile_too">Uses mobile data too</string>
@@ -233,6 +241,7 @@
     <string name="transfer_download">Download</string>
     <string name="transfer_failed">Failed</string>
     <string name="login_unreachable">Couldn\'t reach that server. Check the address and your connection.</string>
+    <string name="login_tls_failed">Couldn\'t verify this server\'s security certificate. Check its HTTPS setup or certificate authority.</string>
     <string name="login_not_nextcloud">That address didn\'t answer like a Nextcloud server. Check it and try again.</string>
     <string name="sign_out_title">Sign out %1$s?</string>
     <string name="sign_out_body">Pinned files, cached copies and uploads that haven\'t finished are removed from this phone, and camera backup to this account stops. Your files on the server are not touched.</string>

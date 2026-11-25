@@ -64,6 +64,20 @@ class SourceSliceRequestBodyTest {
     }
 
     @Test
+    fun `a replayed body clones the base digest instead of hashing twice`() {
+        val payload = ByteArray(128) { (it * 7).toByte() }
+        val base = java.security.MessageDigest.getInstance("SHA-1").apply { update("prefix".toByteArray()) }
+        var latest: java.security.MessageDigest? = null
+        val body = SourceSliceRequestBody(BytesSource(payload), 0, payload.size.toLong(), null, baseDigest = base, onCompleteDigest = { latest = it })
+
+        body.writeTo(Buffer())
+        body.writeTo(Buffer())
+
+        val expected = Checksums.sha1(("prefix".toByteArray() + payload).inputStream())
+        assertEquals(expected, Checksums.formatSha1(latest!!.digest()))
+    }
+
+    @Test
     fun `a source that ends early fails instead of sending a short body`() {
         val body = SourceSliceRequestBody(BytesSource(ByteArray(5)), offset = 0, length = 10, contentType = null)
 

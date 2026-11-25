@@ -8,7 +8,7 @@ fun awaitTrue(message: String, timeoutMs: Long = 10_000, condition: () -> Boolea
         val result = runCatching(condition)
         if (result.getOrDefault(false)) return
         lastError = result.exceptionOrNull()
-        Thread.sleep(50)
+        Thread.sleep(10)
     }
     val detail = lastError?.let { " (last exception: $it)" }.orEmpty()
     throw AssertionError("Timed out after ${timeoutMs}ms waiting for: $message$detail", lastError)

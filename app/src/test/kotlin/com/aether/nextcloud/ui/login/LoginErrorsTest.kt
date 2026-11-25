@@ -9,8 +9,13 @@ import org.junit.Test
 
 class LoginErrorsTest {
     @Test
-    fun `an unreachable server gets a plain message instead of the exception text`() {
+    fun `an unreachable server gets a plain message while certificate failures name TLS`() {
         assertEquals(R.string.login_unreachable, AetherError.Network(IOException("Failed to connect to /10.0.2.2:9")).loginMessageRes())
+        assertEquals(R.string.login_tls_failed, AetherError.Network(javax.net.ssl.SSLHandshakeException("Trust anchor not found")).loginMessageRes())
+        assertEquals(
+            R.string.login_tls_failed,
+            AetherError.Network(IOException("Handshake failed", java.security.cert.CertificateException("Self-signed"))).loginMessageRes(),
+        )
     }
 
     @Test

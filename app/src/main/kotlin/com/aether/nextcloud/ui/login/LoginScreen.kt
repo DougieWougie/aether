@@ -106,7 +106,7 @@ fun LoginScreen(
             val compactHeight = maxHeight < 520.dp
             val heroSize = if (compactHeight) 112.dp else 220.dp
             val waitingPhase = state.phase as? LoginPhase.WaitingForBrowser
-            val host = state.server.trim().removePrefix("https://").removePrefix("http://").substringBefore('/').ifBlank { null }
+            val host = state.server.trim().removePrefix("https://").removePrefix("http://").trimEnd('/').removeSuffix("/index.php").trimEnd('/').ifBlank { null }
 
             val formContent: @Composable () -> Unit = {
                 AnimatedContent(waitingPhase != null, label = "login-phase") { waiting ->

@@ -58,6 +58,8 @@ internal fun Header(
     onSignOut: (String) -> Unit,
     directShareEnabled: Boolean,
     onDirectShareChange: (Boolean) -> Unit,
+    pinnedWifiOnly: Boolean = true,
+    onPinnedWifiOnlyChange: (Boolean) -> Unit = {},
 ) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
         MorphingShapeBadge(MaterialShapes.Cookie6Sided, size = 52.dp, container = MaterialTheme.colorScheme.tertiaryContainer) {
@@ -78,9 +80,9 @@ internal fun Header(
         }
         Column(Modifier.weight(1f)) {
             Text(account?.displayName ?: stringResource(R.string.app_name), style = MaterialTheme.typography.headlineSmallEmphasized, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            account?.let { Text(it.serverUrl.removePrefix("https://"), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            account?.let { Text(it.serverUrl.removePrefix("https://").removePrefix("http://"), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) }
         }
-        AccountMenu(accounts, account, onSelect, onAddAccount, onSignOut, directShareEnabled, onDirectShareChange)
+        AccountMenu(accounts, account, onSelect, onAddAccount, onSignOut, directShareEnabled, onDirectShareChange, pinnedWifiOnly, onPinnedWifiOnlyChange)
     }
 }
 
@@ -93,6 +95,8 @@ internal fun AccountMenu(
     onSignOut: (String) -> Unit,
     directShareEnabled: Boolean,
     onDirectShareChange: (Boolean) -> Unit,
+    pinnedWifiOnly: Boolean = true,
+    onPinnedWifiOnlyChange: (Boolean) -> Unit = {},
 ) {
     var expanded by remember { mutableStateOf(false) }
     var confirmSignOut by remember { mutableStateOf<String?>(null) }
@@ -125,6 +129,15 @@ internal fun AccountMenu(
                 modifier = Modifier.semantics {
                     role = Role.Switch
                     toggleableState = ToggleableState(directShareEnabled)
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.account_pinned_wifi_only)) },
+                trailingIcon = { Switch(checked = pinnedWifiOnly, onCheckedChange = null) },
+                onClick = { onPinnedWifiOnlyChange(!pinnedWifiOnly) },
+                modifier = Modifier.semantics {
+                    role = Role.Switch
+                    toggleableState = ToggleableState(pinnedWifiOnly)
                 },
             )
             selected?.let { account ->

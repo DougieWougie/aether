@@ -27,14 +27,23 @@ interface TransferDao {
     @Query("UPDATE transfers SET state = :state, error = :error, updatedAt = :now WHERE id = :id")
     fun setState(id: Long, state: TransferState, error: String?, now: Long)
 
+    @Query("UPDATE transfers SET remotePath = :remotePath, state = :state, error = :error, updatedAt = :now WHERE id = :id")
+    fun setOutcomeWithPath(id: Long, remotePath: String, state: TransferState, error: String?, now: Long)
+
     @Query("UPDATE transfers SET bytesTransferred = :transferred, totalBytes = :total, updatedAt = :now WHERE id = :id")
     fun setProgress(id: Long, transferred: Long, total: Long, now: Long)
 
     @Query("SELECT * FROM transfers WHERE state IN ('QUEUED', 'RUNNING') ORDER BY createdAt DESC")
     fun observeActive(): Flow<List<TransferEntity>>
 
+    @Query("SELECT * FROM transfers WHERE accountName = :account AND state IN ('QUEUED', 'RUNNING') ORDER BY createdAt DESC")
+    fun observeActiveForAccount(account: String): Flow<List<TransferEntity>>
+
     @Query("SELECT * FROM transfers WHERE state NOT IN ('QUEUED', 'RUNNING') ORDER BY updatedAt DESC LIMIT :limit")
     fun observeRecent(limit: Int): Flow<List<TransferEntity>>
+
+    @Query("SELECT * FROM transfers WHERE accountName = :account AND state NOT IN ('QUEUED', 'RUNNING') ORDER BY updatedAt DESC LIMIT :limit")
+    fun observeRecentForAccount(account: String, limit: Int): Flow<List<TransferEntity>>
 
     @Query("SELECT * FROM transfers WHERE accountName = :account AND state = 'FAILED' ORDER BY createdAt")
     fun failed(account: String): List<TransferEntity>

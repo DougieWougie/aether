@@ -61,12 +61,25 @@ class DocumentDiskCache(
     }
 
     /** Deletes least-recently-used cache files until the cache fits in [maxCacheBytes]; returns the deleted files. */
-    fun trimToSize(protect: Set<File> = emptySet()): List<File> = evictOldest(cacheDir, maxCacheBytes, protect)
+    fun trimToSize(protect: Set<File> = emptySet()): List<File> {
+        cacheBytesSinceTrim.set(0)
+        return evictOldest(cacheDir, maxCacheBytes, protect)
+    }
 
     /** Same for thumbnails, against [maxThumbnailBytes]; they are separate so previews never push out file copies. */
     fun trimThumbnails(protect: Set<File> = emptySet()): List<File> = evictOldest(thumbnailsDir, maxThumbnailBytes, protect)
 
+    private val cacheBytesSinceTrim = java.util.concurrent.atomic.AtomicLong()
     private val thumbnailBytesSinceTrim = java.util.concurrent.atomic.AtomicLong()
+
+    /**
+     * Call after storing an unpinned copy [justStored]: trims [cacheDir] only once about an eighth of [maxCacheBytes] in new
+     * bytes has accumulated, avoiding walking the whole cache directory on every single file open.
+     */
+    fun trimCacheWhenDue(justStored: File): List<File> {
+        if (cacheBytesSinceTrim.addAndGet(justStored.length()) < maxCacheBytes / CACHE_TRIM_DIVISOR) return emptyList()
+        return trimToSize(protect = setOf(justStored))
+    }
 
     /**
      * Call after storing [justStored]: trims the thumbnail directory only once about an eighth of its budget in new
@@ -100,6 +113,7 @@ class DocumentDiskCache(
     fun pinnedSizeBytes(): Long = sizeOf(pinnedDir)
 
     fun clearCache() {
+        cacheBytesSinceTrim.set(0)
         cacheDir.listFiles()?.forEach { it.deleteRecursively() }
     }
 
@@ -123,6 +137,7 @@ class DocumentDiskCache(
         const val DEFAULT_MAX_CACHE_BYTES = 512L * 1024 * 1024
         const val DEFAULT_MAX_THUMBNAIL_BYTES = 32L * 1024 * 1024
         private const val PART_SUFFIX = ".part"
+        private const val CACHE_TRIM_DIVISOR = 8
         private const val THUMBNAIL_TRIM_DIVISOR = 8
         private const val UNKNOWN_ACCOUNT = "-"
 

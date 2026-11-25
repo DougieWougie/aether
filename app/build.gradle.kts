@@ -153,9 +153,12 @@ jacoco {
 }
 
 // Robolectric loads app classes through its own class loader; without this the JaCoCo agent skips them and the report
-// would not count what the JVM Robolectric tests cover.
+// would not count what the JVM Robolectric tests cover. Cap parallel forks at 2 with generous heap so worker JVMs stay
+// warm instead of multiplying Robolectric, Hilt, Compose, and MockK cold-start overhead across every core.
 tasks.withType<Test>().configureEach {
-    maxParallelForks = (Runtime.getRuntime().availableProcessors() / 2).coerceAtLeast(1)
+    maxParallelForks = (Runtime.getRuntime().availableProcessors() / 2).coerceIn(1, 2)
+    maxHeapSize = "2g"
+    jvmArgs("-XX:+EnableDynamicAgentLoading")
     extensions.findByType(JacocoTaskExtension::class.java)?.apply {
         isIncludeNoLocationClasses = true
         excludes = listOf("jdk.internal.*")

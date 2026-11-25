@@ -50,12 +50,18 @@ open class AetherTestRule : ExternalResource() {
     protected open fun waitFor(worker: Thread) = worker.join()
 
     private var previousFreshnessWindowMs: Long = 0L
+    private var previousMaxNameAttempts: Int = 100
+    private var previousChunkedThreshold: Long = 0L
+    private var previousChunkSize: Long = 0L
 
     override fun before() {
         removeLeftovers()
         // The repository skips the freshness check for a few seconds in production; tests that edit the server behind the
         // app's back expect every open to look, so the window is off unless a test turns it on.
         previousFreshnessWindowMs = graph.documents().freshnessWindowMs
+        previousMaxNameAttempts = graph.documents().maxNameAttempts
+        previousChunkedThreshold = graph.davFactory().chunkedThreshold
+        previousChunkSize = graph.davFactory().chunkSize
         graph.documents().freshnessWindowMs = 0
         nextcloud = FakeNextcloud()
         accountName = AccountRepository.accountNameFor(nextcloud.user, nextcloud.baseUrl)!!
@@ -76,6 +82,9 @@ open class AetherTestRule : ExternalResource() {
         runBlocking { graph.documents().forgetAccount(accountName) }
         graph.diskCache().forgetAccount(accountName)
         graph.documents().freshnessWindowMs = previousFreshnessWindowMs
+        graph.documents().maxNameAttempts = previousMaxNameAttempts
+        graph.davFactory().chunkedThreshold = previousChunkedThreshold
+        graph.davFactory().chunkSize = previousChunkSize
     }
 
     /** Accounts left by an earlier crashed run would make `queryRoots` ambiguous. */

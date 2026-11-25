@@ -30,6 +30,7 @@ import androidx.compose.material.icons.outlined.CloudDownload
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.animation.animateContentSize
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -73,6 +74,20 @@ internal fun openFolderInSystemFiles(context: android.content.Context, folder: D
     }
 }
 
+/** Opens a saved document (such as a conflict copy) in whichever app handles its MIME type. */
+internal fun openDocumentInViewer(context: android.content.Context, document: DocumentId, mimeType: String?): Boolean {
+    val type = mimeType?.takeIf { it.isNotBlank() } ?: com.aether.nextcloud.data.MimeTypes.guess(document.name)
+    val intent = Intent(Intent.ACTION_VIEW)
+        .setDataAndType(DocumentsContract.buildDocumentUri(AetherConstants.AUTHORITY, document.toString()), type)
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    return try {
+        context.startActivity(intent)
+        true
+    } catch (_: ActivityNotFoundException) {
+        false
+    }
+}
+
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun TransfersSection(
@@ -89,28 +104,54 @@ internal fun TransfersSection(
     }
     if (active.isNotEmpty()) {
         SectionTitle(stringResource(R.string.transfers_in_progress))
-        TransferGroup(active, highlighted = true, key = "active", onCancel = onCancel, onRetry = onRetry, onDismiss = onDismiss, onOpenFolderFailed = onOpenFolderFailed) { ActiveSummary(active) }
+        TransferGroup(
+            transfers = active,
+            highlighted = true,
+            key = "active",
+            defaultExpanded = true,
+            needsAttention = true,
+            onCancel = onCancel,
+            onRetry = onRetry,
+            onDismiss = onDismiss,
+            onOpenFolderFailed = onOpenFolderFailed,
+        ) { ActiveSummary(active) }
     }
     if (recent.isNotEmpty()) {
+        val needsAttention = recent.any { it.state == TransferState.FAILED || it.state == TransferState.CONFLICT }
         SectionTitle(stringResource(R.string.transfers_recent))
-        TransferGroup(recent, highlighted = false, key = "recent", onCancel = onCancel, onRetry = onRetry, onDismiss = onDismiss, onOpenFolderFailed = onOpenFolderFailed) { RecentSummary(recent) }
+        TransferGroup(
+            transfers = recent,
+            highlighted = false,
+            key = "recent",
+            defaultExpanded = needsAttention,
+            needsAttention = needsAttention,
+            onCancel = onCancel,
+            onRetry = onRetry,
+            onDismiss = onDismiss,
+            onOpenFolderFailed = onOpenFolderFailed,
+        ) { RecentSummary(recent) }
     }
 }
 
-/** A summary card that expands, on tap, into the per-file rows it stands for. */
+/** A summary card that expands into per-file rows; active and failed/conflict groups start expanded so actions are one tap away. */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun TransferGroup(
     transfers: List<TransferEntity>,
     highlighted: Boolean,
     key: String,
+    defaultExpanded: Boolean = false,
+    needsAttention: Boolean = false,
     onCancel: ((TransferEntity) -> Unit)? = null,
     onRetry: ((TransferEntity) -> Unit)? = null,
     onDismiss: ((TransferEntity) -> Unit)? = null,
     onOpenFolderFailed: (() -> Unit)? = null,
     summary: @Composable () -> Unit,
 ) {
-    var expanded by rememberSaveable(key) { mutableStateOf(false) }
+    var expanded by rememberSaveable(key) { mutableStateOf(defaultExpanded) }
+    LaunchedEffect(needsAttention) {
+        if (needsAttention) expanded = true
+    }
     val colors = MaterialTheme.colorScheme
     val stateLabel = stringResource(if (expanded) R.string.state_expanded else R.string.state_collapsed)
     Column(verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.animateContentSize(MaterialTheme.motionScheme.defaultSpatialSpec())) {
@@ -262,8 +303,12 @@ internal fun TransferRow(
                     }
                 }
                 TransferState.CONFLICT -> {
-                    val folder = DocumentId(transfer.accountName, DocumentId.normalizePath(transfer.remotePath)).parent
+                    val conflictDoc = DocumentId(transfer.accountName, DocumentId.normalizePath(transfer.remotePath))
+                    val folder = conflictDoc.parent
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        TextButton(onClick = { if (!openDocumentInViewer(context, conflictDoc, transfer.mimeType)) onOpenFolderFailed?.invoke() }) {
+                            Text(stringResource(R.string.transfer_open_copy))
+                        }
                         if (folder != null) {
                             TextButton(onClick = { if (!openFolderInSystemFiles(context, folder)) onOpenFolderFailed?.invoke() }) {
                                 Text(stringResource(R.string.transfer_show_folder))

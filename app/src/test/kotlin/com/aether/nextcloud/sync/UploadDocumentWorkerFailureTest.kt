@@ -1,5 +1,7 @@
 package com.aether.nextcloud.sync
 
+import android.app.Notification
+import android.app.NotificationManager
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.work.Data
@@ -10,9 +12,11 @@ import androidx.work.testing.TestListenableWorkerBuilder
 import androidx.work.workDataOf
 import com.aether.nextcloud.AetherApp
 import com.aether.nextcloud.data.local.entity.TransferState
-import com.aether.nextcloud.support.AetherTestRule
+import com.aether.nextcloud.support.RobolectricAetherRule
 import com.aether.nextcloud.support.awaitTrue
 import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -20,16 +24,15 @@ import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** [UploadDocumentWorker] run directly, so every way an upload can end is reachable. */
+/** [UploadDocumentWorker] run directly, so every way an upload can end is reachable without an emulator. */
 @RunWith(AndroidJUnit4::class)
 class UploadDocumentWorkerFailureTest {
-    @get:Rule val env = AetherTestRule()
+    @get:Rule val env = RobolectricAetherRule()
 
     private val app: AetherApp = ApplicationProvider.getApplicationContext()
     private val staged = mutableListOf<File>()
@@ -131,7 +134,8 @@ class UploadDocumentWorkerFailureTest {
         val file = stage("payload")
         env.nextcloud.holdPuts = true
         val worker = TestListenableWorkerBuilder<UploadDocumentWorker>(app).setWorkerFactory(app.workerFactory).setInputData(input(file)).build()
-        val running = kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) { worker.doWork() }
+        @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
+        val running = GlobalScope.launch(Dispatchers.IO) { worker.doWork() }
         awaitTrue("the PUT to reach the server") { env.nextcloud.requestsMatching("PUT", "/doc.txt").isNotEmpty() }
 
         // WorkManager stopping a worker (a lost constraint) cancels it; it will be run again.
@@ -206,8 +210,7 @@ class UploadDocumentWorkerFailureTest {
 
     @Test
     fun anUploadThatFailsForGoodNotifiesWithAnActionToRetry() {
-        runCatching { androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation.grantRuntimePermission(app.packageName, "android.permission.POST_NOTIFICATIONS") }
-        val manager = app.getSystemService(android.app.NotificationManager::class.java)
+        val manager = app.getSystemService(NotificationManager::class.java)
         manager.cancelAll()
         val file = stage()
         env.nextcloud.quotaFull = true
@@ -216,7 +219,7 @@ class UploadDocumentWorkerFailureTest {
 
         awaitTrue("the failure notification") { manager.activeNotifications.any { it.tag == env.accountName } }
         val notification = manager.activeNotifications.single { it.tag == env.accountName }.notification
-        assertTrue("it names the file", notification.extras.getCharSequence(android.app.Notification.EXTRA_TEXT).toString().contains("report.txt"))
+        assertTrue("it names the file", notification.extras.getCharSequence(Notification.EXTRA_TEXT).toString().contains("report.txt"))
         assertTrue("and offers a retry", notification.actions.orEmpty().isNotEmpty())
         manager.cancelAll()
     }
@@ -243,7 +246,9 @@ class UploadDocumentWorkerFailureTest {
         assertEquals("theirs", env.nextcloud.text("/doc.txt"))
         val copy = env.nextcloud.paths().single { it.contains("(Conflict ") }
         assertEquals("mine", env.nextcloud.text(copy))
-        assertEquals(TransferState.CONFLICT, transfers().single().state)
+        val recorded = transfers().single()
+        assertEquals(TransferState.CONFLICT, recorded.state)
+        assertEquals("conflict row records the saved copy path", copy, recorded.remotePath)
     }
 
     @Test
@@ -258,11 +263,16 @@ class UploadDocumentWorkerFailureTest {
 
     @Test
     fun aLargeUploadRunsAsAForegroundTransfer() {
-        val file = stage("x").also { it.writeBytes(ByteArray(11 * 1024 * 1024) { i -> (i % 251).toByte() }) }
+        env.graph.davFactory().chunkedThreshold = 64L * 1024
+        env.graph.davFactory().chunkSize = 32L * 1024
+        val payload = ByteArray(80 * 1024) { i -> (i % 251).toByte() }
+        val file = stage("x").also { it.writeBytes(payload) }
 
         assertSucceeded(run(input(file, path = "/big.bin")))
 
-        assertEquals(11 * 1024 * 1024, env.nextcloud.bytes("/big.bin")?.size)
+        assertEquals(payload.size, env.nextcloud.bytes("/big.bin")?.size)
+        val uploads = env.nextcloud.requests.filter { it.path.orEmpty().contains("/remote.php/dav/uploads/") }
+        assertEquals(3, uploads.count { it.method == "PUT" })
     }
 
     @Test

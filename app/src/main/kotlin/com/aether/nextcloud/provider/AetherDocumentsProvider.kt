@@ -66,6 +66,7 @@ class AetherDocumentsProvider : DocumentsProvider() {
     interface Dependencies {
         fun accounts(): AccountRepository
         fun documents(): DocumentRepository
+        fun davFactory(): com.aether.nextcloud.dav.WebDavClientFactory
         fun quotas(): QuotaRepository
         fun ocs(): NextcloudOcsClient
         fun diskCache(): DocumentDiskCache
@@ -518,12 +519,27 @@ class AetherDocumentsProvider : DocumentsProvider() {
 
         /** Drops in-memory search answers and error strings for [accountName] on sign-out. */
         fun clearAccountCaches(accountName: String) {
-            val prefix = "$accountName:"
-            listingErrors.keys.removeIf { it.startsWith(prefix) }
-            searchErrors.keys.removeIf { it.startsWith(prefix) }
+            val docPrefix = "$accountName:"
+            val searchPrefix = "$accountName|"
+            listingErrors.keys.removeIf { it.startsWith(docPrefix) }
+            searchErrors.keys.removeIf { it.startsWith(searchPrefix) }
             synchronized(searchAnswers) {
-                searchAnswers.keys.removeIf { it.startsWith(prefix) }
+                searchAnswers.keys.removeIf { it.startsWith(searchPrefix) }
             }
+        }
+
+        internal fun recordAccountCachesForTest(accountName: String, path: String, queryKey: String) {
+            listingErrors["$accountName:$path"] = "err" to 1L
+            searchErrors["$accountName|$queryKey"] = "err" to 1L
+            searchAnswers["$accountName|$queryKey"] = SearchAnswer(emptyList(), 1L)
+        }
+
+        internal fun hasAccountCachesForTest(accountName: String): Boolean {
+            val docPrefix = "$accountName:"
+            val searchPrefix = "$accountName|"
+            return listingErrors.keys.any { it.startsWith(docPrefix) } ||
+                searchErrors.keys.any { it.startsWith(searchPrefix) } ||
+                synchronized(searchAnswers) { searchAnswers.keys.any { it.startsWith(searchPrefix) } }
         }
 
         private val DEFAULT_ROOT_PROJECTION = arrayOf(

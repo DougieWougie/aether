@@ -126,9 +126,18 @@ class CameraSettingsFlowTest {
     }
 
     @Test
-    fun theSheetsTurnOnButtonFinishesSettingUpAndFoldsTheSheetAway() {
+    fun theSettingsSheetShowsSectionsDismissesOnBackAndTurnOnFoldsItAway() {
         openSettings()
+        compose.onNodeWithText(str(R.string.backup_new_only)).assertExists()
+        compose.onNodeWithText(str(R.string.backup_section_what)).assertExists()
+        compose.onNodeWithText(str(R.string.backup_section_where)).assertExists()
+        compose.onNodeWithText(str(R.string.backup_section_when)).assertExists()
 
+        androidx.test.espresso.Espresso.pressBack()
+        compose.waitUntil(10_000) { compose.onAllNodesWithText(str(R.string.backup_turn_on)).fetchSemanticsNodes().isEmpty() }
+
+        compose.onNodeWithContentDescription(str(R.string.action_settings)).performClick()
+        compose.waitForText(str(R.string.backup_turn_on))
         compose.onNodeWithText(str(R.string.backup_turn_on)).performClick()
 
         awaitTrue("backup to turn on") { backup().enabled }

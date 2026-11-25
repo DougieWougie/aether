@@ -39,10 +39,12 @@ data class BackupSettings(
     val albums: List<BackupAlbum>? = null,
     /** Backup is on but held: nothing is scheduled or uploaded until the user resumes. Always false while [enabled] is false. */
     val paused: Boolean = false,
+    /** When true, existing media already on the device is also backed up rather than only items added after [backupSinceMillis]. */
+    val backUpExisting: Boolean = false,
 ) {
     /** These settings after [accountName] signed out: backup that targeted it is switched off rather than left pointing nowhere. */
     fun withoutAccount(accountName: String): BackupSettings =
-        if (this.accountName == accountName) copy(enabled = false, accountName = null) else this
+        if (this.accountName == accountName) copy(enabled = false, accountName = null, backupSinceMillis = 0) else this
 
     companion object {
         const val DEFAULT_FOLDER = "/Photos/Camera Uploads"
@@ -70,6 +72,7 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
             backupSinceMillis = p[BACKUP_SINCE] ?: 0,
             albums = p[BACKUP_ALBUMS]?.let { runCatching { Json.decodeFromString<List<BackupAlbum>>(it) }.getOrNull() },
             paused = p[BACKUP_PAUSED] ?: false,
+            backUpExisting = p[BACKUP_EXISTING] ?: false,
         )
     }
 
@@ -77,11 +80,14 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
         SyncSettings(pinnedSyncUnmeteredOnly = p[PINNED_UNMETERED] ?: true)
     }
 
-    /** Applies [transform] and returns the stored result. Turning backup on stamps [BackupSettings.backupSinceMillis]. */
+    /**
+     * Applies [transform] and returns the stored result. Turning backup on for the first time stamps [BackupSettings.backupSinceMillis];
+     * toggling backup off and back on later keeps the earlier stamp so photos taken in the meantime are not skipped.
+     */
     suspend fun updateBackup(transform: (BackupSettings) -> BackupSettings): BackupSettings {
         val before = backup.first()
         var after = transform(before)
-        if (after.enabled && !before.enabled) after = after.copy(backupSinceMillis = System.currentTimeMillis())
+        if (after.enabled && !before.enabled && after.backupSinceMillis == 0L) after = after.copy(backupSinceMillis = System.currentTimeMillis())
         // Switching backup off (or on again) ends any pause; a pause only means something while backup is on.
         if (!after.enabled || !before.enabled) after = after.copy(paused = false)
         store.edit { p ->
@@ -93,6 +99,7 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
             p[BACKUP_VIDEOS] = after.includeVideos
             p[BACKUP_SINCE] = after.backupSinceMillis
             p[BACKUP_PAUSED] = after.paused
+            p[BACKUP_EXISTING] = after.backUpExisting
             after.albums?.let { p[BACKUP_ALBUMS] = Json.encodeToString(it) } ?: p.remove(BACKUP_ALBUMS)
         }
         return after
@@ -176,6 +183,7 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
         private val BACKUP_SINCE = longPreferencesKey("backup_since")
         private val BACKUP_ALBUMS = stringPreferencesKey("backup_albums")
         private val BACKUP_PAUSED = booleanPreferencesKey("backup_paused")
+        private val BACKUP_EXISTING = booleanPreferencesKey("backup_existing")
         private val PINNED_UNMETERED = booleanPreferencesKey("pinned_unmetered_only")
     }
 }

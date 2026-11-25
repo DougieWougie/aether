@@ -179,7 +179,6 @@ class DashboardSectionsTest {
 
     private fun openActiveGroup(rows: List<com.aether.nextcloud.data.local.entity.TransferEntity>) {
         compose.show { TransfersSection(active = rows, recent = emptyList()) }
-        compose.onNodeWithText(context.resources.getQuantityString(R.plurals.transfers_active, rows.size, rows.size)).performClick()
     }
 
     @Test
@@ -248,39 +247,57 @@ class DashboardSectionsTest {
 
         compose.onNodeWithText(str(R.string.transfers_in_progress)).assertIsDisplayed()
         compose.onNodeWithText("Recent").assertIsDisplayed()
-        // Each group starts as a summary; the per-file rows only appear once it is tapped open.
-        compose.onNodeWithText("big.zip").assertDoesNotExist()
-        compose.onNodeWithText(context.resources.getQuantityString(R.plurals.transfers_active, 1, 1)).performClick()
-        compose.mainClock.advanceTimeBy(1_000)
+        // Active transfers and recent groups containing failures/conflicts start expanded automatically so actions are visible.
+        compose.onNodeWithText("big.zip").assertIsDisplayed()
         compose.onNodeWithText(context.resources.getQuantityString(R.plurals.transfer_summary_downloaded, 1, 1)).assertIsDisplayed()
         compose.onNodeWithText(context.resources.getQuantityString(R.plurals.transfer_summary_failed, 1, 1)).assertIsDisplayed()
-        compose.onNodeWithText(context.resources.getQuantityString(R.plurals.transfer_summary_downloaded, 1, 1)).performClick()
-        compose.mainClock.advanceTimeBy(1_000)
-        compose.onNodeWithText("big.zip").assertIsDisplayed()
         compose.onNodeWithText(str(R.string.error_insufficient_storage)).assertIsDisplayed()
         compose.onNodeWithText(str(R.string.transfer_waiting_network)).assertIsDisplayed()
         compose.onAllNodes(hasContentDescription(str(R.string.transfer_download))).assertCountEquals(1)
+
+        // Tapping the summary collapses the group.
+        compose.onNodeWithText(context.resources.getQuantityString(R.plurals.transfers_active, 1, 1)).performClick()
+        compose.mainClock.advanceTimeBy(1_000)
+        compose.onNodeWithText("big.zip").assertDoesNotExist()
     }
 
     @Test
-    fun aConflictRowOffersToShowTheFolder() {
+    fun completedOnlyRecentTransfersStartCollapsedUntilTapped() {
+        compose.show { TransfersSection(emptyList(), listOf(transfer("/done.txt", TransferState.COMPLETED, TransferDirection.DOWNLOAD))) }
+
+        compose.onNodeWithText("done.txt").assertDoesNotExist()
+        compose.onNodeWithText(context.resources.getQuantityString(R.plurals.transfer_summary_downloaded, 1, 1)).performClick()
+        compose.onNodeWithText("done.txt").assertIsDisplayed()
+    }
+
+    @Test
+    fun aConflictRowStartsExpandedAndOffersOpenCopyAndShowFolder() {
         compose.show { TransfersSection(emptyList(), listOf(transfer("/Docs/report (Conflict 1).txt", TransferState.CONFLICT))) }
 
-        compose.onNodeWithText(str(R.string.transfer_summary_nothing_finished)).performClick()
+        compose.onNodeWithText("report (Conflict 1).txt").assertIsDisplayed()
+        compose.onNodeWithText(str(R.string.transfer_open_copy)).assertIsDisplayed()
         compose.onNodeWithText(str(R.string.transfer_show_folder)).assertIsDisplayed()
     }
 
     @Test
-    fun showingTheFolderOpensTheSystemFilesAppInsideIt() {
+    fun showingTheFolderOrOpeningTheCopyLaunchesTheExpectedViewerIntent() {
         androidx.test.espresso.intent.Intents.init()
         try {
             androidx.test.espresso.intent.Intents.intending(androidx.test.espresso.intent.matcher.IntentMatchers.hasAction(android.content.Intent.ACTION_VIEW))
                 .respondWith(android.app.Instrumentation.ActivityResult(android.app.Activity.RESULT_CANCELED, null))
-            compose.show { TransfersSection(emptyList(), listOf(transfer("/Docs/report (Conflict 1).txt", TransferState.CONFLICT))) }
+            compose.show { TransfersSection(emptyList(), listOf(transfer("/Docs/report (Conflict 1).txt", TransferState.CONFLICT, mimeType = "text/plain"))) }
 
-            compose.onNodeWithText(str(R.string.transfer_summary_nothing_finished)).performClick()
+            compose.onNodeWithText(str(R.string.transfer_open_copy)).performClick()
+            androidx.test.espresso.intent.Intents.intended(
+                org.hamcrest.Matchers.allOf(
+                    androidx.test.espresso.intent.matcher.IntentMatchers.hasAction(android.content.Intent.ACTION_VIEW),
+                    androidx.test.espresso.intent.matcher.IntentMatchers.hasData(
+                        android.provider.DocumentsContract.buildDocumentUri(com.aether.nextcloud.AetherConstants.AUTHORITY, "alice@cloud.example.com:/Docs/report (Conflict 1).txt"),
+                    ),
+                ),
+            )
+
             compose.onNodeWithText(str(R.string.transfer_show_folder)).performClick()
-
             androidx.test.espresso.intent.Intents.intended(
                 org.hamcrest.Matchers.allOf(
                     androidx.test.espresso.intent.matcher.IntentMatchers.hasAction(android.content.Intent.ACTION_VIEW),

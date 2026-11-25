@@ -44,9 +44,9 @@ class DocumentRepositoryTest {
 
     @Test
     fun concurrentOpensOfOneUncachedFileShareASingleDownload() {
-        val bytes = ByteArray(300_000) { (it % 251).toByte() }
+        val bytes = ByteArray(64_000) { (it % 251).toByte() }
         env.nextcloud.putFile("/big.bin", bytes)
-        env.nextcloud.getDelayMs = 400
+        env.nextcloud.getDelayMs = 100
         list()
 
         val results = java.util.concurrent.Executors.newFixedThreadPool(6).let { pool ->
@@ -233,11 +233,12 @@ class DocumentRepositoryTest {
     }
 
     @Test
-    fun uniqueChildAddsANumberBeforeTheExtension() {
-        env.nextcloud.putFile("/notes.md", "1")
-        env.nextcloud.putFile("/notes (1).md", "2")
+    fun uniqueChildAddsANumberBeforeTheExtensionInAtMostTwoPropfinds() {
+        env.nextcloud.putFile("/notes.md", "0")
+        (1..10).forEach { env.nextcloud.putFile("/notes ($it).md", "$it") }
 
-        assertEquals(id("/notes (2).md"), runBlocking { ok(documents.uniqueChild(credentials, root, "notes.md")) })
+        assertEquals(id("/notes (11).md"), runBlocking { ok(documents.uniqueChild(credentials, root, "notes.md")) })
+        assertEquals("one Depth: 0 probe plus one Depth: 1 listing", 2, env.nextcloud.requestsMatching("PROPFIND").size)
         assertEquals(id("/fresh.md"), runBlocking { ok(documents.uniqueChild(credentials, root, "fresh.md")) })
     }
 
@@ -413,9 +414,28 @@ class DocumentRepositoryTest {
 
     @Test
     fun givesUpFindingAFreeNameAfterManyAttempts() {
+        documents.maxNameAttempts = 3
         env.nextcloud.putFile("/a.txt", "x")
-        (1..100).forEach { env.nextcloud.putFile("/a ($it).txt", "x") }
+        (1..3).forEach { env.nextcloud.putFile("/a ($it).txt", "x") }
 
         assertTrue(failure(runBlocking { documents.uniqueChild(credentials, root, "a.txt") }) is AetherError.Malformed)
+    }
+
+    @Test
+    fun clearCacheRemovesUnpinnedLocalCopiesFromRoomWhileKeepingPinnedOnes() {
+        env.nextcloud.putFile("/cached.txt", "c")
+        env.nextcloud.putFile("/pinned.txt", "p")
+        list()
+        val cachedFile = runBlocking { ok(documents.ensureLocalFile(credentials, id("/cached.txt"))) }
+        runBlocking { documents.setPinned(id("/pinned.txt"), true) }
+        val pinnedFile = runBlocking { ok(documents.ensurePinnedCopy(credentials, id("/pinned.txt"))) }
+
+        runBlocking { documents.clearCache() }
+
+        assertFalse(cachedFile.exists())
+        assertNull(documents.cached(id("/cached.txt"))!!.localCachePath)
+        assertNull(documents.cached(id("/cached.txt"))!!.cachedEtag)
+        assertTrue(pinnedFile.exists())
+        assertEquals(pinnedFile.path, documents.cached(id("/pinned.txt"))!!.localCachePath)
     }
 }

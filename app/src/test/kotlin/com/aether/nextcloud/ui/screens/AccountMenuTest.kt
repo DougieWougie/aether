@@ -25,13 +25,15 @@ class AccountMenuTest {
     private val signedOut = mutableListOf<String>()
     private val selected = mutableListOf<String>()
     private val directShare = mutableListOf<Boolean>()
+    private val pinnedWifi = mutableListOf<Boolean>()
     private var added = 0
 
-    private fun header(accounts: List<com.aether.nextcloud.auth.AetherCredentials> = listOf(alice), directShareEnabled: Boolean = true) = compose.show {
+    private fun header(accounts: List<com.aether.nextcloud.auth.AetherCredentials> = listOf(alice), directShareEnabled: Boolean = true, pinnedWifiOnly: Boolean = true) = compose.show {
         Header(
             account = accounts.firstOrNull(), avatar = null, accounts = accounts,
             onSelect = { selected += it }, onAddAccount = { added++ }, onSignOut = { signedOut += it },
             directShareEnabled = directShareEnabled, onDirectShareChange = { directShare += it },
+            pinnedWifiOnly = pinnedWifiOnly, onPinnedWifiOnlyChange = { pinnedWifi += it },
         )
     }
 
@@ -93,13 +95,14 @@ class AccountMenuTest {
     }
 
     @Test
-    fun addAccountAndTheDirectShareSwitchReportTheirActions() {
-        header(directShareEnabled = true)
+    fun addAccountAndMenuSwitchesReportTheirActions() {
+        header(directShareEnabled = true, pinnedWifiOnly = true)
         openMenu()
         compose.onNodeWithText(str(R.string.account_direct_share)).performClick()
         assertEquals(listOf(false), directShare)
+        compose.onNodeWithText(str(R.string.account_pinned_wifi_only)).performClick()
+        assertEquals(listOf(false), pinnedWifi)
 
-        openMenu()
         compose.onNodeWithText(str(R.string.account_add)).performClick()
         assertEquals(1, added)
     }

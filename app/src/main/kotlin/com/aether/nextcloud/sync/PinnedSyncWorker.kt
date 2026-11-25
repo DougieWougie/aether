@@ -34,9 +34,16 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import java.io.File
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 
 /**
@@ -55,10 +62,11 @@ class PinnedSyncWorker @AssistedInject constructor(
 ) : CoroutineWorker(context, params) {
 
     private val transfers = database.transferDao()
+    private val downloadPermits = Semaphore(SYNC_CONCURRENCY)
 
     /** Set when a failure is worth retrying later (offline, 5xx); permanent failures are only reported. */
-    private var retryNeeded = false
-    private var failures = 0
+    @Volatile private var retryNeeded = false
+    private val failures = AtomicInteger(0)
 
     override suspend fun getForegroundInfo(): ForegroundInfo =
         notifications.foregroundInfo(id, applicationContext.getString(R.string.notification_syncing_pins))
@@ -94,13 +102,23 @@ class PinnedSyncWorker @AssistedInject constructor(
             is AetherResult.Failure -> return noteFailure(credentials, result.error)
         }
         documents.pinChildren(id)
-        val failuresBefore = failures
+        val failuresBefore = failures.get()
         val children = withContext(Dispatchers.IO) { documents.cachedChildren(id) }
-        for (child in children) {
-            val childId = DocumentId.parse(child.documentId)
-            if (child.isDirectory) syncNode(credentials, childId, child) else syncFile(credentials, child.copy(isPinned = true))
+        coroutineScope {
+            for (child in children) {
+                val childId = DocumentId.parse(child.documentId)
+                if (child.isDirectory) {
+                    syncNode(credentials, childId, child)
+                } else {
+                    launch {
+                        downloadPermits.withPermit {
+                            syncFile(credentials, child.copy(isPinned = true))
+                        }
+                    }
+                }
+            }
         }
-        if (failures == failuresBefore) documents.markSubtreeSynced(id, listed.etag)
+        if (failures.get() == failuresBefore) documents.markSubtreeSynced(id, listed.etag)
     }
 
     private suspend fun syncFile(credentials: AetherCredentials, file: DocumentEntity) {
@@ -126,6 +144,7 @@ class PinnedSyncWorker @AssistedInject constructor(
                 val now = System.currentTimeMillis()
                 if (now - lastReport > PROGRESS_INTERVAL_MS) {
                     lastReport = now
+                    if (transfers.get(transferId)?.state == TransferState.FAILED) throw UserCancelledDownloadException()
                     transfers.setProgress(transferId, done, total, now)
                 }
             }
@@ -136,14 +155,20 @@ class PinnedSyncWorker @AssistedInject constructor(
                     noteFailure(credentials, result.error)
                 }
             }
+        } catch (_: UserCancelledDownloadException) {
+            failures.incrementAndGet()
         } catch (e: CancellationException) {
-            withContext(NonCancellable) { setState(transferId, TransferState.FAILED, ErrorCodes.CANCELLED) }
+            if (!currentCoroutineContext().isActive) {
+                withContext(NonCancellable) { setState(transferId, TransferState.FAILED, ErrorCodes.CANCELLED) }
+            }
             throw e
         }
     }
 
+    private class UserCancelledDownloadException : CancellationException("Download cancelled")
+
     private fun noteFailure(credentials: AetherCredentials, error: AetherError) {
-        failures++
+        failures.incrementAndGet()
         if (error == AetherError.Unauthorized) authIssues.report(credentials.accountName)
         if (error is AetherError.Network || (error is AetherError.Http && error.code >= 500)) retryNeeded = true
     }
@@ -158,6 +183,7 @@ class PinnedSyncWorker @AssistedInject constructor(
         private const val PRUNE_INTERVAL_MS = 24 * 60 * 60 * 1_000L
         private const val KEY_FOREGROUND = "foreground"
         private const val PROGRESS_INTERVAL_MS = 500L
+        private const val SYNC_CONCURRENCY = 4
         private const val PERIODIC_NAME = "pinned-sync-periodic"
         private const val NOW_NAME = "pinned-sync-now"
         @Volatile private var lastPrunedAt = 0L
@@ -193,6 +219,11 @@ class PinnedSyncWorker @AssistedInject constructor(
             val wm = WorkManager.getInstance(context)
             wm.cancelUniqueWork(PERIODIC_NAME)
             wm.cancelUniqueWork(NOW_NAME)
+        }
+
+        /** Cancels an on-demand sync without tearing down the 6-hour periodic schedule. */
+        fun cancelNow(context: Context) {
+            WorkManager.getInstance(context).cancelUniqueWork(NOW_NAME)
         }
 
         /** User-triggered sync: expedited and shown as a foreground notification. */

@@ -91,6 +91,15 @@ class SettingsRepositoryStorageTest {
 
         assertTrue(saved.backupSinceMillis >= before)
         assertEquals("staying on keeps the stamp", saved.backupSinceMillis, settings.updateBackup { it.copy(chargingOnly = true) }.backupSinceMillis)
+
+        // Turning backup off temporarily and back on preserves the original cutoff so photos taken meanwhile are not skipped.
+        settings.updateBackup { it.copy(enabled = false) }
+        val reenabled = settings.updateBackup { it.copy(enabled = true) }
+        assertEquals(saved.backupSinceMillis, reenabled.backupSinceMillis)
+
+        // Existing-library toggle round-trips cleanly.
+        assertTrue(settings.updateBackup { it.copy(backUpExisting = true) }.backUpExisting)
+        assertTrue(settings.backup.first().backUpExisting)
     }
 
     @Test

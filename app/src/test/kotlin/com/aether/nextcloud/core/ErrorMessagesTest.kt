@@ -9,9 +9,11 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.annotation.Config
 
 /** Error text lives in strings.xml and is chosen when shown; what is stored is only the code. */
 @RunWith(AndroidJUnit4::class)
+@Config(application = android.app.Application::class)
 class ErrorMessagesTest {
     private val context = ApplicationProvider.getApplicationContext<android.content.Context>()
 

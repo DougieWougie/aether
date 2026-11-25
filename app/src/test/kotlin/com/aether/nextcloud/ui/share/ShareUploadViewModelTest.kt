@@ -2,10 +2,12 @@ package com.aether.nextcloud.ui.share
 
 import android.content.Intent
 import android.net.Uri
+import android.provider.DocumentsContract
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.aether.nextcloud.AetherConstants
 import com.aether.nextcloud.data.prefs.SettingsRepository
 import com.aether.nextcloud.provider.DocumentId
+import com.aether.nextcloud.support.FakeTreeProvider
 import com.aether.nextcloud.support.RobolectricAetherRule
 import com.aether.nextcloud.support.SharedFileFixtures
 import com.aether.nextcloud.support.awaitTrue
@@ -29,8 +31,11 @@ class ShareUploadViewModelTest {
     private val settings by lazy { SettingsRepository(env.context) }
     private val media by lazy { SharedFileFixtures(env.context) }
 
+    private val tree by lazy { FakeTreeProvider() }
+
     @After fun clean() {
         media.deleteAll()
+        FakeTreeProvider.clear()
         runBlocking { settings.forgetAccount(env.accountName) }
     }
 
@@ -175,5 +180,68 @@ class ShareUploadViewModelTest {
         assertEquals(before, vm.state.value)
         assertNull((vm.state.value.phase as? SharePhase.Failed))
         assertNotNull(vm.state.value.destination)
+    }
+
+    private fun folderIntent() = Intent(ShareUploadViewModel.ACTION_UPLOAD_FOLDER).setData(tree.tree)
+
+    @Test
+    fun aPickedFolderIsWalkedIntoRelativePathsAndEmptySubfolders() {
+        tree.file("a.txt", "a".toByteArray(), "text/plain")
+        tree.folder("Day 1")
+        tree.file("Day 1/b.jpg", "b".toByteArray(), "image/jpeg")
+        tree.folder("Day 1/Raw")
+        tree.folder("Empty")
+
+        val state = loaded(folderIntent()).state.value
+
+        assertEquals("Holiday", state.folderName)
+        assertEquals(2, state.fileCount)
+        assertEquals(
+            setOf("a.txt", "Day 1/b.jpg", "Day 1/Raw", "Empty"),
+            state.items.map { it.relativePath }.toSet(),
+        )
+        assertEquals(setOf("Day 1/Raw", "Empty"), state.items.filter { it.isFolder }.map { it.relativePath }.toSet())
+    }
+
+    @Test
+    fun uploadingAPickedFolderRecreatesItUnderTheDestinationWithoutMergingIntoAnExistingOne() {
+        env.nextcloud.mkdirs("/Holiday")
+        env.nextcloud.putFile("/Holiday/old.txt", "old")
+        tree.file("a.txt", "alpha".toByteArray(), "text/plain")
+        tree.folder("Day 1")
+        tree.file("Day 1/b.txt", "beta".toByteArray(), "text/plain")
+        tree.folder("Empty")
+        val vm = loaded(folderIntent())
+
+        vm.upload()
+
+        // The files themselves are sent by WorkManager (covered by the instrumented tests); here the folders are made up front.
+        awaitTrue("the uploads to be queued") { vm.state.value.phase is SharePhase.Queued }
+        assertEquals(2, (vm.state.value.phase as SharePhase.Queued).count)
+        assertTrue(env.nextcloud.exists("/Holiday (1)"))
+        assertTrue(env.nextcloud.exists("/Holiday (1)/Empty"))
+        assertEquals("old", env.nextcloud.text("/Holiday/old.txt"))
+        assertTrue(env.nextcloud.paths().none { it.startsWith("/Holiday/") && it != "/Holiday/old.txt" })
+    }
+
+    @Test
+    fun folderAndFileNamesFromTheProviderCannotEscapeTheFolder() {
+        tree.file("evil", "x".toByteArray(), displayName = "../../etc/passwd")
+        tree.file("dots", "y".toByteArray(), displayName = "..")
+
+        val names = loaded(folderIntent()).state.value.items.map { it.relativePath }
+
+        assertTrue(names.none { ".." in it || "etc" in it })
+        assertEquals(2, names.size)
+    }
+
+    @Test
+    fun aTreeFromAetherItselfIsNotUploaded() {
+        val own = DocumentsContract.buildTreeDocumentUri(AetherConstants.AUTHORITY, DocumentId.root(env.accountName).toString())
+
+        val state = loaded(Intent(ShareUploadViewModel.ACTION_UPLOAD_FOLDER).setData(own)).state.value
+
+        assertTrue(state.items.isEmpty())
+        assertNull(state.folderName)
     }
 }

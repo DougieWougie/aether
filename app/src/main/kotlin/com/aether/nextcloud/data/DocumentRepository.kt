@@ -263,6 +263,12 @@ class DocumentRepository @Inject constructor(
         }
     }
 
+    /** Makes sure the folder [id] exists, leaving it alone (405) if it already does. */
+    suspend fun ensureDirectory(credentials: AetherCredentials, id: DocumentId): AetherResult<Unit> {
+        val made = davFactory.forAccount(credentials).mkcol(credentials.fileUrl(id.path + "/"))
+        return if (made is AetherResult.Failure && !(made.error is AetherError.Http && made.error.code == 405)) made else AetherResult.Success(Unit)
+    }
+
     /**
      * Creates an empty file so SAF has a document id straight away; the caller then writes content via `openDocument`.
      * The name was only probed as free, so the upload refuses to replace anything (`createOnly`): if another client

@@ -52,6 +52,12 @@
     <string name="storage_loading">Loading…</string>
     <string name="pin_files">Pin files</string>
     <string name="pin_folder">Pin folder</string>
+    <string name="action_upload">Upload</string>
+    <string name="upload_files">Files</string>
+    <string name="upload_folder">Folder</string>
+    <string name="pick_prompt_upload">Upload</string>
+    <string name="share_folder_summary">%1$s · %2$s</string>
+    <string name="share_folder_failed">Couldn\'t create the folder %1$s</string>
     <string name="pick_prompt_pin">Pin</string>
     <string name="sync_now">Sync now</string>
     <string name="action_files">Files</string>

@@ -5,12 +5,14 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.aether.nextcloud.data.prefs.SettingsRepository
 import com.aether.nextcloud.support.AetherTestRule
 import com.aether.nextcloud.support.MediaStoreFixtures
+import com.aether.nextcloud.support.TreeFixtures
 import com.aether.nextcloud.support.awaitTrue
 import com.aether.nextcloud.ui.share.SharePhase
 import com.aether.nextcloud.ui.share.ShareUploadViewModel
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -25,12 +27,17 @@ class ShareUploadEndToEndTest {
     @get:Rule val env = AetherTestRule()
 
     private val settings by lazy { SettingsRepository(env.context) }
+    private val trees by lazy { TreeFixtures(env.context) }
     private val media by lazy { MediaStoreFixtures(env.context) }
 
-    @Before fun grant() = media.grantMediaPermissions()
+    @Before fun grant() {
+        media.grantMediaPermissions()
+        trees.reset()
+    }
 
     @After fun clean() {
         media.deleteAll()
+        trees.clear()
         runBlocking { settings.forgetAccount(env.accountName) }
     }
 
@@ -62,5 +69,30 @@ class ShareUploadEndToEndTest {
 
         awaitTrue("the second copy to arrive", timeoutMs = 30_000) { env.nextcloud.text("/Shared text (1).txt") == "theirs" }
         assertEquals("mine", env.nextcloud.text("/Shared text.txt"))
+    }
+
+    @Test
+    fun aPickedFolderIsUploadedWithItsStructureIntoANewFolder() {
+        env.nextcloud.mkdirs("/Holiday")
+        env.nextcloud.putFile("/Holiday/old.txt", "old")
+        trees.file("a.txt", "alpha".toByteArray(), "text/plain")
+        trees.folder("Day 1")
+        trees.file("Day 1/b.bin", ByteArray(2048) { it.toByte() })
+        trees.folder("Day 1/Raw")
+        trees.file("Day 1/Raw/c.txt", "gamma".toByteArray(), "text/plain")
+        trees.folder("Empty")
+        val vm = loaded(Intent(ShareUploadViewModel.ACTION_UPLOAD_FOLDER).setData(trees.tree))
+        assertEquals(3, vm.state.value.fileCount)
+
+        vm.upload()
+
+        awaitTrue("every file to arrive on the server", timeoutMs = 30_000) {
+            env.nextcloud.text("/Holiday (1)/a.txt") == "alpha" &&
+                env.nextcloud.bytes("/Holiday (1)/Day 1/b.bin")?.size == 2048 &&
+                env.nextcloud.text("/Holiday (1)/Day 1/Raw/c.txt") == "gamma"
+        }
+        assertTrue(env.nextcloud.exists("/Holiday (1)/Empty"))
+        assertEquals("the existing folder is left alone", setOf("/Holiday", "/Holiday/old.txt"), env.nextcloud.paths().filter { it.startsWith("/Holiday") && !it.startsWith("/Holiday (1)") }.toSet())
+        assertEquals(SharePhase.Queued(3), vm.state.value.phase)
     }
 }

@@ -11,6 +11,16 @@ import androidx.compose.material.icons.outlined.CreateNewFolder
 import android.net.Uri
 import androidx.compose.material.icons.outlined.ClearAll
 import androidx.compose.material.icons.outlined.CloudUpload
+import androidx.compose.material.icons.outlined.DriveFolderUpload
+import androidx.compose.material.icons.outlined.UploadFile
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material3.Text
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.PlayArrow
@@ -43,11 +53,8 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
@@ -83,6 +90,8 @@ internal fun DashboardToolbar(
     canClearFinished: Boolean,
     onPinFiles: () -> Unit,
     onPinFolder: () -> Unit,
+    onUploadFiles: () -> Unit,
+    onUploadFolder: () -> Unit,
     onSyncNow: () -> Unit,
     onBackUpNow: () -> Unit,
     onTogglePauseBackup: () -> Unit,
@@ -114,6 +123,7 @@ internal fun DashboardToolbar(
             DashboardTab.Pinned -> {
                 ToolbarAction(R.string.pin_files, Icons.Outlined.PushPin, onPinFiles)
                 ToolbarAction(R.string.pin_folder, Icons.Outlined.CreateNewFolder, onPinFolder)
+                UploadAction(onUploadFiles, onUploadFolder)
                 ToolbarAction(R.string.sync_now, Icons.Outlined.Sync, onSyncNow, enabled = canSync)
             }
             DashboardTab.Camera -> {
@@ -131,6 +141,30 @@ internal fun DashboardToolbar(
                 ToolbarAction(R.string.transfers_clear_finished, Icons.Outlined.ClearAll, onClearFinished, enabled = canClearFinished)
                 ToolbarAction(R.string.action_files, Icons.Outlined.FolderOpen, onOpenFiles)
             }
+        }
+    }
+}
+
+/** "Upload" opens a small menu choosing between files and a folder, as Android has no picker for both at once. */
+@Composable
+private fun UploadAction(onFiles: () -> Unit, onFolder: () -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    val text = stringResource(R.string.action_upload)
+    Box {
+        ToolbarTooltip(text) {
+            IconButton(onClick = { open = true }) { Icon(Icons.Outlined.CloudUpload, contentDescription = text) }
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.upload_files)) },
+                leadingIcon = { Icon(Icons.Outlined.UploadFile, contentDescription = null) },
+                onClick = { open = false; onFiles() },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.upload_folder)) },
+                leadingIcon = { Icon(Icons.Outlined.DriveFolderUpload, contentDescription = null) },
+                onClick = { open = false; onFolder() },
+            )
         }
     }
 }
@@ -263,4 +297,10 @@ private fun openPinned(context: android.content.Context, doc: DocumentEntity) {
     } catch (_: android.content.ActivityNotFoundException) {
         android.widget.Toast.makeText(context, R.string.pinned_no_app_to_open, android.widget.Toast.LENGTH_SHORT).show()
     }
+}
+
+/** [ActivityResultContracts.OpenDocumentTree] whose confirm button reads "Upload". */
+internal class UploadFolderPicker : ActivityResultContracts.OpenDocumentTree() {
+    override fun createIntent(context: android.content.Context, input: Uri?): Intent =
+        super.createIntent(context, input).putExtra(DocumentsContract.EXTRA_PROMPT, context.getString(R.string.pick_prompt_upload))
 }

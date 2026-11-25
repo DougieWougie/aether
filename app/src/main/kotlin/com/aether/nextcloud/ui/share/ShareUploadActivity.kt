@@ -4,7 +4,10 @@ import com.aether.nextcloud.ui.components.rememberNotificationPermissionRequest
 import androidx.compose.ui.res.pluralStringResource
 import com.aether.nextcloud.R
 import androidx.compose.ui.res.stringResource
+import android.content.ClipData
+import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.provider.DocumentsContract
 import androidx.activity.ComponentActivity
@@ -90,6 +93,26 @@ class ShareUploadActivity : ComponentActivity() {
                 )
             }
         }
+    }
+
+    companion object {
+        /** Opens the sheet for files picked inside Aether (the same path as a Share Sheet `ACTION_SEND_MULTIPLE`). */
+        fun filesIntent(context: Context, uris: List<Uri>): Intent =
+            Intent(context, ShareUploadActivity::class.java)
+                .setAction(Intent.ACTION_SEND_MULTIPLE)
+                .setType("*/*")
+                .putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
+                .apply {
+                    clipData = ClipData.newRawUri(null, uris.first()).also { clip -> uris.drop(1).forEach { clip.addItem(ClipData.Item(it)) } }
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+
+        /** Opens the sheet for a folder picked with `OpenDocumentTree`; its whole tree is uploaded. */
+        fun folderIntent(context: Context, tree: Uri): Intent =
+            Intent(context, ShareUploadActivity::class.java)
+                .setAction(ShareUploadViewModel.ACTION_UPLOAD_FOLDER)
+                .setData(tree)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
 }
 
@@ -177,7 +200,11 @@ private fun Chooser(
             Column {
                 Text(stringResource(R.string.share_target_label), style = MaterialTheme.typography.headlineSmallEmphasized)
                 Text(
-                    if (state.items.size == 1) state.items.first().name else pluralStringResource(R.plurals.share_files, state.items.size, state.items.size),
+                    when {
+                        state.folderName != null -> stringResource(R.string.share_folder_summary, state.folderName, pluralStringResource(R.plurals.share_files, state.fileCount, state.fileCount))
+                        state.items.size == 1 -> state.items.first().name
+                        else -> pluralStringResource(R.plurals.share_files, state.items.size, state.items.size)
+                    },
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,

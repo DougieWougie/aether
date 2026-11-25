@@ -46,15 +46,21 @@ import com.aether.nextcloud.dav.relativeRemotePath
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.mapNotNull
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 
 /** A running camera backup's progress: [done] of [total] items finished. */
@@ -117,26 +123,38 @@ class CameraBackupWorker @AssistedInject constructor(
         setProgress(workDataOf(KEY_DONE to 0, KEY_TOTAL to items.size))
 
         val dav = davFactory.forAccount(credentials)
+        val dirMutex = Mutex()
         val createdDirectories = HashSet<String>()
-        var attempted = 0
-        for (item in items) {
-            attempted++
-            when (val outcome = backUp(item, dav, credentials, settings, createdDirectories)) {
-                is AetherResult.Success -> Unit
-                is AetherResult.Failure -> when (val error = outcome.error) {
-                    is AetherError.Network -> return Result.retry()
-                    is AetherError.Http -> if (error.code >= 500) return Result.retry() else recordFailure(credentials, item, settings, error)
-                    AetherError.Unauthorized -> {
-                        authIssues.report(credentials.accountName)
-                        return Result.failure()
+        val permits = Semaphore(BACKUP_CONCURRENCY)
+        val attempted = AtomicInteger(0)
+        val finished = AtomicInteger(0)
+        val terminal = AtomicReference<Result?>(null)
+        coroutineScope {
+            for (item in items) {
+                launch {
+                    permits.withPermit {
+                        if (terminal.get() != null) return@withPermit
+                        attempted.incrementAndGet()
+                        when (val outcome = backUp(item, dav, credentials, settings, dirMutex, createdDirectories)) {
+                            is AetherResult.Success -> Unit
+                            is AetherResult.Failure -> when (val error = outcome.error) {
+                                is AetherError.Network -> terminal.compareAndSet(null, Result.retry())
+                                is AetherError.Http -> if (error.code >= 500) terminal.compareAndSet(null, Result.retry()) else recordFailure(credentials, item, settings, error)
+                                AetherError.Unauthorized -> {
+                                    authIssues.report(credentials.accountName)
+                                    terminal.compareAndSet(null, Result.failure())
+                                }
+                                // Skip this item and keep going; it shows under Transfers until a later scan (or Retry failed) gets it up.
+                                else -> recordFailure(credentials, item, settings, error)
+                            }
+                        }
+                        val doneNow = finished.incrementAndGet()
+                        setProgress(workDataOf(KEY_DONE to doneNow, KEY_TOTAL to items.size))
                     }
-                    // Skip this item and keep going; it shows under Transfers until a later scan (or Retry failed) gets it up.
-                    else -> recordFailure(credentials, item, settings, error)
                 }
             }
-            setProgress(workDataOf(KEY_DONE to attempted, KEY_TOTAL to items.size))
         }
-        return Result.success(workDataOf(KEY_ATTEMPTED to attempted))
+        return terminal.get() ?: Result.success(workDataOf(KEY_ATTEMPTED to attempted.get()))
     }
 
     private suspend fun backUp(
@@ -144,17 +162,20 @@ class CameraBackupWorker @AssistedInject constructor(
         dav: WebDavClient,
         credentials: AetherCredentials,
         settings: BackupSettings,
+        dirMutex: Mutex,
         createdDirectories: MutableSet<String>,
     ): AetherResult<Unit> {
         var remotePath = BackupPaths.remotePath(settings.remoteFolder, item.takenMillis, item.name)
 
-        for (directory in BackupPaths.directoriesFor(remotePath)) {
-            if (!createdDirectories.add(directory)) continue
-            val made = dav.mkcol(credentials.fileUrl("$directory/"))
-            // 405 Method Not Allowed is what MKCOL answers for a folder that already exists.
-            if (made is AetherResult.Failure && !(made.error is AetherError.Http && made.error.code == 405)) {
-                createdDirectories.remove(directory)
-                return made
+        dirMutex.withLock {
+            for (directory in BackupPaths.directoriesFor(remotePath)) {
+                if (!createdDirectories.add(directory)) continue
+                val made = dav.mkcol(credentials.fileUrl("$directory/"))
+                // 405 Method Not Allowed is what MKCOL answers for a folder that already exists.
+                if (made is AetherResult.Failure && !(made.error is AetherError.Http && made.error.code == 405)) {
+                    createdDirectories.remove(directory)
+                    return made
+                }
             }
         }
 
@@ -179,10 +200,11 @@ class CameraBackupWorker @AssistedInject constructor(
         }
 
         // Send a SHA-1 so the server verifies the upload and a later run (or a reinstall) can tell this file from another.
-        if (source.checksum == null) source = withContext(Dispatchers.IO) { plain.withChecksum { coroutineContext.ensureActive() } }
-        val upload = if (item.size > WebDavClient.CHUNKED_THRESHOLD) {
-            dav.uploadChunkedV2(source, remotePath)
+        // Chunked uploads compute SHA-1 in-flight as chunks stream, avoiding reading large videos from MediaStore twice.
+        val upload = if (item.size > davFactory.chunkedThreshold) {
+            dav.uploadChunkedV2(source, remotePath, computeChecksum = source.checksum == null)
         } else {
+            if (source.checksum == null) source = withContext(Dispatchers.IO) { plain.withChecksum { coroutineContext.ensureActive() } }
             dav.uploadFile(credentials.fileUrl(remotePath), source, item.mimeType)
         }
         return when (upload) {
@@ -230,7 +252,7 @@ class CameraBackupWorker @AssistedInject constructor(
     }
 
     private fun queryNewMedia(settings: BackupSettings, done: Set<BackedUpKey>): List<MediaItem> {
-        val sinceSeconds = settings.backupSinceMillis / 1000
+        val sinceSeconds = if (settings.backUpExisting) 0L else settings.backupSinceMillis / 1000
         val albumIds = settings.albums?.map { it.id }
         if (albumIds != null && albumIds.isEmpty()) return emptyList()
         val items = queryCollection(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, isVideo = false, sinceSeconds, albumIds, done)
@@ -287,6 +309,7 @@ class CameraBackupWorker @AssistedInject constructor(
         /** Progress of a run: items finished (uploaded or failed) out of the items it found to upload. */
         private const val KEY_DONE = "done"
         private const val KEY_TOTAL = "total"
+        private const val BACKUP_CONCURRENCY = 4
 
         fun hasMediaPermission(context: Context): Boolean {
             val permissions = when {

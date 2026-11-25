@@ -46,6 +46,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -114,11 +115,21 @@ class DashboardViewModelTest {
 
     private val transferDao = mockk<TransferDao> {
         every { observeActive() } returns active
+        every { observeActiveForAccount(any()) } answers {
+            val acct = firstArg<String>()
+            active.map { rows -> rows.filter { it.accountName == acct } }
+        }
         every { observeRecent(any()) } returns recent
+        every { observeRecentForAccount(any(), any()) } answers {
+            val acct = firstArg<String>()
+            val lim = secondArg<Int>()
+            recent.map { rows -> rows.filter { it.accountName == acct }.take(lim) }
+        }
         every { observeFailedBackupCount(any()) } returns flowOf(0)
         every { clearCompleted(any()) } returns Unit
         every { completed(any()) } returns emptyList()
         every { restore(any()) } returns Unit
+        every { setState(any(), any(), any(), any()) } returns Unit
     }
 
     private fun database(): AetherDatabase {
@@ -304,12 +315,31 @@ class DashboardViewModelTest {
     }
 
     @Test
-    fun `clearing the cache empties it and re-measures`() = runTest(dispatcher) {
+    fun `clearing the cache empties it and clears unpinned room pointers`() = runTest(dispatcher) {
         val vm = subscribed(viewModel())
 
         vm.clearCache()
 
-        verify(timeout = 2_000) { diskCache.clearCache() }
+        coVerify(timeout = 2_000) { documents.clearCache() }
+    }
+
+    @Test
+    fun `cancelling a download stops on demand pin sync without cancelling periodic schedule`() = runTest(dispatcher) {
+        val row = TransferEntity(id = 12, accountName = "alice@h", remotePath = "/doc.pdf", direction = TransferDirection.DOWNLOAD, state = TransferState.RUNNING, createdAt = 1)
+        val vm = subscribed(viewModel())
+
+        vm.cancelTransfer(row)
+
+        verify(timeout = 2_000) { scheduler.cancelPinnedSyncNow() }
+        verify(timeout = 2_000) { transferDao.setState(12, TransferState.FAILED, "cancelled", any()) }
+    }
+
+    @Test
+    fun `many recent transfers on another account never hide the selected account's transfers`() = runTest(dispatcher) {
+        recent.value = listOf(transfer("alice@h", "/mine.txt")) + (1..15).map { transfer("bob@h", "/b$it.txt") }
+        val vm = subscribed(viewModel())
+
+        assertEquals(listOf("/mine.txt"), vm.state.value.recentTransfers.map { it.remotePath })
     }
 
     @Test
@@ -521,5 +551,33 @@ class DashboardViewModelTest {
         vm.setDirectShare(false)
 
         coVerify { settings.setDirectShareEnabled(false) }
+    }
+
+    @Test
+    fun `changing pinned wifi constraint updates settings and reschedules when items are pinned`() = runTest(dispatcher) {
+        val updated = com.aether.nextcloud.data.prefs.SyncSettings(pinnedSyncUnmeteredOnly = false)
+        coEvery { settings.updateSync(any()) } returns updated
+        pinned.value = listOf(entity(DocumentId("alice@h", "/p.txt")))
+        val vm = subscribed(viewModel())
+
+        vm.setPinnedWifiOnly(false)
+
+        coVerify { settings.updateSync(any()) }
+        verify { scheduler.applyPinnedSync(updated) }
+    }
+
+    @Test
+    fun `pull to refresh exposes refreshing while in flight and settles back to false`() = runTest(dispatcher) {
+        val vm = subscribed(viewModel())
+        com.aether.nextcloud.support.awaitTrue("initial refresh finishes") { !vm.state.value.refreshing }
+        val gate = kotlinx.coroutines.CompletableDeferred<AetherResult<UserInfo>>()
+        coEvery { quotas.refresh(alice) } coAnswers { gate.await() }
+
+        vm.pullToRefresh()
+        assertEquals(true, vm.state.value.refreshing)
+
+        gate.complete(AetherResult.Success(info))
+        com.aether.nextcloud.support.awaitTrue("pullToRefresh settles back to false") { !vm.state.value.refreshing }
+        coVerify(atLeast = 2) { quotas.refresh(alice) }
     }
 }

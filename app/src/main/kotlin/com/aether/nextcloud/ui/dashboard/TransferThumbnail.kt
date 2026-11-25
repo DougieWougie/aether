@@ -38,7 +38,7 @@ internal fun TransferEntity.isImage(): Boolean =
  * original, not the conflict copy that was actually saved.
  */
 internal suspend fun loadTransferThumbnail(context: Context, transfer: TransferEntity, px: Int): ImageBitmap? {
-    if (!transfer.isImage() || transfer.state == TransferState.CONFLICT) return null
+    if (!transfer.isImage()) return null
     val cacheKey = "transfer:${transfer.id}:${transfer.state}:${transfer.sourcePath}:${transfer.remotePath}:$px"
     ThumbnailMemoryCache.get(cacheKey)?.let { return it }
     return withContext(Dispatchers.IO) {
@@ -46,7 +46,7 @@ internal suspend fun loadTransferThumbnail(context: Context, transfer: TransferE
             val staged = transfer.sourcePath?.let(::File)?.takeIf { it.isFile }
             val bitmap: Bitmap? = when {
                 staged != null -> ThumbnailUtils.createImageThumbnail(staged, Size(px, px), null)
-                transfer.state == TransferState.COMPLETED -> {
+                transfer.state == TransferState.COMPLETED || transfer.state == TransferState.CONFLICT -> {
                     val id = DocumentId(transfer.accountName, DocumentId.normalizePath(transfer.remotePath))
                     context.contentResolver.loadThumbnail(DocumentsContract.buildDocumentUri(AetherConstants.AUTHORITY, id.toString()), Size(px, px), null)
                 }

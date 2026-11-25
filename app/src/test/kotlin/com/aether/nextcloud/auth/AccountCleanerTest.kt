@@ -41,7 +41,10 @@ class AccountCleanerTest {
         transfers.insert(TransferEntity(accountName = env.accountName, remotePath = "/a.txt", direction = TransferDirection.UPLOAD, createdAt = 1))
         val backedUp = env.graph.database().backedUpMediaDao()
         backedUp.upsert(BackedUpMediaEntity(env.accountName, mediaId = 1, isVideo = false, dateModified = 1, size = 1, remotePath = "/Camera/1.jpg", backedUpAt = 1))
+        com.aether.nextcloud.provider.AetherDocumentsProvider.recordAccountCachesForTest(env.accountName, "/Docs", "budget")
+        com.aether.nextcloud.provider.AetherDocumentsProvider.recordAccountCachesForTest("other@host", "/Docs", "budget")
         assertTrue(cached.isFile && staged.isFile && thumbnail.isFile)
+        assertTrue(com.aether.nextcloud.provider.AetherDocumentsProvider.hasAccountCachesForTest(env.accountName))
 
         env.graph.accountCleaner().remove(env.accountName)
 
@@ -50,6 +53,9 @@ class AccountCleanerTest {
         awaitTrue("the cached file to go") { !cached.exists() }
         awaitTrue("staged uploads to be deleted") { !staged.exists() }
         awaitTrue("thumbnails to be deleted") { !thumbnail.exists() }
+        awaitTrue("provider listing and search caches to go") { !com.aether.nextcloud.provider.AetherDocumentsProvider.hasAccountCachesForTest(env.accountName) }
+        assertTrue("other accounts' provider caches stay", com.aether.nextcloud.provider.AetherDocumentsProvider.hasAccountCachesForTest("other@host"))
+        com.aether.nextcloud.provider.AetherDocumentsProvider.clearAccountCaches("other@host")
         assertNull(env.graph.accounts().credentials(env.accountName))
         awaitTrue("the transfer rows to go") { runBlocking { transfers.observeRecent(10).first() }.none { it.accountName == env.accountName } }
         awaitTrue("the backup log rows to go") { backedUp.find(env.accountName, 1, false) == null }

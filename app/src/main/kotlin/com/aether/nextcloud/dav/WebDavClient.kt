@@ -142,6 +142,8 @@ class WebDavClient(
         ifMatchEtag: String? = null,
         onProgress: ProgressListener = { _, _ -> },
         createOnly: Boolean = false,
+        /** Computes `SHA1:<hex>` in-flight while streaming chunks when [UploadSource.checksum] is null, avoiding a prior full-file read. */
+        computeChecksum: Boolean = false,
     ): AetherResult<UploadResult> {
         val total = source.length
         val uploadDir = "${credentials.uploadsBaseUrl}/${UUID.randomUUID()}"
@@ -152,8 +154,17 @@ class WebDavClient(
         )
         if (created is AetherResult.Failure) return created
 
-        val result = putChunks(uploadDir, source, total, onProgress).let { chunks ->
-            if (chunks is AetherResult.Failure) chunks else assemble(uploadDir, destination, total, ifMatchEtag, source.lastModified, source.checksum, overwrite = !createOnly || ifMatchEtag != null)
+        val result = when (val chunks = putChunks(uploadDir, source, total, onProgress, hashInFlight = computeChecksum && source.checksum == null)) {
+            is AetherResult.Failure -> chunks
+            is AetherResult.Success -> assemble(
+                uploadDir,
+                destination,
+                total,
+                ifMatchEtag,
+                source.lastModified,
+                source.checksum ?: chunks.value,
+                overwrite = !createOnly || ifMatchEtag != null,
+            )
         }
         if (result is AetherResult.Failure) {
             // Orphaned upload directories count against quota until the server's cleanup job removes them.
@@ -162,23 +173,40 @@ class WebDavClient(
         return result
     }
 
-    private suspend fun putChunks(uploadDir: String, source: UploadSource, total: Long, onProgress: ProgressListener): AetherResult<Unit> {
+    private suspend fun putChunks(
+        uploadDir: String,
+        source: UploadSource,
+        total: Long,
+        onProgress: ProgressListener,
+        hashInFlight: Boolean,
+    ): AetherResult<String?> {
+        var runningDigest = if (hashInFlight) java.security.MessageDigest.getInstance("SHA-1") else null
         var offset = 0L
         var index = 1
         while (offset < total) {
             val length = minOf(chunkSize, total - offset)
             val base = offset
-            val body = SourceSliceRequestBody(source, offset, length, OCTET_STREAM) { onProgress(base + it, total) }
+            var chunkDigest: java.security.MessageDigest? = null
+            val body = SourceSliceRequestBody(
+                source = source,
+                offset = offset,
+                length = length,
+                contentType = OCTET_STREAM,
+                baseDigest = runningDigest,
+                onCompleteDigest = { chunkDigest = it },
+                onWritten = { onProgress(base + it, total) },
+            )
             val request = request("$uploadDir/${index.toString().padStart(5, '0')}")
                 .put(body)
                 .header("OC-Total-Length", total.toString())
                 .build()
             val put = send(request)
             if (put is AetherResult.Failure) return put
+            if (chunkDigest != null) runningDigest = chunkDigest
             offset += length
             index++
         }
-        return AetherResult.Success(Unit)
+        return AetherResult.Success(runningDigest?.let { Checksums.formatSha1(it.digest()) })
     }
 
     private suspend fun assemble(uploadDir: String, destination: String, total: Long, ifMatchEtag: String?, lastModified: Long?, checksum: String?, overwrite: Boolean): AetherResult<UploadResult> {

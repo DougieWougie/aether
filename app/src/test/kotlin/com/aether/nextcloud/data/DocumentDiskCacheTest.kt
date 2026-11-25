@@ -197,6 +197,24 @@ class DocumentDiskCacheTest {
         assertTrue("the thumbnail just stored survives", second.isFile)
     }
 
+    @Test
+    fun `cache files are only trimmed once enough new bytes have piled up`() {
+        val small = DocumentDiskCache(File(tmp.root, "c3"), File(tmp.root, "p3"), File(tmp.root, "s3"), maxCacheBytes = 100)
+        repeat(15) { i ->
+            write(File(tmp.root, "c3/acct/old$i"), 10).setLastModified(System.currentTimeMillis() - (20_000 - i * 100L))
+        }
+        val first = write(File(tmp.root, "c3/acct/new1"), 5)
+        val second = write(File(tmp.root, "c3/acct/new2"), 10)
+
+        val notYet = small.trimCacheWhenDue(first)
+        val due = small.trimCacheWhenDue(second)
+
+        assertTrue("below 1/8th budget: skips directory walk", notYet.isEmpty())
+        assertTrue("crossing 1/8th budget: trims LRU files", due.isNotEmpty())
+        assertTrue(small.cacheSizeBytes() <= 100)
+        assertTrue(second.isFile)
+    }
+
     private fun write(file: File, bytes: Int = 10): File = file.apply { parentFile!!.mkdirs(); writeBytes(ByteArray(bytes)) }
 
     @Test

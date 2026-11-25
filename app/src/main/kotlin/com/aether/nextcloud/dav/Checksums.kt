@@ -17,8 +17,11 @@ object Checksums {
             if (read < 0) break
             digest.update(buffer, 0, read)
         }
-        return SHA1 + digest.digest().joinToString("") { "%02x".format(it) }
+        return formatSha1(digest.digest())
     }
+
+    /** Formats a raw 20-byte SHA-1 digest as `SHA1:<hex>`. */
+    fun formatSha1(bytes: ByteArray): String = SHA1 + bytes.joinToString("") { "%02x".format(it) }
 
     /** The SHA-1 among [checksums] as reported by the server, or null if it holds none (other algorithms are ignored). */
     fun sha1Of(checksums: List<String>): String? =

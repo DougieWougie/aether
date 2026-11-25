@@ -49,27 +49,17 @@ class AppFlowTest {
     }
 
     @Test
-    fun withoutAnAccountTheLoginScreenIsShownAndContinueNeedsAnAddress() {
+    fun withoutAnAccountTheLoginScreenValidatesInputAndExplainsAnUnreachableServer() {
         signOutToLogin()
         launch()
 
         waitForText(str(R.string.login_continue))
         compose.onNodeWithText(str(R.string.login_tagline)).assertIsDisplayed()
         compose.onNodeWithText(str(R.string.login_continue)).assertIsNotEnabled()
-
-        compose.onNodeWithText(str(R.string.login_server_label)).performTextInput("cloud.example.com")
-
-        compose.onNodeWithText(str(R.string.login_continue)).assertIsEnabled()
         compose.onNodeWithText(str(R.string.login_server_hint)).assertIsDisplayed()
-    }
-
-    @Test
-    fun anUnreachableServerIsExplainedInPlainLanguage() {
-        signOutToLogin()
-        launch()
-        waitForText(str(R.string.login_continue))
 
         compose.onNodeWithText(str(R.string.login_server_label)).performTextInput("localhost:9")
+        compose.onNodeWithText(str(R.string.login_continue)).assertIsEnabled()
         compose.onNodeWithText(str(R.string.login_continue)).performClick()
 
         waitForText(str(R.string.login_unreachable), timeoutMs = 30_000)
@@ -91,31 +81,16 @@ class AppFlowTest {
     }
 
     @Test
-    fun theTabsSwitchBetweenPinnedCameraAndTransfers() {
-        launch()
-        waitForText(str(R.string.pinned_empty_title))
-
-        compose.onNodeWithText(str(R.string.tab_camera)).performClick()
-        waitForText(str(R.string.camera_off_body))
-        compose.onNodeWithContentDescription(str(R.string.action_settings)).assertIsDisplayed()
-
-        compose.onNodeWithText(str(R.string.tab_transfers)).performClick()
-        waitForText(str(R.string.transfers_empty_title))
-
-        compose.onNodeWithText(str(R.string.tab_pinned)).performClick()
-        waitForText(str(R.string.pinned_empty_title))
-    }
-
-    @Test
-    fun swipingMovesBetweenTabsAndStopsAtTheEnds() {
+    fun tabsSwitchByTapAndSwipeAndStopAtTheEnds() {
         launch()
         waitForText(str(R.string.pinned_empty_title))
 
         compose.onRoot().performTouchInput { swipeRight() }
         compose.onNodeWithText(str(R.string.pinned_empty_title)).assertIsDisplayed()
 
-        compose.onRoot().performTouchInput { swipeLeft() }
+        compose.onNodeWithText(str(R.string.tab_camera)).performClick()
         waitForText(str(R.string.camera_off_body))
+        compose.onNodeWithContentDescription(str(R.string.action_settings)).assertIsDisplayed()
 
         compose.onRoot().performTouchInput { swipeLeft() }
         waitForText(str(R.string.transfers_empty_title))
@@ -123,8 +98,8 @@ class AppFlowTest {
         compose.onRoot().performTouchInput { swipeLeft() }
         compose.onNodeWithText(str(R.string.transfers_empty_title)).assertIsDisplayed()
 
-        compose.onRoot().performTouchInput { swipeRight() }
-        waitForText(str(R.string.camera_off_body))
+        compose.onNodeWithText(str(R.string.tab_pinned)).performClick()
+        waitForText(str(R.string.pinned_empty_title))
     }
 
     @Test

@@ -50,7 +50,8 @@ class AccountCleaner @Inject constructor(
         if (removeFromAccountManager) accounts.removeAccount(accountName)
         // Stop all background work before wiping local files and metadata.
         UploadDocumentWorker.cancelAll(context, accountName)
-        com.aether.nextcloud.sync.PinnedSyncWorker.cancelAll(context)
+        if (accounts.accounts().isEmpty()) com.aether.nextcloud.sync.PinnedSyncWorker.cancelAll(context)
+        else com.aether.nextcloud.sync.PinnedSyncWorker.cancelNow(context)
         scope.launch {
             val remembered = settings.forgetAccount(accountName)
             scheduler.applyBackup(remembered.backup)

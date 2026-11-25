@@ -126,6 +126,14 @@ class CameraBackupViewModel @Inject constructor(
 
     fun setIncludeVideos(value: Boolean) = update { it.copy(includeVideos = value) }
 
+    fun setBackUpExisting(value: Boolean) {
+        viewModelScope.launch {
+            val updated = settings.updateBackup { it.copy(backUpExisting = value) }
+            scheduler.applyBackup(updated)
+            if (value && updated.enabled && !updated.paused && scheduler.canReadMedia()) scheduler.backUpNow()
+        }
+    }
+
     private fun update(transform: (BackupSettings) -> BackupSettings) {
         viewModelScope.launch { scheduler.applyBackup(settings.updateBackup(transform)) }
     }

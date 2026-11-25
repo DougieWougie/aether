@@ -221,7 +221,9 @@ class ShareUploadViewModelTest {
         // The dashboard's Transfers list shows each file as queued straight away, before WorkManager starts the worker.
         assertEquals(2, kotlinx.coroutines.runBlocking { env.graph.database().transferDao().observeActive().first().size })
         assertTrue(env.nextcloud.exists("/Holiday (1)"))
+        assertTrue(env.nextcloud.exists("/Holiday (1)/Day 1"))
         assertTrue(env.nextcloud.exists("/Holiday (1)/Empty"))
+        assertEquals("each created directory receives a single MKCOL", 3, env.nextcloud.requestsMatching("MKCOL").size)
         assertEquals("old", env.nextcloud.text("/Holiday/old.txt"))
         assertTrue(env.nextcloud.paths().none { it.startsWith("/Holiday/") && it != "/Holiday/old.txt" })
     }
@@ -245,5 +247,25 @@ class ShareUploadViewModelTest {
 
         assertTrue(state.items.isEmpty())
         assertNull(state.folderName)
+    }
+
+    @Test
+    fun createSubfolderMakesAndSelectsANewFolderInsideTheCurrentDestination() {
+        val vm = loaded(text("trip notes"))
+
+        vm.createSubfolder("Trip 2026")
+
+        awaitTrue("the new subfolder to become the destination") { vm.state.value.destination == DocumentId(env.accountName, "/Trip 2026") }
+        assertTrue(env.nextcloud.exists("/Trip 2026"))
+        assertTrue(DocumentId(env.accountName, "/Trip 2026") in vm.state.value.recentFolders)
+    }
+
+    @Test
+    fun cancelPreparingReturnsTheSheetToReady() {
+        val vm = loaded(text("hi"))
+
+        vm.cancelPreparing()
+
+        assertEquals(SharePhase.Ready, vm.state.value.phase)
     }
 }

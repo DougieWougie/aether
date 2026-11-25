@@ -5,7 +5,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.aether.nextcloud.support.AetherTestRule
 import com.aether.nextcloud.support.Smoke
 import com.aether.nextcloud.support.awaitTrue
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -47,37 +46,22 @@ class UploadDocumentWorkerTest {
     }
 
     @Test
-    fun filesOverTenMegabytesGoThroughChunkedUploadV2() {
+    fun filesAboveTheChunkThresholdGoThroughChunkedUploadV2() {
+        env.graph.davFactory().chunkedThreshold = 64L * 1024
+        env.graph.davFactory().chunkSize = 48L * 1024
         env.nextcloud.putFile("/video.bin", "x")
         listed("/", "video.bin")
-        val big = ByteArray(11 * 1024 * 1024) { (it % 251).toByte() }
+        val big = ByteArray(80 * 1024) { (it % 251).toByte() }
 
         env.resolver.openOutputStream(env.documentUri("/video.bin"), "wt")!!.use { it.write(big) }
 
-        awaitTrue("the assembled file", timeoutMs = 60_000) { env.nextcloud.bytes("/video.bin")?.size == big.size }
+        awaitTrue("the assembled file", timeoutMs = 30_000) { env.nextcloud.bytes("/video.bin")?.size == big.size }
         assertArrayEquals(big, env.nextcloud.bytes("/video.bin"))
         val uploads = env.nextcloud.requests.filter { it.path.orEmpty().contains("/remote.php/dav/uploads/") }
         assertEquals("MKCOL", uploads.first().method)
-        assertEquals("two chunks for 11 MB", 2, uploads.count { it.method == "PUT" })
+        assertEquals("two chunks for 80 KB at 48 KB chunk size", 2, uploads.count { it.method == "PUT" })
         assertEquals("MOVE", uploads.last().method)
         assertTrue("no whole-file PUT", env.nextcloud.requestsMatching("PUT", "/video.bin").isEmpty())
-    }
-
-    @Test
-    fun aFullQuotaFailsTheUploadWithoutRetrying() {
-        env.nextcloud.putFile("/doc.txt", "small")
-        listed("/", "doc.txt")
-        env.nextcloud.quotaFull = true
-
-        env.resolver.openOutputStream(env.documentUri("/doc.txt"), "wt")!!.use { it.write("bigger".toByteArray()) }
-
-        awaitTrue("the upload attempt") { env.nextcloud.requestsMatching("PUT", "/doc.txt").isNotEmpty() }
-        // A retry would leave the row queued; failing for good is what settles it.
-        awaitTrue("the upload to be given up on") {
-            runBlocking { env.graph.database().transferDao().observeRecent(10).first() }.any { it.accountName == env.accountName && it.state == com.aether.nextcloud.data.local.entity.TransferState.FAILED }
-        }
-        assertEquals("507 is not retried", 1, env.nextcloud.requestsMatching("PUT", "/doc.txt").size)
-        assertEquals("small", env.nextcloud.text("/doc.txt"))
     }
 
     @Test

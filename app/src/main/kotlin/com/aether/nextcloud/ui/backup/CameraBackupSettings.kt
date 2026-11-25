@@ -38,6 +38,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.BatteryChargingFull
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.FolderOpen
+import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.Videocam
 import androidx.compose.material.icons.outlined.Wifi
 import androidx.compose.material3.Button
@@ -242,6 +243,7 @@ fun CameraBackupSettings(modifier: Modifier = Modifier, viewModel: CameraBackupV
         SectionTitle(R.string.backup_section_what)
         AlbumChips(settings.albums, onClick = { viewModel.loadAlbums(); showAlbums = true })
         SwitchRow(stringResource(R.string.option_videos), Icons.Outlined.Videocam, settings.includeVideos, viewModel::setIncludeVideos, hint = stringResource(R.string.option_videos_hint))
+        SwitchRow(stringResource(R.string.option_existing_photos), Icons.Outlined.PhotoLibrary, settings.backUpExisting, viewModel::setBackUpExisting, hint = stringResource(R.string.option_existing_photos_hint))
 
         SectionTitle(R.string.backup_section_where)
         if (state.accounts.size > 1) {
@@ -296,7 +298,7 @@ fun CameraBackupSettings(modifier: Modifier = Modifier, viewModel: CameraBackupV
                 colors = ButtonDefaults.buttonColors(containerColor = colors.tertiary, contentColor = colors.onTertiary),
                 modifier = Modifier.fillMaxWidth(),
             ) { Text(stringResource(R.string.backup_turn_on)) }
-            Text(stringResource(R.string.backup_new_only), style = MaterialTheme.typography.bodySmall)
+            if (!settings.backUpExisting) Text(stringResource(R.string.backup_new_only), style = MaterialTheme.typography.bodySmall)
         }
     }
 }

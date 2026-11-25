@@ -13,6 +13,7 @@ import com.aether.nextcloud.dav.FileUploadSource
 import com.aether.nextcloud.dav.SearchQuery
 import com.aether.nextcloud.dav.WebDavClientFactory
 import com.aether.nextcloud.dav.ProgressListener
+import com.aether.nextcloud.dav.relativeRemotePath
 import com.aether.nextcloud.provider.DocumentId
 import java.io.File
 import javax.inject.Inject
@@ -189,7 +190,7 @@ class DocumentRepository @Inject constructor(
                         lastAccessed = System.currentTimeMillis(),
                     ),
                 )
-                if (!entity.isPinned) diskCache.trimToSize(protect = setOf(target))
+                if (!entity.isPinned) clearEvictedRows(diskCache.trimCacheWhenDue(target))
                 AetherResult.Success(target)
             }
         }
@@ -237,8 +238,21 @@ class DocumentRepository @Inject constructor(
             val target = if (refreshed.isPinned) diskCache.pinnedFileFor(id.toString()) else diskCache.cacheFileFor(id.toString())
             if (moveSource) moveOrCopy(file, target) else file.copyTo(target, overwrite = true)
             dao.upsert(refreshed.copy(localCachePath = target.path, cachedEtag = etag, lastAccessed = System.currentTimeMillis()))
-            if (!refreshed.isPinned) diskCache.trimToSize(protect = setOf(target))
+            if (!refreshed.isPinned) clearEvictedRows(diskCache.trimCacheWhenDue(target))
         }
+    }
+
+    /** Clears the evictable disk cache and drops unpinned local-copy pointers in Room. */
+    suspend fun clearCache() = withContext(Dispatchers.IO) {
+        diskCache.clearCache()
+        dao.clearUnpinnedLocalCopies()
+    }
+
+    private fun clearEvictedRows(evicted: List<File>) {
+        if (evicted.isEmpty()) return
+        val paths = evicted.map { it.path }
+        if (paths.size <= SQL_IN_CHUNK) dao.clearLocalCopiesByPath(paths)
+        else paths.chunked(SQL_IN_CHUNK).forEach { dao.clearLocalCopiesByPath(it) }
     }
 
     private fun moveOrCopy(source: File, target: File) {
@@ -278,7 +292,7 @@ class DocumentRepository @Inject constructor(
         val empty = withContext(Dispatchers.IO) { File.createTempFile("empty", ".tmp") }
         try {
             var attempt = 0
-            while (attempt <= MAX_NAME_ATTEMPTS) {
+            while (attempt <= maxNameAttempts) {
                 val (id, used) = when (val free = freeChild(credentials, parent, name, attempt)) {
                     is AetherResult.Success -> free.value
                     is AetherResult.Failure -> return free
@@ -406,6 +420,9 @@ class DocumentRepository @Inject constructor(
      */
     @Volatile var freshnessWindowMs: Long = DEFAULT_FRESHNESS_WINDOW_MS
 
+    /** Maximum numbered suffixes tried by [uniqueChild] / [createEmptyFile]; replaceable in tests. */
+    @Volatile var maxNameAttempts: Int = MAX_NAME_ATTEMPTS
+
     /** Removes [id] and everything below it from the cache, deleting their local bytes. */
     suspend fun forget(id: DocumentId) = withContext(Dispatchers.IO) {
         val filesToDelete = mutableListOf<File>()
@@ -452,19 +469,35 @@ class DocumentRepository @Inject constructor(
     suspend fun uniqueChild(credentials: AetherCredentials, parent: DocumentId, name: String): AetherResult<DocumentId> =
         freeChild(credentials, parent, name, 0).map { it.first }
 
-    /** The first name from attempt [startAt] on that the server does not have, and the attempt number it came from. */
+    /**
+     * The first name from attempt [startAt] on that the server does not have, and the attempt number it came from.
+     * Probes the requested name directly first (`Depth: 0`), then falls back to a single `Depth: 1` parent listing when taken
+     * so finding `name (N)` takes at most two requests instead of N+1.
+     */
     private suspend fun freeChild(credentials: AetherCredentials, parent: DocumentId, name: String, startAt: Int): AetherResult<Pair<DocumentId, Int>> {
         if (name.isEmpty() || '/' in name) return AetherResult.Failure(AetherError.Malformed("Invalid name: $name"))
+        val limit = maxNameAttempts
+        if (startAt > limit) return AetherResult.Failure(AetherError.Malformed("Could not find a free name for $name"))
         val dav = davFactory.forAccount(credentials)
+        if (startAt == 0) {
+            val first = parent.child(name)
+            when (val probe = dav.propfind(credentials.fileUrl(first.path), depth = 0)) {
+                is AetherResult.Success -> Unit
+                is AetherResult.Failure -> return if (probe.error == AetherError.NotFound) AetherResult.Success(first to 0) else probe
+            }
+        }
+        val parentUrl = credentials.fileUrl(if (parent.isRoot) "/" else parent.path + "/")
+        val listing = when (val result = dav.propfind(parentUrl, depth = 1)) {
+            is AetherResult.Success -> result.value
+            is AetherResult.Failure -> return result
+        }
+        val taken = listing.mapTo(HashSet()) { DocumentId.normalizePath(relativeRemotePath(it.href, credentials.loginName)) }
         val dot = name.lastIndexOf('.')
         val base = if (dot > 0) name.substring(0, dot) else name
         val extension = if (dot > 0) name.substring(dot) else ""
-        for (attempt in startAt..MAX_NAME_ATTEMPTS) {
-            val candidate = parent.child(if (attempt == 0) name else "$base ($attempt)$extension")
-            when (val probe = dav.propfind(credentials.fileUrl(candidate.path), depth = 0)) {
-                is AetherResult.Success -> continue
-                is AetherResult.Failure -> return if (probe.error == AetherError.NotFound) AetherResult.Success(candidate to attempt) else probe
-            }
+        for (attempt in maxOf(1, startAt)..limit) {
+            val candidate = parent.child("$base ($attempt)$extension")
+            if (candidate.path !in taken) return AetherResult.Success(candidate to attempt)
         }
         return AetherResult.Failure(AetherError.Malformed("Could not find a free name for $name"))
     }

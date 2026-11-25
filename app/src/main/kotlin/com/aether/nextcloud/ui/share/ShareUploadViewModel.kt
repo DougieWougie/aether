@@ -26,9 +26,13 @@ import com.aether.nextcloud.sync.UploadDocumentWorker
 import com.aether.nextcloud.sync.UploadRequest
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import java.io.File
 import java.io.IOException
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -87,6 +91,7 @@ class ShareUploadViewModel @Inject constructor(
 
     private val _state = MutableStateFlow(ShareUiState())
     val state: StateFlow<ShareUiState> = _state.asStateFlow()
+    private var uploadJob: Job? = null
 
     /** Reads what was shared and where it should go. Only the first call per ViewModel has an effect. */
     fun load(intent: Intent) {
@@ -138,12 +143,46 @@ class ShareUploadViewModel @Inject constructor(
 
     fun dismissError() = _state.update { if (it.phase is SharePhase.Failed) it.copy(phase = SharePhase.Ready) else it }
 
+    /** Creates a new subfolder under the current [ShareUiState.destination] and selects it as the upload target. */
+    fun createSubfolder(name: String) {
+        val snapshot = _state.value
+        val account = snapshot.account ?: return
+        val parent = snapshot.destination ?: return
+        val cleaned = name.trim()
+        if (cleaned.isEmpty() || snapshot.phase is SharePhase.Preparing) return
+        viewModelScope.launch {
+            when (val result = documents.createDirectory(account, parent, cleaned)) {
+                is AetherResult.Success -> {
+                    val created = DocumentId.parse(result.value.documentId)
+                    settings.rememberFolder(created.toString())
+                    _state.update {
+                        it.copy(
+                            destination = created,
+                            recentFolders = (listOf(created) + it.recentFolders.filter { f -> f != created }).take(SettingsRepository.MAX_RECENT_FOLDERS),
+                            phase = if (it.phase is SharePhase.Failed) SharePhase.Ready else it.phase,
+                        )
+                    }
+                }
+                is AetherResult.Failure -> {
+                    _state.update { it.copy(phase = SharePhase.Failed(context.getString(R.string.share_folder_failed, cleaned))) }
+                }
+            }
+        }
+    }
+
+    /** Aborts in-flight staging and returns the sheet to [SharePhase.Ready]. */
+    fun cancelPreparing() {
+        uploadJob?.cancel()
+        uploadJob = null
+        _state.update { if (it.phase is SharePhase.Preparing) it.copy(phase = SharePhase.Ready) else it }
+    }
+
     fun upload() {
         val snapshot = _state.value
         val account = snapshot.account ?: return
         val destination = snapshot.destination ?: return
         if (snapshot.phase is SharePhase.Preparing || snapshot.items.isEmpty()) return
-        viewModelScope.launch {
+        uploadJob = viewModelScope.launch {
             try {
                 // A picked folder lands in a fresh, uniquely named folder, so nothing already on the server is merged into or overwritten.
                 val base = snapshot.folderName?.let { name ->
@@ -152,27 +191,41 @@ class ShareUploadViewModel @Inject constructor(
                         is AetherResult.Failure -> throw IOException(context.getString(R.string.share_folder_failed, name))
                     }
                 } ?: destination
+                val createdDirs = HashSet<DocumentId>().apply { add(base) }
                 snapshot.items.forEachIndexed { index, item ->
+                    coroutineContext.ensureActive()
                     _state.update { it.copy(phase = SharePhase.Preparing(index, snapshot.items.size)) }
-                    if (item.isFolder) createEmptyFolder(account, base, item) else stageAndEnqueue(account, base, item, nested = snapshot.folderName != null)
+                    if (item.isFolder) {
+                        ensureSubfolders(account, base, item.relativePath, createdDirs)
+                    } else {
+                        if (snapshot.folderName != null && item.directory.isNotEmpty()) {
+                            ensureSubfolders(account, base, item.directory, createdDirs)
+                        }
+                        stageAndEnqueue(account, base, item, nested = snapshot.folderName != null)
+                    }
                 }
                 settings.rememberFolder(destination.toString())
                 val recent = settings.recentFolders.first().mapNotNull(DocumentId::parseOrNull)
                 DirectShareShortcuts.sync(context, settings.directShareEnabled.first(), recent)
                 _state.update { it.copy(phase = SharePhase.Queued(snapshot.fileCount.coerceAtLeast(1))) }
+            } catch (e: CancellationException) {
+                _state.update { if (it.phase is SharePhase.Preparing) it.copy(phase = SharePhase.Ready) else it }
+                throw e
             } catch (e: IOException) {
                 _state.update { it.copy(phase = SharePhase.Failed(e.message ?: context.getString(R.string.share_read_failed))) }
             }
         }
     }
 
-    /** `MKCOL`s an empty subfolder of a picked folder, and the folders above it. */
-    private suspend fun createEmptyFolder(account: AetherCredentials, base: DocumentId, item: SharedItem) {
+    /** `MKCOL`s each not-yet-created folder along [relativeDir] under [base] once per upload batch. */
+    private suspend fun ensureSubfolders(account: AetherCredentials, base: DocumentId, relativeDir: String, created: MutableSet<DocumentId>) {
         var folder = base
-        for (segment in item.relativePath.split('/')) {
+        for (segment in relativeDir.split('/').filter { it.isNotEmpty() }) {
             folder = folder.child(segment)
+            if (!created.add(folder)) continue
             if (documents.ensureDirectory(account, folder) is AetherResult.Failure) {
-                throw IOException(context.getString(R.string.share_folder_failed, item.relativePath))
+                created.remove(folder)
+                throw IOException(context.getString(R.string.share_folder_failed, relativeDir))
             }
         }
     }
@@ -208,7 +261,7 @@ class ShareUploadViewModel @Inject constructor(
                 ),
             )
         }
-        UploadDocumentWorker.enqueue(context, UploadRequest(account.accountName, target.path, staging, mimeType, ifMatchEtag = null, createParents = nested))
+        UploadDocumentWorker.enqueue(context, UploadRequest(account.accountName, target.path, staging, mimeType, ifMatchEtag = null, createParents = false))
     }
 
     /**

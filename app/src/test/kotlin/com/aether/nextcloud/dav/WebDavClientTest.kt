@@ -201,6 +201,29 @@ class WebDavClientTest {
     }
 
     @Test
+    fun `chunked upload with computeChecksum hashes chunks in a single pass without pre-reading`() = runBlocking {
+        val bytes = "0123456789".toByteArray() // chunk size 4 -> 3 chunks
+        var opens = 0
+        val source = object : UploadSource {
+            override val length = bytes.size.toLong()
+            override val lastModified: Long? = null
+            override fun open(offset: Long): java.io.InputStream {
+                opens++
+                return java.io.ByteArrayInputStream(bytes, offset.toInt(), bytes.size - offset.toInt())
+            }
+        }
+        answerChunkedUpload()
+
+        val result = dav.uploadChunkedV2(source, "/v.bin", computeChecksum = true)
+
+        assertTrue(result is AetherResult.Success)
+        val seen = requestsSeen()
+        val move = seen.last { it.method == "MOVE" }
+        assertEquals(Checksums.sha1(bytes.inputStream()), move.getHeader("OC-Checksum"))
+        assertEquals("opened once per chunk, never pre-read from 0 for hashing", 3, opens)
+    }
+
+    @Test
     fun `uploadFile omits if-match for new files and maps 412`() = runBlocking {
         server.enqueue(MockResponse().setResponseCode(201))
         server.enqueue(MockResponse().setResponseCode(412))

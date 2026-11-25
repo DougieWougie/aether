@@ -74,6 +74,12 @@ interface DocumentDao {
     @Query("UPDATE documents SET localCachePath = NULL, cachedEtag = NULL WHERE documentId = :id")
     fun clearLocalCopy(id: String)
 
+    @Query("UPDATE documents SET localCachePath = NULL, cachedEtag = NULL WHERE localCachePath IN (:paths)")
+    fun clearLocalCopiesByPath(paths: List<String>)
+
+    @Query("UPDATE documents SET localCachePath = NULL, cachedEtag = NULL WHERE isPinned = 0 AND localCachePath IS NOT NULL")
+    fun clearUnpinnedLocalCopies()
+
     @Query("UPDATE documents SET isPinned = 1 WHERE parentId = :parentId")
     fun pinChildren(parentId: String)
 

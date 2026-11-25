@@ -7,9 +7,10 @@ import androidx.work.WorkerFactory
 import androidx.work.WorkerParameters
 import androidx.work.testing.TestListenableWorkerBuilder
 import com.aether.nextcloud.data.local.entity.TransferDirection
+import com.aether.nextcloud.data.local.entity.TransferEntity
 import com.aether.nextcloud.data.local.entity.TransferState
 import com.aether.nextcloud.provider.DocumentId
-import com.aether.nextcloud.support.AetherTestRule
+import com.aether.nextcloud.support.RobolectricAetherRule
 import com.aether.nextcloud.support.awaitTrue
 import java.io.File
 import kotlinx.coroutines.flow.first
@@ -26,7 +27,7 @@ import org.junit.runner.RunWith
 /** Runs the real [PinnedSyncWorker] against [com.aether.nextcloud.support.FakeNextcloud] with the app's own repositories. */
 @RunWith(AndroidJUnit4::class)
 class PinnedSyncWorkerTest {
-    @get:Rule val env = AetherTestRule()
+    @get:Rule val env = RobolectricAetherRule()
 
     private val root get() = DocumentId.root(env.accountName)
     private fun id(path: String) = DocumentId(env.accountName, path)
@@ -43,13 +44,20 @@ class PinnedSyncWorkerTest {
         documents.setPinned(id(path), true)
     }
 
-    private fun runWorker(): ListenableWorker.Result = runBlocking {
+    private fun workerFactory(): WorkerFactory {
         val graph = env.graph
-        val factory = object : WorkerFactory() {
+        return object : WorkerFactory() {
             override fun createWorker(appContext: Context, workerClassName: String, workerParameters: WorkerParameters) =
                 PinnedSyncWorker(appContext, workerParameters, graph.accounts(), graph.documents(), graph.database(), graph.notifications(), graph.authIssues())
         }
-        TestListenableWorkerBuilder<PinnedSyncWorker>(env.context).setWorkerFactory(factory).build().doWork()
+    }
+
+    private fun runWorker(foreground: Boolean = false): ListenableWorker.Result = runBlocking {
+        TestListenableWorkerBuilder<PinnedSyncWorker>(env.context)
+            .setWorkerFactory(workerFactory())
+            .setInputData(androidx.work.workDataOf("foreground" to foreground))
+            .build()
+            .doWork()
     }
 
     private fun pinnedBytes(path: String): ByteArray? =
@@ -146,7 +154,6 @@ class PinnedSyncWorkerTest {
         runWorker()
 
         env.nextcloud.putFile("/Docs/new.txt", "fresh")
-        // Adding a file changes the folder's ETag on a real server; the fake leaves it alone, so do it explicitly.
         env.nextcloud.editRemotely("/Docs/a.txt", "a2")
         env.nextcloud.touchFolder("/Docs")
         runWorker()
@@ -218,11 +225,10 @@ class PinnedSyncWorkerTest {
         val dao = env.graph.database().transferDao()
         val staged = File.createTempFile("pending", ".tmp", env.context.cacheDir).apply { writeText("unsent edit") }
         val eightDaysAgo = System.currentTimeMillis() - 8L * 24 * 60 * 60 * 1000
-        fun row(state: TransferState, at: Long) = com.aether.nextcloud.data.local.entity.TransferEntity(
+        fun row(state: TransferState, at: Long) = TransferEntity(
             accountName = env.accountName, remotePath = "/doc.txt", direction = TransferDirection.UPLOAD, state = state,
             createdAt = at, sourcePath = staged.absolutePath,
         )
-        // An old failed row and a newer queued row (the rerun of the same upload) point at one staged file.
         dao.insert(row(TransferState.FAILED, eightDaysAgo))
         val queuedId = dao.insert(row(TransferState.QUEUED, System.currentTimeMillis()))
 
@@ -268,17 +274,8 @@ class PinnedSyncWorkerTest {
     fun anExpeditedSyncRunsAsAForegroundJob() {
         env.nextcloud.putFile("/notes.txt", "hello")
         pin("/notes.txt")
-        val graph = env.graph
-        val factory = object : WorkerFactory() {
-            override fun createWorker(appContext: Context, workerClassName: String, workerParameters: WorkerParameters) =
-                PinnedSyncWorker(appContext, workerParameters, graph.accounts(), graph.documents(), graph.database(), graph.notifications(), graph.authIssues())
-        }
 
-        val result = runBlocking {
-            TestListenableWorkerBuilder<PinnedSyncWorker>(env.context).setWorkerFactory(factory).setInputData(androidx.work.workDataOf("foreground" to true)).build().doWork()
-        }
-
-        assertEquals(ListenableWorker.Result.success(), result)
+        assertEquals(ListenableWorker.Result.success(), runWorker(foreground = true))
         assertEquals("hello", pinnedBytes("/notes.txt")?.decodeToString())
     }
 
@@ -296,7 +293,7 @@ class PinnedSyncWorkerTest {
     fun finishedTransfersOlderThanADayArePruned() {
         val dao = env.graph.database().transferDao()
         val dayAndABit = System.currentTimeMillis() - 25 * 3_600_000L
-        val oldId = dao.insert(com.aether.nextcloud.data.local.entity.TransferEntity(accountName = env.accountName, remotePath = "/old", direction = TransferDirection.DOWNLOAD, state = TransferState.COMPLETED, createdAt = dayAndABit))
+        val oldId = dao.insert(TransferEntity(accountName = env.accountName, remotePath = "/old", direction = TransferDirection.DOWNLOAD, state = TransferState.COMPLETED, createdAt = dayAndABit))
         dao.setState(oldId, TransferState.COMPLETED, null, dayAndABit)
 
         runWorker()

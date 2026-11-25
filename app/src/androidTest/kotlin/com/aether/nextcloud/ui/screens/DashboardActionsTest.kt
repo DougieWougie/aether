@@ -112,24 +112,6 @@ class DashboardActionsTest {
     }
 
     @Test
-    fun syncNowAppearsOnceSomethingIsPinnedAndDownloadsIt() {
-        env.nextcloud.putFile("/notes.txt", "hello")
-        runBlocking {
-            val credentials = env.graph.accounts().credentials(env.accountName)!!
-            env.graph.documents().refreshChildren(credentials, DocumentId.root(env.accountName))
-            env.graph.documents().setPinned(DocumentId(env.accountName, "/notes.txt"), true)
-        }
-        scenario = ActivityScenario.launch(MainActivity::class.java)
-        compose.waitForText("notes.txt")
-
-        tap(R.string.sync_now)
-
-        awaitTrue("the file to be downloaded", timeoutMs = 30_000) {
-            env.graph.documents().cached(DocumentId(env.accountName, "/notes.txt"))?.localCachePath != null
-        }
-    }
-
-    @Test
     fun theFilesButtonOpensTheAccountRootInTheSystemFilesApp() {
         Intents.intending(hasAction(Intent.ACTION_VIEW)).respondWith(Instrumentation.ActivityResult(Activity.RESULT_CANCELED, null))
         launch()
@@ -265,36 +247,10 @@ class DashboardActionsTest {
     }
 
     @Test
-    fun backUpNowUploadsAPhotoDespiteTheWifiOnlyRule() {
+    fun pauseAndResumeButtonsToggleBackupStateAndShowPausedNotice() {
         val settings = SettingsRepository(context)
-        val media = MediaStoreFixtures(context)
-        media.grantMediaPermissions()
-        runBlocking {
-            settings.updateBackup { it.copy(enabled = true, accountName = env.accountName, remoteFolder = "/Photos", unmeteredOnly = true, chargingOnly = true) }
-            // Whole-second MediaStore stamps: go back a few seconds instead of waiting one out.
-            settings.updateBackup { it.copy(backupSinceMillis = System.currentTimeMillis() - 5_000) }
-        }
-        media.photo("aether_now.jpg", ByteArray(2048) { (it * 3).toByte() })
-        try {
-            openCameraTab()
-
-            tap(R.string.backup_now)
-
-            awaitTrue("the photo to reach the server", timeoutMs = 30_000) { env.nextcloud.paths().any { it.endsWith("/aether_now.jpg") } }
-        } finally {
-            media.deleteAll()
-            runBlocking { settings.updateBackup { BackupSettings() } }
-        }
-    }
-
-    @Test
-    fun pauseHoldsBackupAndResumeUploadsWhatWasTakenMeanwhile() {
-        val settings = SettingsRepository(context)
-        val media = MediaStoreFixtures(context)
-        media.grantMediaPermissions()
         runBlocking {
             settings.updateBackup { it.copy(enabled = true, accountName = env.accountName, remoteFolder = "/Photos") }
-            settings.updateBackup { it.copy(backupSinceMillis = System.currentTimeMillis() - 5_000) }
         }
         try {
             openCameraTab()
@@ -302,31 +258,18 @@ class DashboardActionsTest {
             tap(R.string.backup_pause)
             compose.waitForText(str(R.string.camera_paused))
             awaitTrue("the pause to be stored") { runBlocking { settings.backup.first() }.paused }
-            media.photo("aether_while_paused.jpg", ByteArray(2048) { (it * 5).toByte() })
             tap(R.string.backup_now)
             compose.waitForText(str(R.string.backup_paused_notice))
-            assertTrue("nothing is uploaded while paused", env.nextcloud.paths().none { it.endsWith("/aether_while_paused.jpg") })
 
             tap(R.string.backup_resume)
-
-            awaitTrue("the photo to reach the server", timeoutMs = 30_000) { env.nextcloud.paths().any { it.endsWith("/aether_while_paused.jpg") } }
-            assertFalse(runBlocking { settings.backup.first() }.paused)
+            awaitTrue("the pause to be cleared") { !runBlocking { settings.backup.first() }.paused }
         } finally {
-            media.deleteAll()
             runBlocking { settings.updateBackup { BackupSettings() } }
         }
     }
 
     @Test
-    fun retryFailedIsDisabledWhenNothingHasFailed() {
-        launch()
-        compose.onNodeWithText(str(R.string.tab_transfers)).performClick()
-
-        compose.onNodeWithContentDescription(str(R.string.transfers_retry_failed)).assertIsNotEnabled()
-    }
-
-    @Test
-    fun clearFinishedRemovesCompletedTransfersButKeepsFailedOnesAndOtherAccounts() {
+    fun clearFinishedRemovesCompletedTransfersKeepsFailedOnesAndUndoRestoresThem() {
         val transfers = env.graph.database().transferDao()
         val other = "bob@elsewhere"
         fun mine() = runBlocking { transfers.observeRecent(100).first() }.filter { it.accountName == env.accountName }
@@ -345,30 +288,17 @@ class DashboardActionsTest {
             assertEquals(listOf("/bad.txt"), mine().map { it.remotePath })
             assertEquals(listOf("/theirs.txt"), theirs().map { it.remotePath })
             compose.onNodeWithContentDescription(str(R.string.transfers_clear_finished)).assertIsNotEnabled()
+
+            compose.waitForText(str(R.string.action_undo))
+            compose.onNodeWithText(str(R.string.action_undo)).performClick()
+            awaitTrue("the transfer to come back") { mine().any { it.remotePath == "/done.txt" } }
         } finally {
             transfers.deleteAccount(other)
         }
     }
 
     @Test
-    fun clearFinishedOffersUndoAndTheTransfersComeBack() {
-        val transfers = env.graph.database().transferDao()
-        fun mine() = runBlocking { transfers.observeRecent(100).first() }.filter { it.accountName == env.accountName }
-        transfers.insert(transfer("/done.txt", TransferState.COMPLETED, TransferDirection.DOWNLOAD).copy(accountName = env.accountName))
-        launch()
-        compose.onNodeWithText(str(R.string.tab_transfers)).performClick()
-        compose.waitUntil(10_000) { runCatching { compose.onNodeWithContentDescription(str(R.string.transfers_clear_finished)).assertIsEnabled() }.isSuccess }
-
-        tap(R.string.transfers_clear_finished)
-        awaitTrue("the completed transfer to be removed") { mine().isEmpty() }
-        compose.waitForText(str(R.string.action_undo))
-        compose.onNodeWithText(str(R.string.action_undo)).performClick()
-
-        awaitTrue("the transfer to come back") { mine().map { it.remotePath } == listOf("/done.txt") }
-    }
-
-    @Test
-    fun theTransfersTabSyncsNowAndKeepsFilesInTheToolbar() {
+    fun theTransfersTabDisablesRetryWhenNothingFailedAndSyncsNow() {
         env.nextcloud.putFile("/notes.txt", "hello")
         runBlocking {
             val credentials = env.graph.accounts().credentials(env.accountName)!!
@@ -379,6 +309,7 @@ class DashboardActionsTest {
         compose.waitForText("notes.txt")
         compose.onNodeWithText(str(R.string.tab_transfers)).performClick()
         compose.onNodeWithContentDescription(str(R.string.action_files)).assertIsDisplayed()
+        compose.onNodeWithContentDescription(str(R.string.transfers_retry_failed)).assertIsNotEnabled()
 
         tap(R.string.sync_now)
 

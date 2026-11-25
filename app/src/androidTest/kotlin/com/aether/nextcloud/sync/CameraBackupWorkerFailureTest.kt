@@ -182,8 +182,10 @@ class CameraBackupWorkerFailureTest {
 
     @Test
     fun aLargeVideoGoesUpInChunks() {
+        env.graph.davFactory().chunkedThreshold = 64L * 1024
+        env.graph.davFactory().chunkSize = 48L * 1024
         enableBackup()
-        val big = media.video("aether_big.mp4", ByteArray(11 * 1024 * 1024) { (it % 251).toByte() })
+        val big = media.video("aether_big.mp4", ByteArray(80 * 1024) { (it % 251).toByte() })
 
         assertEquals(ListenableWorker.Result.success(), runWorker())
 

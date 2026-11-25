@@ -20,6 +20,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkStatic
 import io.mockk.unmockkStatic
+import io.mockk.verify
 import io.mockk.slot
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -192,5 +193,17 @@ class CameraBackupViewModelTest {
         vm.loadAlbums()
 
         assertEquals(emptyList<Any>(), vm.albums.value)
+    }
+
+    @Test
+    fun `enabling back up existing triggers an immediate scan when backup is active`() = runTest(dispatcher) {
+        backup.value = BackupSettings(enabled = true, accountName = "alice@h")
+        every { scheduler.canReadMedia() } returns true
+        val vm = viewModel()
+
+        vm.setBackUpExisting(true)
+
+        assertTrue(backup.value.backUpExisting)
+        verify(exactly = 1) { scheduler.backUpNow() }
     }
 }

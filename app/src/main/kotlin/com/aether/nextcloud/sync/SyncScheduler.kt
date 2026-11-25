@@ -40,4 +40,10 @@ class SyncScheduler @Inject constructor(@ApplicationContext private val context:
     fun canReadMedia(): Boolean = CameraBackupWorker.hasMediaPermission(context)
 
     fun syncPinsNow() = PinnedSyncWorker.syncNow(context)
+
+    fun cancelPinnedSyncNow() = PinnedSyncWorker.cancelNow(context)
+
+    fun cancelUpload(accountName: String, remotePath: String) {
+        androidx.work.WorkManager.getInstance(context).cancelUniqueWork("upload:$accountName:$remotePath")
+    }
 }

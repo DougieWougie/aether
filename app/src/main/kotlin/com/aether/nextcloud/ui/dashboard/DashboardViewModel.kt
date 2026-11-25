@@ -83,6 +83,8 @@ data class DashboardUiState(
     /** Accounts the server rejected; the user has to sign in to them again. */
     val needsSignIn: List<AetherCredentials> = emptyList(),
     val directShareEnabled: Boolean = true,
+    val pinnedWifiOnly: Boolean = true,
+    val refreshing: Boolean = false,
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -114,11 +116,17 @@ class DashboardViewModel @Inject constructor(
         accounts to (accounts.firstOrNull { it.accountName == name } ?: accounts.firstOrNull())
     }
 
-    private val transferData = combine(
-        database.transferDao().observeActive(),
-        database.transferDao().observeRecent(RECENT_TRANSFERS),
-        database.documentDao().observePinnedRoots(),
-    ) { active, recent, pinned -> Triple(active, recent, pinned) }
+    private val transferData = selected.flatMapLatest { (_, account) ->
+        if (account == null) {
+            flowOf(Triple(emptyList(), emptyList(), emptyList()))
+        } else {
+            combine(
+                database.transferDao().observeActiveForAccount(account.accountName),
+                database.transferDao().observeRecentForAccount(account.accountName, RECENT_TRANSFERS),
+                database.documentDao().observePinnedRoots(),
+            ) { active, recent, pinned -> Triple(active, recent, pinned.filter { it.accountName == account.accountName }) }
+        }
+    }
 
     private val backupData = selected.flatMapLatest { (_, account) ->
         if (account == null) {
@@ -136,6 +144,7 @@ class DashboardViewModel @Inject constructor(
 
     private val message = MutableStateFlow<String?>(null)
     private val avatar = MutableStateFlow<Pair<String, ImageBitmap?>?>(null)
+    private val refreshing = MutableStateFlow(false)
 
     val state: StateFlow<DashboardUiState> = combine(
         selected, tab, transferData, backupData,
@@ -147,9 +156,9 @@ class DashboardViewModel @Inject constructor(
             quota = account?.let { extras.quotas[it.accountName]?.info },
             quotaError = extras.message,
             tab = currentTab,
-            activeTransfers = active.filter { it.accountName == account?.accountName },
-            recentTransfers = recent.filter { it.accountName == account?.accountName },
-            pinned = pinned.filter { it.accountName == account?.accountName },
+            activeTransfers = active,
+            recentTransfers = recent,
+            pinned = pinned,
             backup = backupData.backup,
             backedUpCount = backupData.count,
             lastBackupAt = backupData.lastBackupAt,
@@ -165,6 +174,10 @@ class DashboardViewModel @Inject constructor(
         ui.copy(backupProgress = progress)
     }.combine(settings.directShareEnabled) { ui, directShare ->
         ui.copy(directShareEnabled = directShare)
+    }.combine(settings.sync) { ui, sync ->
+        ui.copy(pinnedWifiOnly = sync.pinnedSyncUnmeteredOnly)
+    }.combine(refreshing) { ui, isRefreshing ->
+        ui.copy(refreshing = isRefreshing)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DashboardUiState())
 
     init {
@@ -184,23 +197,37 @@ class DashboardViewModel @Inject constructor(
 
     /** Refreshes quota (for the ring), avatar, on-disk usage and backup folder size concurrently. */
     fun refresh() {
+        viewModelScope.launch { performRefresh() }
+    }
+
+    /** User-initiated pull-to-refresh; exposes [DashboardUiState.refreshing] while network/disk reads are in flight. */
+    fun pullToRefresh() {
         viewModelScope.launch {
-            val account = selected.first().second ?: return@launch
-            message.value = null
-            if (avatar.value?.first != account.accountName) avatar.value = account.accountName to avatars.cached(account.accountName)
-            coroutineScope {
-                launch { avatar.value = account.accountName to avatars.refresh(account) }
-                launch {
-                    when (val result = quotaRepository.refresh(account)) {
-                        is AetherResult.Failure -> message.value = result.error.describe(context)
-                        is AetherResult.Success -> accountRepository.setDisplayName(account.accountName, result.value.displayName)
-                    }
+            refreshing.value = true
+            try {
+                performRefresh()
+            } finally {
+                refreshing.value = false
+            }
+        }
+    }
+
+    private suspend fun performRefresh() {
+        val account = selected.first().second ?: return
+        message.value = null
+        if (avatar.value?.first != account.accountName) avatar.value = account.accountName to avatars.cached(account.accountName)
+        coroutineScope {
+            launch { avatar.value = account.accountName to avatars.refresh(account) }
+            launch {
+                when (val result = quotaRepository.refresh(account)) {
+                    is AetherResult.Failure -> message.value = result.error.describe(context)
+                    is AetherResult.Success -> accountRepository.setDisplayName(account.accountName, result.value.displayName)
                 }
-                launch { refreshStorage() }
-                launch {
-                    val backup = settings.backup.first()
-                    if (backup.enabled) cameraStats.refreshServerSize(account, backup.remoteFolder)
-                }
+            }
+            launch { refreshStorage() }
+            launch {
+                val backup = settings.backup.first()
+                if (backup.enabled) cameraStats.refreshServerSize(account, backup.remoteFolder)
             }
         }
     }
@@ -275,17 +302,13 @@ class DashboardViewModel @Inject constructor(
         }
     }
 
-    /** Cancels an active transfer: stops its WorkManager job, removes staged bytes, and marks the row cancelled. */
+    /** Cancels an active transfer: stops its WorkManager job (leaving periodic sync intact), removes staged bytes, and marks the row cancelled. */
     fun cancelTransfer(row: TransferEntity) {
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
                 when (row.direction) {
-                    com.aether.nextcloud.data.local.entity.TransferDirection.UPLOAD -> {
-                        androidx.work.WorkManager.getInstance(context).cancelUniqueWork("upload:${row.accountName}:${row.remotePath}")
-                    }
-                    com.aether.nextcloud.data.local.entity.TransferDirection.DOWNLOAD -> {
-                        com.aether.nextcloud.sync.PinnedSyncWorker.cancelAll(context)
-                    }
+                    com.aether.nextcloud.data.local.entity.TransferDirection.UPLOAD -> scheduler.cancelUpload(row.accountName, row.remotePath)
+                    com.aether.nextcloud.data.local.entity.TransferDirection.DOWNLOAD -> scheduler.cancelPinnedSyncNow()
                 }
                 row.sourcePath?.let { java.io.File(it).delete() }
                 transferDao.setState(row.id, com.aether.nextcloud.data.local.entity.TransferState.FAILED, com.aether.nextcloud.core.ErrorCodes.CANCELLED, System.currentTimeMillis())
@@ -329,6 +352,17 @@ class DashboardViewModel @Inject constructor(
             } else {
                 onResult(capture.upload(uri, state.value.selected?.accountName))
             }
+        }
+    }
+
+    /** Enables or disables camera backup from the Camera tile switch without instantiating the settings sheet ViewModel. */
+    fun setBackupEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            val fallbackAccount = state.value.selected?.accountName ?: accountRepository.observeAccounts().first().firstOrNull()?.accountName
+            scheduler.applyBackup(settings.updateBackup {
+                val account = it.accountName ?: fallbackAccount
+                it.copy(enabled = enabled && account != null, accountName = account)
+            })
         }
     }
 
@@ -382,7 +416,7 @@ class DashboardViewModel @Inject constructor(
 
     fun clearCache() {
         viewModelScope.launch {
-            withContext(Dispatchers.IO) { diskCache.clearCache() }
+            documents.clearCache()
             refreshStorage()
         }
     }
@@ -392,6 +426,15 @@ class DashboardViewModel @Inject constructor(
             settings.setDirectShareEnabled(enabled)
             val recent = settings.recentFolders.first().mapNotNull(DocumentId::parseOrNull)
             DirectShareShortcuts.sync(context, enabled, recent)
+        }
+    }
+
+    fun setPinnedWifiOnly(unmeteredOnly: Boolean) {
+        viewModelScope.launch {
+            val updated = settings.updateSync { it.copy(pinnedSyncUnmeteredOnly = unmeteredOnly) }
+            if (state.value.pinned.isNotEmpty() || documents.pinnedRoots().isNotEmpty()) {
+                scheduler.applyPinnedSync(updated)
+            }
         }
     }
 

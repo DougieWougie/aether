@@ -12,5 +12,9 @@ class WebDavClientFactory @Inject constructor(
     private val client: OkHttpClient,
     @UserAgent private val userAgent: String,
 ) {
-    fun forAccount(credentials: AetherCredentials) = WebDavClient(client, credentials, userAgent)
+    /** Size above which uploads switch to Chunked Upload v2; replaceable in tests so worker suites need not allocate 11 MB payloads. */
+    @Volatile var chunkedThreshold: Long = WebDavClient.CHUNKED_THRESHOLD
+    @Volatile var chunkSize: Long = WebDavClient.CHUNK_SIZE
+
+    fun forAccount(credentials: AetherCredentials) = WebDavClient(client, credentials, userAgent, chunkSize = chunkSize)
 }

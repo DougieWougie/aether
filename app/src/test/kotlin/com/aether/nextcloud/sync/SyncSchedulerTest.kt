@@ -100,4 +100,15 @@ class SyncSchedulerTest {
         assertEquals(1, queued.size)
         assertTrue(queued.single().state == WorkInfo.State.ENQUEUED || queued.single().state == WorkInfo.State.RUNNING || queued.single().state.isFinished)
     }
+
+    @Test
+    fun cancellingAnOnDemandPinSyncKeepsThePeriodicScheduleIntact() {
+        scheduler.applyPinnedSync(SyncSettings(pinnedSyncUnmeteredOnly = true))
+        scheduler.syncPinsNow()
+
+        scheduler.cancelPinnedSyncNow()
+
+        assertEquals("periodic sync must remain scheduled", 1, infos("pinned-sync-periodic").size)
+        assertTrue("on-demand sync is cancelled", infos("pinned-sync-now").isEmpty())
+    }
 }

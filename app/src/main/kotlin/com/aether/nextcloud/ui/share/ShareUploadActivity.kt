@@ -85,7 +85,11 @@ class ShareUploadActivity : ComponentActivity() {
             AetherTheme {
                 ShareSheet(
                     viewModel = viewModel,
-                    onFinished = { finish() },
+                    onFinished = {
+                        // Lets the dashboard, when it launched this sheet, jump to its Transfers tab.
+                        if (viewModel.state.value.phase is SharePhase.Queued) setResult(RESULT_OK)
+                        finish()
+                    },
                     onOpenApp = {
                         startActivity(Intent(this, MainActivity::class.java))
                         finish()

@@ -17,6 +17,9 @@ import com.aether.nextcloud.core.AetherResult
 import com.aether.nextcloud.data.DocumentRepository
 import com.aether.nextcloud.data.MimeTypes
 import com.aether.nextcloud.data.cache.DocumentDiskCache
+import com.aether.nextcloud.data.local.entity.TransferDirection
+import com.aether.nextcloud.data.local.entity.TransferEntity
+import com.aether.nextcloud.data.local.entity.TransferState
 import com.aether.nextcloud.data.prefs.SettingsRepository
 import com.aether.nextcloud.provider.DocumentId
 import com.aether.nextcloud.sync.UploadDocumentWorker
@@ -79,6 +82,7 @@ class ShareUploadViewModel @Inject constructor(
     private val settings: SettingsRepository,
     private val documents: DocumentRepository,
     private val diskCache: DocumentDiskCache,
+    private val database: com.aether.nextcloud.data.local.AetherDatabase,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ShareUiState())
@@ -194,10 +198,17 @@ class ShareUploadViewModel @Inject constructor(
         // used and create-only upload protects existing files.
         val target = if (nested) item.relativePath.split('/').fold(destination) { dir, segment -> dir.child(segment) }
         else (documents.uniqueChild(account, destination, item.name) as? AetherResult.Success)?.value ?: destination.child(item.name)
-        UploadDocumentWorker.enqueue(
-            context,
-            UploadRequest(account.accountName, target.path, staging, item.mimeType ?: MimeTypes.guess(item.name), ifMatchEtag = null, createParents = nested),
-        )
+        val mimeType = item.mimeType ?: MimeTypes.guess(item.name)
+        // Row first, so the dashboard's Transfers list shows the file as queued before the worker starts; the worker adopts it.
+        withContext(Dispatchers.IO) {
+            database.transferDao().insert(
+                TransferEntity(
+                    accountName = account.accountName, remotePath = target.path, direction = TransferDirection.UPLOAD, state = TransferState.QUEUED,
+                    totalBytes = staging.length(), createdAt = System.currentTimeMillis(), sourcePath = staging.absolutePath, mimeType = mimeType,
+                ),
+            )
+        }
+        UploadDocumentWorker.enqueue(context, UploadRequest(account.accountName, target.path, staging, mimeType, ifMatchEtag = null, createParents = nested))
     }
 
     /**
